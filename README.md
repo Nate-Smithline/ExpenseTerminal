@@ -1,6 +1,6 @@
 ## LedgerTerminal Monorepo
 
-SaaS for helping solopreneurs and small orgs manage budgets, calculate tax deductions, and (eventually) handle expense management.
+SaaS for helping solopreneurs and small orgs manage budgets, calculate tax deductions, and (eventually) handle expense management — using AI to help businesses save.
 
 This repo is a **pnpm + turborepo monorepo** with:
 
@@ -317,4 +317,3 @@ Implementation (later):
   - Use GraphQL client (Apollo/urql) to talk to the backend.
 
 When you’re ready, I can help you design the first concrete data models (e.g. budgets, tax categories, expense rules) and wire them end-to-end from GraphQL to Mongo and back to the UI.
-
