@@ -6,10 +6,10 @@ Before making your first commit, configure your Git identity:
 
 ```bash
 # Set your name (appears in commit history)
-git config user.name "Your Name"
+git config user.name "Nathan Smith"
 
 # Set your email (should match your GitHub email)
-git config user.email "your.email@example.com"
+git config user.email "nathan_m_smith@outlook.com"
 
 # Verify your settings
 git config user.name
@@ -20,15 +20,15 @@ git config user.email
 
 **Global (applies to all repos on your machine):**
 ```bash
-git config --global user.name "Your Name"
-git config --global user.email "your.email@example.com"
+git config --global user.name "Nathan Smith"
+git config --global user.email "nathan_m_smith@outlook.com"
 ```
 
 **Local (only for this repo):**
 ```bash
 cd /Users/nathansmith/Desktop/ledgerterminal/LedgerTerminal
-git config user.name "Your Name"
-git config user.email "your.email@example.com"
+git config user.name "Nathan Smith"
+git config user.email "nathan_m_smith@outlook.com"
 ```
 
 ---
@@ -44,7 +44,7 @@ Git doesn't use a password directly. You'll authenticate with GitHub using one o
 3. Use it instead of a password when pushing:
    ```bash
    git push
-   # Username: your-github-username
+   # Username: Nate-Smithline
    # Password: <paste your token>
    ```
 
@@ -52,7 +52,7 @@ Git doesn't use a password directly. You'll authenticate with GitHub using one o
 
 1. Generate an SSH key:
    ```bash
-   ssh-keygen -t ed25519 -C "your.email@example.com"
+   ssh-keygen -t ed25519 -C "nathan_m_smith@outlook.com"
    # Press Enter to accept default location
    # Optionally set a passphrase
    ```
@@ -75,7 +75,7 @@ Git doesn't use a password directly. You'll authenticate with GitHub using one o
 
 5. Change your remote URL to use SSH:
    ```bash
-   git remote set-url origin git@github.com:yourusername/LedgerTerminal.git
+   git remote set-url origin git@github.com:Nate-Smithline/LedgerTerminal.git
    ```
 
 ---
@@ -89,8 +89,8 @@ cd /Users/nathansmith/Desktop/ledgerterminal/LedgerTerminal
 git init
 
 # Set your user info (if not set globally)
-git config user.name "Your Name"
-git config user.email "your.email@example.com"
+git config user.name "Nathan Smith"
+git config user.email "nathan_m_smith@outlook.com"
 
 # Add all files
 git add .
@@ -99,7 +99,7 @@ git add .
 git commit -m "Initial commit: monorepo with NestJS backend and Next.js frontend"
 
 # Add your GitHub remote (replace with your actual repo URL)
-git remote add origin https://github.com/yourusername/LedgerTerminal.git
+git remote add origin https://github.com/Nate-Smithline/LedgerTerminal.git
 
 # Push to GitHub
 git push -u origin main
