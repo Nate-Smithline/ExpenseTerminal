@@ -10,6 +10,12 @@ This repo is a **pnpm + turborepo monorepo** with:
 
 ---
 
+## 🚀 Quick Public Deployment
+
+Want to get your site live right now? See **[DEPLOY.md](./DEPLOY.md)** for step-by-step instructions to deploy to Vercel, Railway, or Netlify in ~2 minutes.
+
+---
+
 ## 1. Local Dev Prereqs (macOS)
 
 - **Node.js**: Install via `nvm` (recommended)
