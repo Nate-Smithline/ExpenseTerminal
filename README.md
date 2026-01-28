@@ -121,6 +121,26 @@ You should get `"ok"` back, confirming Nest + GraphQL + Mongo bootstrapping is w
 
 ---
 
+## 2b. Supabase (database)
+
+The backend can use **Supabase** for Postgres and auth. Connection is driven entirely by env (no credentials in code).
+
+1. In **Supabase**: create a project, then open **Project Settings → API** and copy **Project URL** and **service_role** key (or anon key).
+2. In **`apps/backend/.env.local`** add:
+
+   ```env
+   SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=eyJ...
+   ```
+
+3. Test the connection:
+   - **CLI:** `pnpm --filter @ledgerterminal/backend test:supabase`
+   - **GraphQL:** start the backend and run `query { supabaseHealth { ok error } }` in the playground.
+
+Full details: **[apps/backend/SUPABASE.md](./apps/backend/SUPABASE.md)**.
+
+---
+
 ## 3. Redis (Caching / Queues)
 
 You can use **Railway Redis** plugin or **Upstash**.
