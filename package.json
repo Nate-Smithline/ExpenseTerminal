@@ -9,13 +9,22 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.37.0",
+    "@supabase/auth-helpers-nextjs": "^0.10.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "exceljs": "^4.4.0",
+    "jspdf": "^4.1.0",
+    "jspdf-autotable": "^5.0.7",
     "next": "16.1.6",
+    "papaparse": "^5.4.1",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/jspdf": "^2.0.0",
     "@types/node": "^20",
+    "@types/papaparse": "^5.3.14",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
