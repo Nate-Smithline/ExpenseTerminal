@@ -1,13 +1,26 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseClient } from "@/lib/supabase/client";
 import { getAuthErrorMessage } from "@/lib/auth-errors";
 import { AuthLayout } from "@/components/AuthLayout";
 import Link from "next/link";
 
-export default function LoginPage() {
+function LoginFallback() {
+  return (
+    <div className="relative w-full">
+      <AuthLayout isLoading={false}>
+        <p className="text-center text-sm text-mono-medium mb-8">
+          Sign in to review your business deductions.
+        </p>
+        <div className="h-10 rounded-lg bg-bg-tertiary animate-pulse" />
+      </AuthLayout>
+    </div>
+  );
+}
+
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
@@ -295,5 +308,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginContent />
+    </Suspense>
   );
 }
