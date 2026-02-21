@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
@@ -52,6 +53,9 @@ export async function POST(req: Request) {
     );
   }
 
+  revalidatePath("/dashboard");
+  revalidatePath("/deductions/qbi");
+  revalidatePath("/deductions/mileage");
   return NextResponse.json(data);
 }
 

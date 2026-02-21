@@ -5,6 +5,7 @@ import type { Database } from "@/lib/types/database";
 import { TransactionCard } from "@/components/TransactionCard";
 import type { TransactionUpdate } from "@/components/TransactionCard";
 import { normalizeVendor } from "@/lib/vendor-matching";
+import { persistTaxYear } from "@/lib/tax-year-cookie";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
@@ -248,7 +249,11 @@ export function ActivityPageClient({
           </button>
           <select
             value={selectedYear}
-            onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+            onChange={(e) => {
+              const y = parseInt(e.target.value, 10);
+              persistTaxYear(y);
+              setSelectedYear(y);
+            }}
             className="bg-white border border-bg-tertiary/60 rounded-full px-4 py-1.5 text-sm text-mono-dark"
           >
             <option value={selectedYear}>{selectedYear}</option>

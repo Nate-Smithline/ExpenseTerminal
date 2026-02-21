@@ -8,6 +8,7 @@ import { PdfExportModal } from "./PdfExportModal";
 import { IrsResources } from "./IrsResources";
 import { calculateScheduleSE } from "@/lib/tax/form-calculations";
 import { getFilingTypeConfig } from "@/lib/tax/schedule-c-lines";
+import { persistTaxYear } from "@/lib/tax-year-cookie";
 
 function DisclaimerDisclosure() {
   const [expanded, setExpanded] = useState(false);
@@ -103,7 +104,11 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
           <label className="text-sm font-medium text-mono-dark">Tax Year:</label>
           <select
             value={year}
-            onChange={(e) => setYear(parseInt(e.target.value, 10))}
+            onChange={(e) => {
+              const y = parseInt(e.target.value, 10);
+              persistTaxYear(y);
+              setYear(y);
+            }}
             className="border border-bg-tertiary/60 rounded-full px-4 py-1.5 text-sm bg-white text-mono-dark"
           >
             <option value={defaultYear}>{defaultYear}</option>
@@ -215,7 +220,7 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
             <TaxFormCard
               title="Schedule C — Profit or Loss"
               subtitle="Form 1040, Line-by-line expense deductions"
-              lineBreakdown={data.lineBreakdown}
+              lineBreakdown={data.lineBreakdown ?? {}}
               transactions={data.transactions ?? []}
             />
           )}

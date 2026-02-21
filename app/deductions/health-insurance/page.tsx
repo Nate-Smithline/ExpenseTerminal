@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { BackToDeductionsLink } from "@/components/BackToDeductionsLink";
 
 const DEFAULT_TAX_RATE = 0.24;
 
@@ -66,9 +66,7 @@ export default function HealthInsurancePage() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Link href="/deductions" className="btn-secondary text-sm">
-            ← Back
-          </Link>
+          <BackToDeductionsLink>Back</BackToDeductionsLink>
           <button
             onClick={handleAdd}
             disabled={saving || amount <= 0}

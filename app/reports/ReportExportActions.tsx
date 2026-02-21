@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { persistTaxYear } from "@/lib/tax-year-cookie";
 
 export function ReportExportActions({ defaultYear }: { defaultYear: number }) {
   const [year, setYear] = useState(defaultYear);
@@ -23,7 +24,11 @@ export function ReportExportActions({ defaultYear }: { defaultYear: number }) {
           <label className="text-sm font-medium text-mono-dark">Tax Year:</label>
           <select
             value={year}
-            onChange={(e) => setYear(parseInt(e.target.value, 10))}
+            onChange={(e) => {
+              const y = parseInt(e.target.value, 10);
+              persistTaxYear(y);
+              setYear(y);
+            }}
             className="border border-bg-tertiary rounded-md px-3 py-1.5 text-sm"
           >
             <option value={defaultYear}>{defaultYear}</option>

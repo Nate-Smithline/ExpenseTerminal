@@ -25,10 +25,13 @@ function formatCurrency(n: number): string {
 export function TaxFormCard({ title, subtitle, lineBreakdown, transactions }: TaxFormCardProps) {
   const [expandedLine, setExpandedLine] = useState<string | null>(null);
 
+  const breakdown = lineBreakdown && typeof lineBreakdown === "object" && !Array.isArray(lineBreakdown)
+    ? lineBreakdown
+    : {};
   const linesWithAmounts = SCHEDULE_C_LINES.filter(
-    (l) => (lineBreakdown[l.line] ?? 0) > 0
+    (l) => (breakdown[l.line] ?? 0) > 0
   );
-  const total = Object.values(lineBreakdown).reduce((a, b) => a + b, 0);
+  const total = Object.values(breakdown).reduce((a, b) => a + b, 0);
 
   function getTransactionsForLine(line: ScheduleCLine) {
     return transactions.filter(
@@ -53,7 +56,7 @@ export function TaxFormCard({ title, subtitle, lineBreakdown, transactions }: Ta
 
       <div className="divide-y divide-bg-tertiary/30">
         {linesWithAmounts.map((line) => {
-          const amount = lineBreakdown[line.line] ?? 0;
+          const amount = breakdown[line.line] ?? 0;
           const isExpanded = expandedLine === line.line;
           const lineTxs = isExpanded ? getTransactionsForLine(line) : [];
           const allConfirmed = transactions

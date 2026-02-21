@@ -240,7 +240,8 @@ CREATE POLICY "Users can manage own rules"
 
 CREATE POLICY "Users can manage own deductions"
   ON public.deductions FOR ALL
-  USING (auth.uid() = user_id);
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can manage own vendor patterns"
   ON public.vendor_patterns FOR ALL

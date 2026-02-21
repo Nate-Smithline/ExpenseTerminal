@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { Database } from "@/lib/types/database";
 import { normalizeVendor } from "@/lib/vendor-matching";
+import { persistTaxYear } from "@/lib/tax-year-cookie";
 import { UploadModal } from "@/components/UploadModal";
 import { TransactionCard } from "@/components/TransactionCard";
 import type { TransactionUpdate, TransactionCardRef } from "@/components/TransactionCard";
@@ -13,6 +14,7 @@ type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 interface InboxPageClientProps {
   initialYear: number;
   initialPendingCount: number;
+  initialUnanalyzedCount?: number;
   initialTransactions: Transaction[];
   userId: string;
   taxRate?: number;
@@ -34,15 +36,26 @@ async function fetchCount(params: Record<string, string>): Promise<number> {
   return body.count ?? 0;
 }
 
+async function fetchUnanalyzedIds(params: Record<string, string>): Promise<string[]> {
+  const qs = new URLSearchParams({ ...params, analyzed_only: "false", limit: "500" }).toString();
+  const res = await fetch(`/api/transactions?${qs}`);
+  if (!res.ok) return [];
+  const body = await res.json();
+  const data = body.data ?? [];
+  return data.map((t: { id: string }) => t.id);
+}
+
 export function InboxPageClient({
   initialYear,
   initialPendingCount,
+  initialUnanalyzedCount = 0,
   initialTransactions,
   userId,
   taxRate = 0.24,
 }: InboxPageClientProps) {
   const [selectedYear, setSelectedYear] = useState(initialYear);
   const [pendingCount, setPendingCount] = useState(initialPendingCount);
+  const [unanalyzedCount, setUnanalyzedCount] = useState(initialUnanalyzedCount);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -50,102 +63,151 @@ export function InboxPageClient({
   const [activeIdx, setActiveIdx] = useState(0);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [manageTx, setManageTx] = useState<Transaction | null>(null);
+  const [bulkAnalyzing, setBulkAnalyzing] = useState(false);
 
   const [aiProgress, setAiProgress] = useState<{ completed: number; total: number; current: string } | null>(null);
 
   const cardRefs = useRef<Map<string, TransactionCardRef>>(new Map());
 
   const reloadInbox = useCallback(async () => {
-    const [txs, count] = await Promise.all([
+    const [txs, count, unanalyzed] = await Promise.all([
       fetchTransactions({
         tax_year: String(selectedYear),
         status: "pending",
         transaction_type: "expense",
         limit: "50",
+        analyzed_only: "true",
       }),
       fetchCount({
         tax_year: String(selectedYear),
         status: "pending",
         transaction_type: "expense",
+        analyzed_only: "true",
+      }),
+      fetchCount({
+        tax_year: String(selectedYear),
+        status: "pending",
+        transaction_type: "expense",
+        analyzed_only: "false",
       }),
     ]);
     setTransactions(txs);
     setPendingCount(count);
+    setUnanalyzedCount(unanalyzed);
   }, [selectedYear]);
 
-  async function runBackgroundAI(txIds: string[]) {
-    if (txIds.length === 0) return;
+  function runBackgroundAI(txIds: string[]): Promise<{ ok: boolean; error?: string }> {
+    if (txIds.length === 0) return Promise.resolve({ ok: true });
+
     setAiProgress({ completed: 0, total: txIds.length, current: "Starting..." });
 
-    try {
-      const res = await fetch("/api/transactions/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transactionIds: txIds }),
-      });
+    return (async () => {
+      try {
+        const res = await fetch("/api/transactions/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transactionIds: txIds }),
+        });
 
-      if (!res.ok) {
-        setAiProgress(null);
-        return;
-      }
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          const msg = (errBody as { error?: string }).error ?? res.statusText ?? "Analysis failed";
+          setAiProgress(null);
+          setToast(msg);
+          setTimeout(() => setToast(null), 5000);
+          return { ok: false, error: msg };
+        }
 
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
 
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const event = JSON.parse(line) as Record<string, unknown>;
-              if (event.type === "progress") {
-                setAiProgress({
-                  completed: (event.completed as number) ?? 0,
-                  total: (event.total as number) ?? txIds.length,
-                  current: (event.current as string) ?? "",
-                });
-              } else if (event.type === "success") {
-                setTransactions((prev) =>
-                  prev.map((t) =>
-                    t.id === event.id
-                      ? {
-                          ...t,
-                          category: (event.category as string) ?? t.category,
-                          schedule_c_line: (event.line as string) ?? t.schedule_c_line,
-                          ai_confidence: (event.confidence as number) ?? t.ai_confidence,
-                          ai_suggestions: (event.quickLabels as string[]) ?? t.ai_suggestions,
-                          deduction_percent: (event.deductionPct as number) ?? t.deduction_percent,
-                          is_meal: (event.isMeal as boolean) ?? t.is_meal,
-                          is_travel: (event.isTravel as boolean) ?? t.is_travel,
-                        }
-                      : t,
-                  ),
-                );
-              } else if (event.type === "done") {
-                setAiProgress(null);
-                const s = (event.successful as number) ?? 0;
-                const c = (event.cachedCount as number) ?? 0;
-                if (c > 0) {
-                  setToast(`${s} categorized (${c} from cache)`);
-                } else if (s > 0) {
-                  setToast(`${s} categorized by AI`);
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                const event = JSON.parse(line) as Record<string, unknown>;
+                if (event.type === "progress") {
+                  setAiProgress({
+                    completed: (event.completed as number) ?? 0,
+                    total: (event.total as number) ?? txIds.length,
+                    current: (event.current as string) ?? "",
+                  });
+                } else if (event.type === "success") {
+                  setTransactions((prev) =>
+                    prev.map((t) =>
+                      t.id === event.id
+                        ? {
+                            ...t,
+                            category: (event.category as string) ?? t.category,
+                            schedule_c_line: (event.line as string) ?? t.schedule_c_line,
+                            ai_confidence: (event.confidence as number) ?? t.ai_confidence,
+                            ai_suggestions: (event.quickLabels as string[]) ?? t.ai_suggestions,
+                            deduction_percent: (event.deductionPct as number) ?? t.deduction_percent,
+                            is_meal: (event.isMeal as boolean) ?? t.is_meal,
+                            is_travel: (event.isTravel as boolean) ?? t.is_travel,
+                          }
+                        : t,
+                    ),
+                  );
+                } else if (event.type === "done") {
+                  setAiProgress(null);
+                  const s = (event.successful as number) ?? 0;
+                  const c = (event.cachedCount as number) ?? 0;
+                  if (c > 0) {
+                    setToast(`${s} categorized (${c} from cache)`);
+                  } else if (s > 0) {
+                    setToast(`${s} categorized by AI`);
+                  }
+                  setTimeout(() => setToast(null), 4000);
+                  await reloadInbox();
+                } else if (event.type === "error") {
+                  setToast((event.message as string) ?? "AI analysis error");
+                  setTimeout(() => setToast(null), 4000);
                 }
-                setTimeout(() => setToast(null), 4000);
-                await reloadInbox();
-              }
-            } catch { /* skip */ }
+              } catch { /* skip */ }
+            }
           }
         }
+        setAiProgress(null);
+        return { ok: true };
+      } catch (e) {
+        setAiProgress(null);
+        const msg = e instanceof Error ? e.message : "AI analysis failed";
+        setToast(msg);
+        setTimeout(() => setToast(null), 5000);
+        return { ok: false, error: msg };
       }
-    } catch {
-      setAiProgress(null);
+    })();
+  }
+
+  async function runBulkAnalyze() {
+    setBulkAnalyzing(true);
+    try {
+      const ids = await fetchUnanalyzedIds({
+        tax_year: String(selectedYear),
+        status: "pending",
+        transaction_type: "expense",
+      });
+      if (ids.length === 0) {
+        setToast("No transactions need analysis");
+        setTimeout(() => setToast(null), 3000);
+        return;
+      }
+      const result = await runBackgroundAI(ids);
+      if (!result.ok) {
+        setToast(result.error ?? "Bulk analysis failed");
+        setTimeout(() => setToast(null), 5000);
+      }
+    } finally {
+      setBulkAnalyzing(false);
     }
   }
 
@@ -192,7 +254,7 @@ export function InboxPageClient({
     reloadInbox().finally(() => setLoading(false));
   }, [reloadInbox]);
 
-  async function handleSave(
+  function handleSave(
     id: string,
     update: {
       quick_label?: string;
@@ -200,19 +262,64 @@ export function InboxPageClient({
       notes?: string;
       status?: "completed" | "personal";
       deduction_percent?: number;
+      category?: string | null;
+      schedule_c_line?: string | null;
     },
+    opts?: { applyToSimilar?: boolean },
   ) {
-    await fetch("/api/transactions/update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, ...update }),
-    });
+    const tx = transactions.find((t) => t.id === id);
+    if (!tx) return;
     setTransactions((prev) => prev.filter((t) => t.id !== id));
     setPendingCount((prev) => Math.max(prev - 1, 0));
+    (async () => {
+      try {
+        const res = await fetch("/api/transactions/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, ...update }),
+        });
+        if (!res.ok) throw new Error("Update failed");
+        if (opts?.applyToSimilar) {
+          await handleApplyToAllSimilar(tx, update);
+        }
+      } catch {
+        setTransactions((prev) => [...prev, tx]);
+        setPendingCount((prev) => prev + 1);
+        setToast("Failed to save");
+        setTimeout(() => setToast(null), 4000);
+      }
+    })();
   }
 
   async function handleMarkPersonal(id: string) {
-    await handleSave(id, { status: "personal", deduction_percent: 0 });
+    handleSave(id, { status: "personal", deduction_percent: 0 });
+  }
+
+  function handleDelete(id: string) {
+    const tx = transactions.find((t) => t.id === id);
+    const idx = transactions.findIndex((t) => t.id === id);
+    if (!tx) return;
+    setTransactions((prev) => prev.filter((t) => t.id !== id));
+    setPendingCount((prev) => Math.max(prev - 1, 0));
+    (async () => {
+      try {
+        const res = await fetch("/api/transactions/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id }),
+        });
+        if (!res.ok) throw new Error("Delete failed");
+      } catch {
+        setTransactions((prev) => {
+          const next = [...prev];
+          next.splice(idx, 0, tx);
+          return next;
+        });
+        setPendingCount((prev) => prev + 1);
+        setToast("Failed to delete");
+        setTimeout(() => setToast(null), 4000);
+      }
+    })();
   }
 
   const handleCheckSimilar = useCallback(
@@ -237,7 +344,7 @@ export function InboxPageClient({
           vendorNormalized: transaction.vendor_normalized ?? normalizeVendor(transaction.vendor),
           quickLabel: data.quick_label,
           businessPurpose: data.business_purpose,
-          category: transaction.category ?? undefined,
+          category: data.category ?? transaction.category ?? undefined,
           deductionPercent: data.deduction_percent,
           taxYear: selectedYear,
         }),
@@ -300,6 +407,11 @@ export function InboxPageClient({
           e.preventDefault();
           activeCard?.expand();
           break;
+        case "Backspace":
+        case "Delete":
+          e.preventDefault();
+          activeCard?.deleteTransaction();
+          break;
         case "?":
           e.preventDefault();
           setShowShortcuts((v) => !v);
@@ -338,7 +450,11 @@ export function InboxPageClient({
       <div className="flex items-center gap-3">
         <select
           value={selectedYear}
-          onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+          onChange={(e) => {
+            const y = parseInt(e.target.value, 10);
+            persistTaxYear(y);
+            setSelectedYear(y);
+          }}
           className="bg-white border border-bg-tertiary/60 rounded-full px-4 py-2 text-sm text-mono-dark"
         >
           <option value={selectedYear}>{selectedYear}</option>
@@ -376,6 +492,23 @@ export function InboxPageClient({
         </div>
       )}
 
+      {/* Unanalyzed: need AI before they appear in inbox */}
+      {!loading && unanalyzedCount > 0 && !aiProgress && (
+        <div className="card px-5 py-4 flex flex-wrap items-center justify-between gap-3 bg-amber-50 border border-amber-200/60">
+          <p className="text-sm text-amber-900">
+            <strong>{unanalyzedCount}</strong> transaction{unanalyzedCount === 1 ? "" : "s"} need AI categorization before they appear in the inbox.
+          </p>
+          <button
+            type="button"
+            onClick={runBulkAnalyze}
+            disabled={bulkAnalyzing}
+            className="btn-primary text-sm py-2"
+          >
+            {bulkAnalyzing ? "Analyzing…" : "Run AI on all"}
+          </button>
+        </div>
+      )}
+
       {/* Toast */}
       {toast && (
         <div className="rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white">
@@ -396,11 +529,15 @@ export function InboxPageClient({
             {[
               ["j / k", "Navigate up/down"],
               ["Enter", "Open detail panel"],
-              ["1-4", "Select reason"],
+              ["0, 1, 2, 5, 7", "Set % (0%, 100%, 25%, 50%, 75%)"],
+              ["1-4", "Select reason (step 2)"],
+              ["c", "Change category (arrows + Enter)"],
               ["p", "Mark as personal"],
+              ["a", "Toggle apply to similar"],
               ["w", "Write in purpose"],
               ["d", "Cycle deduction %"],
               ["s", "Next / Save"],
+              ["⌫ / Del", "Delete transaction"],
               ["u", "Upload CSV"],
               ["?", "Toggle this help"],
               ["Esc", "Close overlays"],
@@ -423,9 +560,13 @@ export function InboxPageClient({
 
       {!loading && transactions.length === 0 && (
         <div className="text-center py-20">
-          <p className="text-base text-mono-medium mb-2">No pending transactions</p>
+          <p className="text-base text-mono-medium mb-2">
+            {unanalyzedCount > 0 ? "No transactions ready to review" : "No pending transactions"}
+          </p>
           <p className="text-sm text-mono-light">
-            Upload a CSV to get started, or check All Activity for reviewed items.
+            {unanalyzedCount > 0
+              ? "Run AI on the unanalyzed transactions above to categorize them, or upload a CSV."
+              : "Upload a CSV to get started, or check All Activity for reviewed items."}
           </p>
         </div>
       )}
@@ -442,19 +583,21 @@ export function InboxPageClient({
             isActive={i === activeIdx}
             onFocus={() => setActiveIdx(i)}
             taxRate={taxRate}
-            onSave={async (data) =>
+            onSave={(data, opts) =>
               handleSave(t.id, {
                 quick_label: data.quick_label,
                 business_purpose: data.business_purpose,
                 notes: data.notes,
                 status: data.quick_label === "Personal" ? "personal" : "completed",
                 deduction_percent: data.deduction_percent,
-              })
+                category: data.category,
+                schedule_c_line: data.schedule_c_line,
+              }, opts)
             }
             onMarkPersonal={async () => handleMarkPersonal(t.id)}
+            onDelete={async () => handleDelete(t.id)}
             onCheckSimilar={handleCheckSimilar}
             onApplyToAllSimilar={handleApplyToAllSimilar}
-            onReanalyze={handleReanalyze}
             onOpenManage={(tx) => setManageTx(tx)}
           />
         ))}
@@ -465,16 +608,13 @@ export function InboxPageClient({
           onClose={() => setUploadOpen(false)}
           onCompleted={async (result) => {
             setUploadOpen(false);
-            await reloadInbox();
-
             if (result?.transactionIds && result.transactionIds.length > 0) {
-              runBackgroundAI(result.transactionIds);
-            } else if (result) {
-              let msg = `${result.imported ?? 0} imported`;
-              if ((result.aiProcessed ?? 0) > 0) msg += `, ${result.aiProcessed} categorized`;
-              setToast(msg);
-              setTimeout(() => setToast(null), 4000);
+              await runBackgroundAI(result.transactionIds);
+            } else if (result?.imported !== undefined && result.imported === 0) {
+              setToast("No transactions to import");
+              setTimeout(() => setToast(null), 3000);
             }
+            await reloadInbox();
           }}
         />
       )}

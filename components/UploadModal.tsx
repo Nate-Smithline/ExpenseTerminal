@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Papa from "papaparse";
+import { getStickyTaxYearClient, persistTaxYear } from "@/lib/tax-year-cookie";
 import ExcelJS from "exceljs";
 
 type UploadResult = {
@@ -123,6 +124,10 @@ export function UploadModal({ onClose, onCompleted, dataSourceId }: UploadModalP
   const [file, setFile] = useState<File | null>(null);
   const [previewRows, setPreviewRows] = useState<ParsedRow[]>([]);
   const [taxYear, setTaxYear] = useState(new Date().getFullYear());
+
+  useEffect(() => {
+    setTaxYear(getStickyTaxYearClient());
+  }, []);
   const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState<"idle" | "parsing" | "uploading" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -263,7 +268,11 @@ export function UploadModal({ onClose, onCompleted, dataSourceId }: UploadModalP
             <label className="text-xs font-medium text-mono-medium">Tax Year</label>
             <select
               value={taxYear}
-              onChange={(e) => setTaxYear(parseInt(e.target.value, 10))}
+              onChange={(e) => {
+                const y = parseInt(e.target.value, 10);
+                persistTaxYear(y);
+                setTaxYear(y);
+              }}
               className="bg-white border border-bg-tertiary rounded-md px-2 py-1 text-xs"
             >
               <option value={taxYear}>{taxYear}</option>

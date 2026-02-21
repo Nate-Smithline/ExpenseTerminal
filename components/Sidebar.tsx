@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createSupabaseClient } from "@/lib/supabase/client";
+import { getStickyTaxYearClient } from "@/lib/tax-year-cookie";
 
 const GUIDES_URL = "https://www.notion.so/guides";
 
@@ -17,6 +18,7 @@ const mainNav = [
 const bottomNav = [
   { href: "/activity", label: "All Activity", icon: "history" },
   { href: "/org-profile", label: "Org Profile", icon: "settings" },
+  { href: "/other-deductions", label: "Other Deductions", icon: "calculate" },
 ];
 
 export function Sidebar() {
@@ -30,7 +32,7 @@ export function Sidebar() {
     pathname === href || pathname.startsWith(`${href}/`);
 
   useEffect(() => {
-    const year = new Date().getFullYear();
+    const year = getStickyTaxYearClient();
     fetch(`/api/transactions?tax_year=${year}&status=pending&transaction_type=expense&count_only=true`)
       .then((r) => r.json())
       .then((d) => setInboxCount(d.count ?? 0))
@@ -91,7 +93,7 @@ export function Sidebar() {
               className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-mono-medium hover:bg-bg-secondary/60 hover:text-mono-dark transition-colors"
             >
               <span className="material-symbols-rounded text-[18px]">business</span>
-              My Organization
+              Org Profile
             </Link>
             <div className="border-t border-bg-tertiary/30 my-1" />
             <button
@@ -105,8 +107,8 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Main nav */}
-      <nav className="flex-1 px-4 space-y-1">
+      {/* Main nav - left align with Guides and bottom nav (px-5) */}
+      <nav className="flex-1 px-5 space-y-1">
         {mainNav.map((item) => (
           <Link
             key={item.href}
@@ -132,22 +134,27 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Bottom nav */}
-      <div className="px-4 pb-3 space-y-0.5">
+      {/* Bottom nav - left align with Guides and main nav (px-5) */}
+      <div className="px-5 pb-3 space-y-0.5">
         {bottomNav.map((item) => (
           <Link
             key={item.href}
             href={item.href}
-            className={`flex items-center px-3 py-2.5 text-base transition-all relative group ${
+            className={`flex items-center py-2.5 text-base transition-all group ${
               isActive(item.href)
                 ? "text-accent-terracotta font-medium"
                 : "text-mono-light hover:text-mono-medium"
             }`}
           >
-            <span className={`absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-accent-terracotta transition-all ${
-              isActive(item.href) ? "w-1" : "w-0 group-hover:w-1"
-            }`} />
-            <span className="pl-4">{item.label}</span>
+            {/* Line that grows 0→20px and pushes the text right */}
+            <span
+              className={`shrink-0 overflow-hidden flex items-center transition-all duration-500 ${
+                isActive(item.href) ? "w-[20px]" : "w-0 group-hover:w-[20px]"
+              }`}
+            >
+              <span className="h-0.5 w-[20px] rounded-full bg-accent-terracotta" />
+            </span>
+            <span className="ml-2">{item.label}</span>
           </Link>
         ))}
       </div>
@@ -166,7 +173,7 @@ export function Sidebar() {
           href="mailto:hello@expenseterminal.com"
           className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-bg-tertiary/60 text-sm text-mono-medium hover:text-mono-dark hover:border-bg-tertiary transition-all"
         >
-          <span className="material-symbols-rounded text-[12px]">mail</span> Email Us
+          <span className="material-symbols-rounded text-[12px]">mail</span> Support
         </a>
       </div>
     </aside>

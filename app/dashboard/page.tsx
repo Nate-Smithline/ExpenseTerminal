@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
+import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
+import { getProfileOnboarding } from "@/lib/profile";
 import { LogIncomeForm } from "./LogIncomeForm";
-import { DeductionWidgets } from "./DeductionWidgets";
 import { GettingStartedChecklist } from "./GettingStartedChecklist";
+import { DEDUCTION_TYPE_CARDS, OTHER_DEDUCTIONS_CARD } from "@/lib/deduction-types";
 
 function deductibleAmount(t: { amount: string; deduction_percent?: number | null; is_meal?: boolean; is_travel?: boolean }): number {
   const amt = Math.abs(Number(t.amount));
@@ -18,7 +21,9 @@ export default async function DashboardPage() {
 
   if (!userId) redirect("/login");
 
-  const currentYear = new Date().getFullYear();
+  const cookieStore = await cookies();
+  const profile = await getProfileOnboarding((authClient as any), userId);
+  const taxYear = getEffectiveTaxYear(cookieStore, profile);
   const supabase = authClient;
 
   // Fetch user's tax rate for this year
@@ -26,7 +31,7 @@ export default async function DashboardPage() {
     .from("tax_year_settings")
     .select("tax_rate")
     .eq("user_id", userId)
-    .eq("tax_year", currentYear)
+    .eq("tax_year", taxYear)
     .single();
 
   const taxRate = taxYearRow ? Number(taxYearRow.tax_rate) : 0.24;
@@ -35,7 +40,7 @@ export default async function DashboardPage() {
     .from("transactions")
     .select("id, amount, category, is_meal, is_travel, deduction_percent")
     .eq("user_id", userId)
-    .eq("tax_year", currentYear)
+    .eq("tax_year", taxYear)
     .eq("transaction_type", "expense")
     .in("status", ["completed", "auto_sorted"]);
 
@@ -43,7 +48,7 @@ export default async function DashboardPage() {
     .from("transactions")
     .select("amount")
     .eq("user_id", userId)
-    .eq("tax_year", currentYear)
+    .eq("tax_year", taxYear)
     .eq("transaction_type", "income")
     .in("status", ["completed", "auto_sorted"]);
 
@@ -51,13 +56,13 @@ export default async function DashboardPage() {
     .from("deductions")
     .select("type, amount, tax_savings")
     .eq("user_id", userId)
-    .eq("tax_year", currentYear);
+    .eq("tax_year", taxYear);
 
   const { data: pendingCount } = await (supabase as any)
     .from("transactions")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
-    .eq("tax_year", currentYear)
+    .eq("tax_year", taxYear)
     .eq("status", "pending")
     .eq("transaction_type", "expense");
 
@@ -93,7 +98,7 @@ export default async function DashboardPage() {
       <div className="flex justify-between items-start">
         <div>
           <h1 className="text-3xl font-bold text-mono-dark">
-            {currentYear} Tax Summary
+            {taxYear} Tax Summary
           </h1>
           <p className="text-sm text-mono-medium mt-1">
             Overview of deductions and estimated savings
@@ -190,7 +195,7 @@ export default async function DashboardPage() {
               ))}
               {(!additionalDeductions || additionalDeductions.length === 0) && (
                 <li className="text-mono-light">
-                  None yet. Use the calculators below to add deductions.
+                  None yet. Add deductions from the categories below.
                 </li>
               )}
             </ul>
@@ -198,8 +203,55 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Deduction Calculators */}
-      <DeductionWidgets currentYear={currentYear} taxRate={taxRate} />
+      {/* Deduction categories — list view in one container */}
+      <div className="card px-6 pt-6 pb-4">
+        <h2 className="text-lg font-semibold text-mono-dark mb-1">Additional deductions</h2>
+        <p className="text-sm text-mono-medium mb-3">
+          Track QBI, mileage, home office, and more
+        </p>
+        <ul className="divide-y divide-bg-tertiary/40">
+          {DEDUCTION_TYPE_CARDS.map((item) => {
+            const isSet = additionalDeductions?.some((d: { type: string }) => d.type === item.typeKey);
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className="flex items-center gap-4 py-6 first:pt-0 last:pb-0 -mx-3 px-3 rounded-lg hover:bg-bg-tertiary/40 transition-all duration-300 ease-in-out group"
+                >
+                  <span className="material-symbols-rounded text-[22px] text-accent-sage shrink-0 group-hover:text-mono-dark transition-colors duration-300 ease-in-out">
+                    {item.icon}
+                  </span>
+                  <div className="min-w-0 flex-1 py-3">
+                    <span className="font-medium text-mono-dark block">{item.label}</span>
+                    <span className="text-sm text-mono-medium">{item.description}</span>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium tabular-nums">
+                    {isSet ? (
+                      <span className="text-accent-sage">Set</span>
+                    ) : (
+                      <span className="text-mono-light">Not set</span>
+                    )}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+          <li>
+            <Link
+              href={OTHER_DEDUCTIONS_CARD.href}
+              className="flex items-center gap-4 py-6 first:pt-0 last:pb-0 -mx-3 px-3 rounded-lg hover:bg-bg-tertiary/40 transition-all duration-300 ease-in-out group"
+            >
+              <span className="material-symbols-rounded text-[22px] text-accent-sage shrink-0 group-hover:text-mono-dark transition-colors duration-300 ease-in-out">
+                {OTHER_DEDUCTIONS_CARD.icon}
+              </span>
+              <div className="min-w-0 flex-1 py-3">
+                <span className="font-medium text-mono-dark block">{OTHER_DEDUCTIONS_CARD.label}</span>
+                <span className="text-sm text-mono-medium">{OTHER_DEDUCTIONS_CARD.description}</span>
+              </div>
+            </Link>
+          </li>
+        </ul>
+      </div>
 
       {/* Log Income */}
       <div className="card p-6">
@@ -209,7 +261,7 @@ export default async function DashboardPage() {
         <p className="text-sm text-mono-medium mb-4">
           Record income for this tax year (revenue, client payments, etc.).
         </p>
-        <LogIncomeForm currentYear={currentYear} />
+        <LogIncomeForm currentYear={taxYear} />
       </div>
     </div>
   );

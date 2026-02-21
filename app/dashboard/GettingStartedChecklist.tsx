@@ -38,7 +38,7 @@ const STEPS = [
     id: "setup_deductions" as const,
     label: "Set up deductions",
     description: "Use calculators for QBI, mileage, home office, and more",
-    href: "/deductions",
+    href: "/other-deductions",
     icon: "savings",
   },
   {

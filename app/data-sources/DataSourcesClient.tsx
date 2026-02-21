@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { Database } from "@/lib/types/database";
 import { UploadModal } from "@/components/UploadModal";
 
@@ -34,6 +35,7 @@ export function DataSourcesClient({ initialSources }: { initialSources: DataSour
   const [institution, setInstitution] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploadSourceId, setUploadSourceId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   async function handleCreate() {
     if (!name.trim()) return;
@@ -80,57 +82,83 @@ export function DataSourcesClient({ initialSources }: { initialSources: DataSour
         </button>
       </div>
 
-      {/* Add Account Form */}
+      {/* Add Account Modal */}
       {showAdd && (
-        <div className="card p-6 space-y-4 animate-in">
-          <h2 className="text-lg font-semibold text-mono-dark">New Account</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="text-xs font-medium text-mono-medium block mb-1">
-                Account Name *
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Chase Business Checking"
-                className="w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-mono-medium block mb-1">
-                Account Type *
-              </label>
-              <select
-                value={accountType}
-                onChange={(e) => setAccountType(e.target.value)}
-                className="w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-account-title"
+        >
+          <div className="rounded-xl bg-white shadow-lg max-w-md w-full mx-4 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-bg-tertiary/40">
+              <h2 id="add-account-title" className="text-sm font-semibold text-mono-dark">
+                New Account
+              </h2>
+              <button
+                onClick={() => setShowAdd(false)}
+                className="text-mono-light hover:text-mono-dark text-xs"
+                aria-label="Close"
               >
-                {ACCOUNT_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
+                Close
+              </button>
             </div>
-            <div>
-              <label className="text-xs font-medium text-mono-medium block mb-1">
-                Institution
-              </label>
-              <input
-                type="text"
-                value={institution}
-                onChange={(e) => setInstitution(e.target.value)}
-                placeholder="e.g. Chase, Amex"
-                className="w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
-              />
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="text-xs font-medium text-mono-medium block mb-1">
+                  Account Name *
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Chase Business Checking"
+                  className="w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-mono-medium block mb-1">
+                  Account Type *
+                </label>
+                <select
+                  value={accountType}
+                  onChange={(e) => setAccountType(e.target.value)}
+                  className="w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                >
+                  {ACCOUNT_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-mono-medium block mb-1">
+                  Institution
+                </label>
+                <input
+                  type="text"
+                  value={institution}
+                  onChange={(e) => setInstitution(e.target.value)}
+                  placeholder="e.g. Chase, Amex"
+                  className="w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                />
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={handleCreate} disabled={saving || !name.trim()} className="btn-primary disabled:opacity-40">
-              {saving ? "Creating..." : "Create Account"}
-            </button>
-            <button onClick={() => setShowAdd(false)} className="btn-secondary">
-              Cancel
-            </button>
+            <div className="flex justify-end gap-2 px-5 py-3 border-t border-bg-tertiary/40 bg-bg-secondary/30">
+              <button
+                onClick={() => setShowAdd(false)}
+                disabled={saving}
+                className="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-mono-medium hover:bg-bg-secondary transition disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreate}
+                disabled={saving || !name.trim()}
+                className="rounded-md bg-accent-sage px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-40"
+              >
+                {saving ? "Creating..." : "Create Account"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -176,13 +204,33 @@ export function DataSourcesClient({ initialSources }: { initialSources: DataSour
         ))}
       </div>
 
+      {toast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-mono-dark text-white px-4 py-2.5 text-sm shadow-lg flex items-center gap-2">
+          {toast}
+          <Link href="/inbox" className="font-medium underline underline-offset-2 hover:no-underline">
+            Open Inbox
+          </Link>
+        </div>
+      )}
+
       {uploadSourceId && (
         <UploadModal
           dataSourceId={uploadSourceId}
           onClose={() => setUploadSourceId(null)}
-          onCompleted={async () => {
+          onCompleted={async (result) => {
             setUploadSourceId(null);
             await reloadSources();
+
+            // Trigger AI categorization so transactions flow into the inbox
+            if (result?.transactionIds && result.transactionIds.length > 0) {
+              fetch("/api/transactions/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ transactionIds: result.transactionIds }),
+              }).catch(() => {});
+              setToast(`${result.transactionIds.length} imported — AI categorization started. Check Inbox to review.`);
+              setTimeout(() => setToast(null), 5000);
+            }
           }}
         />
       )}

@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
+import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
+import { getProfileOnboarding } from "@/lib/profile";
 import { ReportExportActions } from "./ReportExportActions";
 
 export default async function ReportsPage() {
@@ -9,7 +12,9 @@ export default async function ReportsPage() {
 
   if (!userId) redirect("/login");
 
-  const currentYear = new Date().getFullYear();
+  const cookieStore = await cookies();
+  const profile = await getProfileOnboarding((supabase as any), userId);
+  const taxYear = getEffectiveTaxYear(cookieStore, profile);
 
   return (
     <div className="space-y-8">
@@ -28,7 +33,7 @@ export default async function ReportsPage() {
           Download your completed transactions and additional deductions as CSV
           (for Excel or accounting software) or PDF (for CPA review).
         </p>
-        <ReportExportActions defaultYear={currentYear} />
+        <ReportExportActions defaultYear={taxYear} />
       </div>
     </div>
   );

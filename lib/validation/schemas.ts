@@ -65,8 +65,14 @@ export const transactionUpdateBodySchema = z.object({
   quick_label: maxString(500).optional(),
   business_purpose: businessPurposeSchema.optional(),
   notes: notesSchema.optional(),
-  status: z.enum(["pending", "completed", "auto_sorted"]).optional(),
+  status: z.enum(["pending", "completed", "auto_sorted", "personal"]).optional(),
   deduction_percent: deductionPercentSchema.optional(),
+  category: maxString(200).nullable().optional(),
+  schedule_c_line: maxString(50).nullable().optional(),
+});
+
+export const transactionDeleteBodySchema = z.object({
+  id: uuidSchema,
 });
 
 /** Single transaction for POST /api/transactions (manual log) */

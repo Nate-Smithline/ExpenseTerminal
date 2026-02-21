@@ -35,6 +35,8 @@ export async function GET(req: Request) {
   const excludeIdRaw = searchParams.get("exclude_id");
   const excludeId = excludeIdRaw && uuidSchema.safeParse(excludeIdRaw).success ? excludeIdRaw : null;
   const countOnly = searchParams.get("count_only") === "true";
+  const analyzedOnlyParam = searchParams.get("analyzed_only");
+  const analyzedOnly = analyzedOnlyParam === "true" ? true : analyzedOnlyParam === "false" ? false : null;
 
   const transactionColumns =
     "id,user_id,date,vendor,description,amount,category,schedule_c_line,ai_confidence,ai_reasoning,ai_suggestions,status,business_purpose,quick_label,notes,vendor_normalized,auto_sort_rule_id,deduction_percent,is_meal,is_travel,tax_year,source,transaction_type,data_source_id,created_at,updated_at";
@@ -48,6 +50,8 @@ export async function GET(req: Request) {
   if (txType) query = query.eq("transaction_type", txType);
   if (vendorNormalized) query = query.eq("vendor_normalized", vendorNormalized);
   if (excludeId) query = query.neq("id", excludeId);
+  if (analyzedOnly === true) query = query.not("ai_confidence", "is", null);
+  if (analyzedOnly === false) query = query.is("ai_confidence", null);
 
   if (!countOnly) {
     query = query.order("date", { ascending: false }).range(offset, offset + limit - 1);
