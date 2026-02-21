@@ -337,7 +337,6 @@ export function ActivityPageClient({
             }
             onCheckSimilar={handleCheckSimilar}
             onApplyToAllSimilar={handleApplyToAllSimilar}
-            onReanalyze={handleReanalyze}
           />
         ))}
       </div>
