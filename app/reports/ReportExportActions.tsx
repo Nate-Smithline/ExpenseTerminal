@@ -31,9 +31,10 @@ export function ReportExportActions({ defaultYear }: { defaultYear: number }) {
             }}
             className="border border-bg-tertiary rounded-md px-3 py-1.5 text-sm"
           >
-            <option value={defaultYear}>{defaultYear}</option>
-            <option value={defaultYear - 1}>{defaultYear - 1}</option>
-            <option value={defaultYear - 2}>{defaultYear - 2}</option>
+            {[0, 1, 2].map((i) => {
+              const y = new Date().getFullYear() - i;
+              return <option key={y} value={y}>{y}</option>;
+            })}
           </select>
         </div>
         <div className="flex items-center gap-2">

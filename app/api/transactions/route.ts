@@ -3,7 +3,13 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
-import { parseQueryLimit, parseQueryOffset, parseQueryTaxYear, uuidSchema, transactionPostBodySchema } from "@/lib/validation/schemas";
+import {
+  parseQueryLimit,
+  parseQueryOffset,
+  parseQueryTaxYear,
+  uuidSchema,
+  transactionPostBodySchema,
+} from "@/lib/validation/schemas";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 
@@ -50,7 +56,7 @@ export async function GET(req: Request) {
   if (txType) query = query.eq("transaction_type", txType);
   if (vendorNormalized) query = query.eq("vendor_normalized", vendorNormalized);
   if (excludeId) query = query.neq("id", excludeId);
-  if (analyzedOnly === true) query = query.not("ai_confidence", "is", null);
+  if (analyzedOnly === true) query = query.not("ai_confidence", "eq", null);
   if (analyzedOnly === false) query = query.is("ai_confidence", null);
 
   if (!countOnly) {

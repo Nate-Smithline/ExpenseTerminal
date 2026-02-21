@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { getStickyTaxYearClient } from "@/lib/tax-year-cookie";
 
 const RATE_PER_SQ_FT = 5;
 const MAX_SQ_FT = 300;
@@ -58,7 +59,7 @@ export default function HomeOfficePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "home_office",
-          tax_year: new Date().getFullYear(),
+          tax_year: getStickyTaxYearClient(),
           amount,
           tax_savings: amount * DEFAULT_TAX_RATE,
           metadata: {

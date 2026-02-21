@@ -76,13 +76,11 @@ export function InboxPageClient({
         status: "pending",
         transaction_type: "expense",
         limit: "50",
-        analyzed_only: "true",
       }),
       fetchCount({
         tax_year: String(selectedYear),
         status: "pending",
         transaction_type: "expense",
-        analyzed_only: "true",
       }),
       fetchCount({
         tax_year: String(selectedYear),
@@ -457,9 +455,10 @@ export function InboxPageClient({
           }}
           className="bg-white border border-bg-tertiary/60 rounded-full px-4 py-2 text-sm text-mono-dark"
         >
-          <option value={selectedYear}>{selectedYear}</option>
-          <option value={selectedYear - 1}>{selectedYear - 1}</option>
-          <option value={selectedYear - 2}>{selectedYear - 2}</option>
+          {[0, 1, 2].map((i) => {
+            const y = new Date().getFullYear() - i;
+            return <option key={y} value={y}>{y}</option>;
+          })}
         </select>
         <button
           onClick={() => setUploadOpen(true)}

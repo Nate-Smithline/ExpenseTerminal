@@ -21,7 +21,7 @@ export default async function InboxPage() {
   const taxYear = getEffectiveTaxYear(cookieStore, profile);
   const db = supabase;
 
-  // Inbox only shows transactions that have been AI-analyzed (so they have category/confidence)
+  // Inbox shows all pending expenses (analyzed and unanalyzed) so transactions always load
   const { data: transactions } = await (db as any)
     .from("transactions")
     .select("*")
@@ -29,7 +29,6 @@ export default async function InboxPage() {
     .eq("tax_year", taxYear)
     .eq("status", "pending")
     .eq("transaction_type", "expense")
-    .not("ai_confidence", "is", null)
     .order("date", { ascending: false })
     .limit(20);
 
@@ -39,8 +38,7 @@ export default async function InboxPage() {
     .eq("user_id", userId)
     .eq("tax_year", taxYear)
     .eq("status", "pending")
-    .eq("transaction_type", "expense")
-    .not("ai_confidence", "is", null);
+    .eq("transaction_type", "expense");
 
   const { count: unanalyzedCount } = await (db as any)
     .from("transactions")

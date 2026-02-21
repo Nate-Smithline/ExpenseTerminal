@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { BackToDeductionsLink } from "@/components/BackToDeductionsLink";
 import { getCurrentUserId } from "@/lib/get-current-user";
+import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
+import { getProfileOnboarding } from "@/lib/profile";
 import { QBICalculator } from "./QBICalculator";
 
 export default async function QBIPage() {
@@ -10,13 +13,15 @@ export default async function QBIPage() {
 
   if (!userId) redirect("/login");
 
-  const currentYear = new Date().getFullYear();
+  const cookieStore = await cookies();
+  const profile = await getProfileOnboarding((supabase as any), userId);
+  const taxYear = getEffectiveTaxYear(cookieStore, profile);
 
   const { data: taxYearRow } = await (supabase as any)
     .from("tax_year_settings")
     .select("tax_rate")
     .eq("user_id", userId)
-    .eq("tax_year", currentYear)
+    .eq("tax_year", taxYear)
     .single();
 
   const taxRate = taxYearRow ? Number(taxYearRow.tax_rate) : 0.24;
@@ -25,7 +30,7 @@ export default async function QBIPage() {
     .from("transactions")
     .select("amount")
     .eq("user_id", userId)
-    .eq("tax_year", currentYear)
+    .eq("tax_year", taxYear)
     .eq("transaction_type", "income")
     .in("status", ["completed", "auto_sorted"]);
 
@@ -43,7 +48,7 @@ export default async function QBIPage() {
 
       <QBICalculator
         totalIncome={totalIncome}
-        currentYear={currentYear}
+        currentYear={taxYear}
         taxRate={taxRate}
       />
 

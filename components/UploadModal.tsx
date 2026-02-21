@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Papa from "papaparse";
-import { getStickyTaxYearClient, persistTaxYear } from "@/lib/tax-year-cookie";
+import { getStickyTaxYearClient } from "@/lib/tax-year-cookie";
 import ExcelJS from "exceljs";
 
 type UploadResult = {
@@ -263,23 +263,9 @@ export function UploadModal({ onClose, onCompleted, dataSourceId }: UploadModalP
         </div>
 
         <div className="px-5 py-4 space-y-4">
-          {/* Tax year */}
-          <div className="flex items-center gap-3">
-            <label className="text-xs font-medium text-mono-medium">Tax Year</label>
-            <select
-              value={taxYear}
-              onChange={(e) => {
-                const y = parseInt(e.target.value, 10);
-                persistTaxYear(y);
-                setTaxYear(y);
-              }}
-              className="bg-white border border-bg-tertiary rounded-md px-2 py-1 text-xs"
-            >
-              <option value={taxYear}>{taxYear}</option>
-              <option value={taxYear - 1}>{taxYear - 1}</option>
-              <option value={taxYear - 2}>{taxYear - 2}</option>
-            </select>
-          </div>
+          <p className="text-[11px] text-mono-light">
+            Each transaction is assigned to the tax year of its date (e.g. 2026 dates → 2026 records).
+          </p>
 
           {/* Drop zone */}
           <div className="border-2 border-dashed border-bg-tertiary rounded-lg p-6 bg-bg-secondary/50 text-center">

@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import {
-  createSupabaseRouteClient,
-} from "@/lib/supabase/server";
+import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { transactionUpdateBodySchema } from "@/lib/validation/schemas";

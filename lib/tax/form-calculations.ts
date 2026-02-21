@@ -45,6 +45,16 @@ function deductibleAmount(t: Transaction): number {
 }
 
 /**
+ * Get 0-based month from a date string (YYYY-MM-DD or ISO) without timezone shifts.
+ */
+function getMonthFromDate(dateStr: string): number {
+  const part = String(dateStr).slice(0, 10);
+  const m = part.slice(5, 7);
+  const month = parseInt(m, 10);
+  return Number.isNaN(month) ? new Date(dateStr).getMonth() : month - 1;
+}
+
+/**
  * Filter transactions by quarter (1-4) or null for full year.
  */
 export function filterByQuarter(
@@ -55,7 +65,7 @@ export function filterByQuarter(
   const startMonth = (quarter - 1) * 3;
   const endMonth = startMonth + 3;
   return transactions.filter((t) => {
-    const month = new Date(t.date).getMonth();
+    const month = getMonthFromDate(t.date);
     return month >= startMonth && month < endMonth;
   });
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { QuarterlyToggle } from "./QuarterlyToggle";
 import { TaxFormCard } from "./TaxFormCard";
 import { CategoryBreakout } from "./CategoryBreakout";
@@ -8,7 +9,7 @@ import { PdfExportModal } from "./PdfExportModal";
 import { IrsResources } from "./IrsResources";
 import { calculateScheduleSE } from "@/lib/tax/form-calculations";
 import { getFilingTypeConfig } from "@/lib/tax/schedule-c-lines";
-import { persistTaxYear } from "@/lib/tax-year-cookie";
+import { TaxYearSelector } from "@/components/TaxYearSelector";
 
 function DisclaimerDisclosure() {
   const [expanded, setExpanded] = useState(false);
@@ -100,24 +101,34 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-mono-dark">Tax Year:</label>
-          <select
-            value={year}
-            onChange={(e) => {
-              const y = parseInt(e.target.value, 10);
-              persistTaxYear(y);
-              setYear(y);
-            }}
-            className="border border-bg-tertiary/60 rounded-full px-4 py-1.5 text-sm bg-white text-mono-dark"
-          >
-            <option value={defaultYear}>{defaultYear}</option>
-            <option value={defaultYear - 1}>{defaultYear - 1}</option>
-            <option value={defaultYear - 2}>{defaultYear - 2}</option>
-          </select>
-        </div>
+        <TaxYearSelector
+          value={year}
+          onChange={(y) => setYear(y)}
+          label="Tax year"
+          compact
+        />
         <QuarterlyToggle value={quarter} onChange={setQuarter} />
+        {quarter != null && (
+          <span className="text-xs text-mono-medium">
+            Showing Q{quarter} only (transactions). Additional deductions are full-year.
+          </span>
+        )}
       </div>
+
+      {data?.pendingCount > 0 && (
+        <div className="rounded-lg border border-accent-sage/40 bg-accent-sage/10 px-4 py-3 flex flex-wrap items-center gap-2">
+          <span className="text-sm text-mono-dark">
+            You have <strong>{data.pendingCount} pending</strong> expense
+            {data.pendingCount === 1 ? "" : "s"}
+            {data.pendingDeductionPotential > 0 && (
+              <> (${data.pendingDeductionPotential.toLocaleString("en-US", { minimumFractionDigits: 2 })} potential deductions)</>
+            )}.
+          </span>
+          <Link href="/inbox" className="text-sm font-medium text-accent-sage hover:underline">
+            Complete in Inbox →
+          </Link>
+        </div>
+      )}
 
       {/* Summary cards */}
       {loading ? (

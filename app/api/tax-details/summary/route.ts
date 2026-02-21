@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   const taxYear = parseInt(searchParams.get("tax_year") || String(new Date().getFullYear()), 10);
   const quarter = searchParams.get("quarter") ? parseInt(searchParams.get("quarter")!, 10) : null;
 
-  const txCols = "id,amount,transaction_type,schedule_c_line,category,is_meal,is_travel,deduction_percent,date";
+  const txCols = "id,vendor,amount,date,status,transaction_type,schedule_c_line,category,is_meal,is_travel,deduction_percent";
   const { data: allTransactions } = await (supabase as any)
     .from("transactions")
     .select(txCols)
@@ -29,6 +29,14 @@ export async function GET(req: Request) {
     .eq("tax_year", taxYear)
     .in("status", ["completed", "auto_sorted"])
     .order("date", { ascending: false });
+
+  const { data: pendingTx } = await (supabase as any)
+    .from("transactions")
+    .select("amount,deduction_percent,is_meal")
+    .eq("user_id", userId)
+    .eq("tax_year", taxYear)
+    .eq("status", "pending")
+    .eq("transaction_type", "expense");
 
   const deductionCols = "type,amount";
   const { data: deductions } = await (supabase as any)
@@ -56,6 +64,14 @@ export async function GET(req: Request) {
   const transactions = filterByQuarter(allTransactions ?? [], quarter);
   const summary = calculateTaxSummary(transactions, deductions ?? [], taxRate);
 
+  const pendingCount = pendingTx?.length ?? 0;
+  const pendingDeductionPotential =
+    pendingTx?.reduce((sum: number, t: { amount: string; deduction_percent?: number | null; is_meal?: boolean }) => {
+      const amt = Math.abs(Number(t.amount));
+      const pct = (t.deduction_percent ?? 100) / 100;
+      return sum + (t.is_meal ? amt * 0.5 * pct : amt * pct);
+    }, 0) ?? 0;
+
   return NextResponse.json(
     {
       ...summary,
@@ -64,6 +80,8 @@ export async function GET(req: Request) {
       filingType: orgSettings?.filing_type ?? null,
       transactionCount: transactions.length,
       transactions: transactions,
+      pendingCount,
+      pendingDeductionPotential,
     },
     {
       headers: { "Cache-Control": "private, max-age=300" },

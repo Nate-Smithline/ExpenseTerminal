@@ -7,6 +7,7 @@ import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
 import { getProfileOnboarding } from "@/lib/profile";
 import { LogIncomeForm } from "./LogIncomeForm";
 import { GettingStartedChecklist } from "./GettingStartedChecklist";
+import { DashboardHeader } from "./DashboardHeader";
 import { DEDUCTION_TYPE_CARDS, OTHER_DEDUCTIONS_CARD } from "@/lib/deduction-types";
 
 function deductibleAmount(t: { amount: string; deduction_percent?: number | null; is_meal?: boolean; is_travel?: boolean }): number {
@@ -58,13 +59,28 @@ export default async function DashboardPage() {
     .eq("user_id", userId)
     .eq("tax_year", taxYear);
 
-  const { data: pendingCount } = await (supabase as any)
+  const { count: pendingCount } = await (supabase as any)
     .from("transactions")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
     .eq("tax_year", taxYear)
     .eq("status", "pending")
     .eq("transaction_type", "expense");
+
+  const { data: pendingTx } = await (supabase as any)
+    .from("transactions")
+    .select("amount, deduction_percent, is_meal")
+    .eq("user_id", userId)
+    .eq("tax_year", taxYear)
+    .eq("status", "pending")
+    .eq("transaction_type", "expense");
+
+  const pendingDeductionPotential =
+    pendingTx?.reduce((sum: number, t: { amount: string; deduction_percent?: number | null; is_meal?: boolean }) => {
+      const amt = Math.abs(Number(t.amount));
+      const pct = t.deduction_percent ?? 100;
+      return sum + (t.is_meal ? amt * 0.5 * (pct / 100) : amt * (pct / 100));
+    }, 0) ?? 0;
 
   const fromTransactions =
     completedTx?.reduce((sum: number, t: { amount: string; deduction_percent?: number | null; is_meal?: boolean; is_travel?: boolean }) => sum + deductibleAmount(t), 0) ?? 0;
@@ -95,26 +111,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-10">
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold text-mono-dark">
-            {taxYear} Tax Summary
-          </h1>
-          <p className="text-sm text-mono-medium mt-1">
-            Overview of deductions and estimated savings
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {pendingCount?.length > 0 && (
-            <Link href="/inbox" className="btn-secondary text-sm">
-              {pendingCount.length} pending
-            </Link>
-          )}
-          <Link href="/reports" className="btn-primary text-sm">
-            Generate Report
-          </Link>
-        </div>
-      </div>
+      <DashboardHeader taxYear={taxYear} pendingCount={pendingCount ?? 0} />
 
       {/* Getting Started */}
       <GettingStartedChecklist />
@@ -174,7 +171,18 @@ export default async function DashboardPage() {
                   </li>
                 ))}
               {Object.keys(byCategory).length === 0 && (
-                <li className="text-mono-light">No completed transactions yet</li>
+                <li className="text-mono-light">
+                  No completed transactions yet.
+                  {(pendingCount ?? 0) > 0 && (
+                    <>
+                      {" "}
+                      <Link href="/inbox" className="text-accent-sage hover:underline">
+                        Review {pendingCount} pending in Inbox
+                      </Link>{" "}
+                      to add ${pendingDeductionPotential.toLocaleString("en-US", { minimumFractionDigits: 2 })} to deductions.
+                    </>
+                  )}
+                </li>
               )}
             </ul>
           </div>

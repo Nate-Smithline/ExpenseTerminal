@@ -46,16 +46,19 @@ export async function POST(req: Request) {
   }
 
   const { rows, taxYear: bodyTaxYear, dataSourceId } = parsed.data;
-  const taxYear = bodyTaxYear ?? new Date().getFullYear();
+  const fallbackYear = bodyTaxYear ?? new Date().getFullYear();
 
   const dataSourceIdVal = dataSourceId ?? null;
 
   const inserts = rows.map((row) => {
     const txType =
       row.transaction_type === "income" ? "income" : "expense";
+    const dateStr = new Date(row.date).toISOString().slice(0, 10);
+    const rowYear = new Date(row.date).getFullYear();
+    const taxYear = Number.isNaN(rowYear) ? fallbackYear : rowYear;
     return {
       user_id: userId,
-      date: new Date(row.date).toISOString().slice(0, 10),
+      date: dateStr,
       vendor: row.vendor,
       description: row.description ?? null,
       amount: row.amount,

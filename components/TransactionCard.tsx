@@ -126,7 +126,10 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
           }
         }
       },
-      markPersonal() { handleQuickAction("Personal"); },
+      markPersonal() {
+        if (step === 1) onMarkPersonal();
+        else handleQuickAction("Personal");
+      },
       focusBusiness() {
         if (step === 1) setStep(2);
         setShowWriteIn(true);
@@ -344,49 +347,43 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
         )}
 
         {isActive && (
-          <div className="mt-4">
+          <div className="mt-3">
             {/* Meal cap warning */}
             {isMeal && !isTravel && (
-              <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200/60 px-3.5 py-2.5 mb-4">
-                <span className="text-amber-600 text-sm mt-0.5">!</span>
-                <p className="text-xs text-amber-800">
-                  Meals outside of travel are typically capped at 50%.
-                </p>
+              <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200/60 px-2.5 py-1.5 mb-3">
+                <span className="text-amber-600 text-xs">!</span>
+                <p className="text-[11px] text-amber-800">Meals outside travel typically 50%.</p>
               </div>
             )}
 
             {/* STEP 1: Deduction Amount */}
             {step === 1 && (
-              <div className="space-y-4 animate-in">
-                {/* Category: current + keyboard list (c to open, arrows + Enter) */}
-                <div className="relative">
-                  <p className="text-xs font-medium text-mono-medium mb-1.5">Category</p>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-mono-medium">
-                      {displayCategoryName}
-                      {isAiCategorized && confPct != null && (
-                        <span className="ml-1.5 text-accent-sage font-medium">AI {confPct}%</span>
-                      )}
-                      {!isAiCategorized && (
-                        <span className="ml-1.5 text-amber-600 text-[11px]">Not yet categorized by AI</span>
-                      )}
-                    </span>
-                    <button
-                      type="button"
-                      data-category-trigger
-                      onClick={() => {
-                        setCategoryPickerOpen((o) => !o);
-                        if (!categoryPickerOpen) {
-                          const idx = EXPENSE_CATEGORIES.findIndex((c) => c.line === (selectedScheduleLine ?? transaction.schedule_c_line ?? ""));
-                          setCategoryHighlightIdx(idx >= 0 ? idx : 0);
-                        }
-                      }}
-                      className="rounded-md border border-bg-tertiary px-2.5 py-1.5 text-xs bg-white text-mono-medium hover:bg-bg-secondary transition flex items-center gap-1"
-                    >
-                      <kbd className="kbd-hint">c</kbd>
-                      {categoryPickerOpen ? "Close" : "Change"}
-                    </button>
-                  </div>
+              <div className="space-y-3 animate-in">
+                {/* Category: one line */}
+                <div className="relative flex items-center gap-2 flex-wrap text-xs">
+                  <span className="text-mono-light shrink-0">Category:</span>
+                  <span className="text-mono-medium">{displayCategoryName}</span>
+                  {isAiCategorized && confPct != null && (
+                    <span className="text-accent-sage font-medium">AI {confPct}%</span>
+                  )}
+                  {!isAiCategorized && (
+                    <span className="text-amber-600 text-[11px]">Not yet categorized by AI</span>
+                  )}
+                  <button
+                    type="button"
+                    data-category-trigger
+                    onClick={() => {
+                      setCategoryPickerOpen((o) => !o);
+                      if (!categoryPickerOpen) {
+                        const idx = EXPENSE_CATEGORIES.findIndex((c) => c.line === (selectedScheduleLine ?? transaction.schedule_c_line ?? ""));
+                        setCategoryHighlightIdx(idx >= 0 ? idx : 0);
+                      }
+                    }}
+                    className="px-1 py-0.5 text-[11px] text-mono-medium hover:text-mono-dark transition flex items-center gap-0.5"
+                  >
+                    <kbd className="kbd-hint text-[10px]">c</kbd>
+                    {categoryPickerOpen ? "Close" : "Change"}
+                  </button>
                   {categoryPickerOpen && (
                     <div
                       ref={categoryListRef}
@@ -416,32 +413,37 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                   )}
                 </div>
 
-                <div>
-                  <p className="text-xs font-medium text-mono-medium mb-2">
-                    What percent of this was for business?
-                  </p>
-                  <div className="flex items-center gap-2 mb-2">
-                    {SNAP_POINTS.map((pt) => (
-                      <button
-                        key={pt}
-                        type="button"
-                        onClick={() => setDeductionPct(pt)}
-                        className={`rounded-md px-3 py-1.5 text-xs font-medium border transition flex items-center gap-1 ${
-                          deductionPct === pt
-                            ? "border-accent-sage bg-accent-sage text-white"
-                            : "border-bg-tertiary bg-white text-mono-medium hover:border-accent-sage/40"
-                        }`}
-                      >
-                        {pt === 0 && <kbd className="kbd-hint">0</kbd>}
-                        {pt === 25 && <kbd className="kbd-hint">2</kbd>}
-                        {pt === 50 && <kbd className="kbd-hint">5</kbd>}
-                        {pt === 75 && <kbd className="kbd-hint">7</kbd>}
-                        {pt === 100 && <kbd className="kbd-hint">1</kbd>}
-                        {pt}%
-                      </button>
-                    ))}
+                <div className="w-full">
+                  <p className="text-xs font-medium text-mono-medium mb-1.5">What percent for business?</p>
+                  <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      {SNAP_POINTS.map((pt) => (
+                        <button
+                          key={pt}
+                          type="button"
+                          onClick={() => setDeductionPct(pt)}
+                          className={`py-1 text-xs font-medium transition flex items-center gap-2.5 ${
+                            pt === 0 ? "pl-0 pr-2" : "px-2"
+                          } ${
+                            deductionPct === pt
+                              ? "text-accent-sage font-semibold"
+                              : "text-mono-medium hover:text-mono-dark"
+                          }`}
+                        >
+                          {pt === 0 && <kbd className="kbd-hint">0</kbd>}
+                          {pt === 25 && <kbd className="kbd-hint">2</kbd>}
+                          {pt === 50 && <kbd className="kbd-hint">5</kbd>}
+                          {pt === 75 && <kbd className="kbd-hint">7</kbd>}
+                          {pt === 100 && <kbd className="kbd-hint">1</kbd>}
+                          {pt}%
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-mono-light tabular-nums shrink-0">
+                      ${deductibleAmount.toFixed(2)} deductible (saves ~${(deductibleAmount * taxRate).toFixed(2)})
+                    </p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 w-full">
                     <input
                       type="range"
                       min={0}
@@ -449,16 +451,12 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                       step={1}
                       value={deductionPct}
                       onChange={(e) => setDeductionPct(Number(e.target.value))}
-                      className="flex-1 h-1.5 accent-accent-sage cursor-pointer"
+                      className="flex-1 min-w-0 h-1.5 accent-accent-sage cursor-pointer"
                     />
-                    <span className="text-sm font-semibold text-mono-dark tabular-nums w-12 text-right">
+                    <span className="text-sm font-semibold text-mono-dark tabular-nums w-12 text-right shrink-0">
                       {deductionPct}%
                     </span>
                   </div>
-                  <p className="text-[11px] text-mono-light mt-1.5">
-                    ${deductibleAmount.toFixed(2)} deductible
-                    <span className="ml-1">(saves ~${(deductibleAmount * taxRate).toFixed(2)})</span>
-                  </p>
                 </div>
 
                 {/* Auto-sort checkbox */}
@@ -481,12 +479,9 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedLabel("Personal");
-                      setDeductionPct(0);
-                    }}
+                    onClick={() => onMarkPersonal()}
                     className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition"
-                    title="Mark as personal"
+                    title="Mark as personal (removes from inbox)"
                   >
                     <kbd className="kbd-hint">p</kbd>
                     Personal

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { BackToDeductionsLink } from "@/components/BackToDeductionsLink";
+import { getStickyTaxYearClient } from "@/lib/tax-year-cookie";
 
 const DEFAULT_TAX_RATE = 0.24;
 
@@ -21,7 +22,7 @@ export default function HealthInsurancePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "health_insurance",
-          tax_year: new Date().getFullYear(),
+          tax_year: getStickyTaxYearClient(),
           amount,
           tax_savings: taxSavings,
         }),
