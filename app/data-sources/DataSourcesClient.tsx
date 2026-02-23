@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Database } from "@/lib/types/database";
@@ -145,25 +145,25 @@ export function DataSourcesClient({
       {/* Add Account Modal */}
       {showAdd && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-mono-dark/20 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-labelledby="add-account-title"
         >
-          <div className="rounded-xl bg-white shadow-lg max-w-md w-full mx-4 overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-bg-tertiary/40">
+          <div className="rounded-xl bg-white border border-bg-tertiary/40 shadow-lg max-w-md w-full mx-4 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-bg-tertiary/40">
               <h2 id="add-account-title" className="text-sm font-semibold text-mono-dark">
                 New Account
               </h2>
               <button
                 onClick={() => setShowAdd(false)}
-                className="text-mono-light hover:text-mono-dark text-xs"
+                className="h-8 w-8 rounded-full flex items-center justify-center text-mono-light hover:text-mono-dark hover:bg-bg-secondary"
                 aria-label="Close"
               >
-                Close
+                <span className="material-symbols-rounded text-[18px]">close</span>
               </button>
             </div>
-            <div className="px-5 py-4 space-y-4">
+            <div className="px-6 py-5 space-y-4">
               <div>
                 <label className="text-xs font-medium text-mono-medium block mb-1">
                   Account Name *
@@ -205,7 +205,7 @@ export function DataSourcesClient({
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 px-5 py-3 border-t border-bg-tertiary/40 bg-bg-secondary/30">
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-bg-tertiary/40 bg-bg-secondary/30">
               <button
                 onClick={() => setShowAdd(false)}
                 disabled={saving}
@@ -228,25 +228,25 @@ export function DataSourcesClient({
       {/* Edit Account Modal */}
       {editSource && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-mono-dark/20 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-labelledby="edit-account-title"
         >
-          <div className="rounded-xl bg-white shadow-lg max-w-md w-full mx-4 overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-bg-tertiary/40">
+          <div className="rounded-xl bg-white border border-bg-tertiary/40 shadow-lg max-w-md w-full mx-4 overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-bg-tertiary/40">
               <h2 id="edit-account-title" className="text-sm font-semibold text-mono-dark">
                 Edit Account
               </h2>
               <button
                 onClick={() => setEditSource(null)}
-                className="text-mono-light hover:text-mono-dark text-xs"
+                className="h-8 w-8 rounded-full flex items-center justify-center text-mono-light hover:text-mono-dark hover:bg-bg-secondary"
                 aria-label="Close"
               >
-                Close
+                <span className="material-symbols-rounded text-[18px]">close</span>
               </button>
             </div>
-            <div className="px-5 py-4 space-y-4">
+            <div className="px-6 py-5 space-y-4">
               <div>
                 <label className="text-xs font-medium text-mono-medium block mb-1">
                   Account Name *
@@ -288,7 +288,7 @@ export function DataSourcesClient({
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 px-5 py-3 border-t border-bg-tertiary/40 bg-bg-secondary/30">
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-bg-tertiary/40 bg-bg-secondary/30">
               <button
                 onClick={() => setEditSource(null)}
                 disabled={editSaving}

@@ -67,14 +67,14 @@ export async function POST(req: Request) {
     const resend = getResendClient();
     const sendPromise = resend.emails.send({
       from: getFromAddress(),
-      replyTo: "hello@expenseterminal.com",
+      replyTo: "expenseterminal@outlook.com",
       to: email,
       subject: "Verify your ExpenseTerminal account",
       html: verificationEmailHtml(verifyUrl, token),
       text: verificationEmailText(verifyUrl, token),
       headers: {
         "X-Entity-Ref-ID": crypto.randomUUID(),
-        "List-Unsubscribe": `<mailto:hello@expenseterminal.com?subject=unsubscribe>`,
+        "List-Unsubscribe": `<mailto:expenseterminal@outlook.com?subject=unsubscribe>`,
       },
     });
     const timeoutPromise = new Promise<never>((_, reject) =>

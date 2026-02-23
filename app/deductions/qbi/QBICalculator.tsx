@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { CurrencyInput } from "@/components/CurrencyInput";
 
 const INPUT_CLS =
   "w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none tabular-nums";
@@ -17,7 +18,7 @@ export function QBICalculator({ totalIncome, currentYear, taxRate }: Props) {
   const [showAddIncome, setShowAddIncome] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [vendor, setVendor] = useState("");
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(0);
   const [description, setDescription] = useState("");
   const [incomeSaving, setIncomeSaving] = useState(false);
   const [incomeError, setIncomeError] = useState<string | null>(null);
@@ -25,6 +26,8 @@ export function QBICalculator({ totalIncome, currentYear, taxRate }: Props) {
   const [deductionSaving, setDeductionSaving] = useState(false);
   const [deductionSaved, setDeductionSaved] = useState(false);
   const [deductionError, setDeductionError] = useState<string | null>(null);
+  const [deductionClearing, setDeductionClearing] = useState(false);
+  const [toast, setToast] = useState<{ message: string; kind: "success" | "error" } | null>(null);
 
   const qbiAmount = totalIncome > 0 ? totalIncome * 0.2 : 0;
   const taxSavings = qbiAmount * taxRate;
@@ -34,8 +37,7 @@ export function QBICalculator({ totalIncome, currentYear, taxRate }: Props) {
     setIncomeSaving(true);
     setIncomeError(null);
     setIncomeSuccess(null);
-    const parsedAmount = parseFloat(amount);
-    if (!parsedAmount || parsedAmount <= 0) {
+    if (!amount || amount <= 0) {
       setIncomeError("Please enter a valid amount greater than 0");
       setIncomeSaving(false);
       return;
@@ -47,7 +49,7 @@ export function QBICalculator({ totalIncome, currentYear, taxRate }: Props) {
         body: JSON.stringify({
           date,
           vendor: vendor.trim(),
-          amount: parsedAmount,
+          amount,
           description: description.trim() || undefined,
           transaction_type: "income",
         }),
@@ -56,9 +58,9 @@ export function QBICalculator({ totalIncome, currentYear, taxRate }: Props) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "Failed to save");
       }
-      setIncomeSuccess(`$${parsedAmount.toFixed(2)} income added. Updating total…`);
+      setIncomeSuccess(`$${amount.toFixed(2)} income added. Updating total…`);
       setVendor("");
-      setAmount("");
+      setAmount(0);
       setDescription("");
       setShowAddIncome(false);
       router.refresh();
@@ -91,11 +93,37 @@ export function QBICalculator({ totalIncome, currentYear, taxRate }: Props) {
       }
       setDeductionSaved(true);
       setTimeout(() => setDeductionSaved(false), 3000);
+      setToast({ message: `QBI deduction added for ${currentYear}`, kind: "success" });
+      setTimeout(() => setToast(null), 4000);
       router.refresh();
     } catch (err) {
       setDeductionError(err instanceof Error ? err.message : "Something went wrong");
+      setToast({ message: "Failed to save deduction", kind: "error" });
+      setTimeout(() => setToast(null), 4000);
     } finally {
       setDeductionSaving(false);
+    }
+  }
+
+  async function handleClearDeduction() {
+    if (!confirm(`Remove QBI deduction for ${currentYear}? This cannot be undone.`)) return;
+    setDeductionClearing(true);
+    setToast(null);
+    try {
+      const res = await fetch("/api/deductions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "qbi", tax_year: currentYear }),
+      });
+      if (!res.ok) throw new Error("Failed to clear");
+      setToast({ message: `QBI deduction cleared for ${currentYear}`, kind: "success" });
+      setTimeout(() => setToast(null), 4000);
+      router.refresh();
+    } catch {
+      setToast({ message: "Failed to clear deduction", kind: "error" });
+      setTimeout(() => setToast(null), 4000);
+    } finally {
+      setDeductionClearing(false);
     }
   }
 
@@ -126,7 +154,7 @@ export function QBICalculator({ totalIncome, currentYear, taxRate }: Props) {
 
       {/* Add income form */}
       {(showAddIncome || totalIncome === 0) && (
-        <form onSubmit={handleAddIncome} className="space-y-4 border-t border-bg-tertiary/40 pt-5">
+        <form onSubmit={handleAddIncome} className="space-y-4 border-t border-bg-tertiary/40 pt-3">
           <p className="text-sm font-medium text-mono-dark">Log income (saves to your income records)</p>
           <div>
             <label className="block text-xs font-medium text-mono-medium mb-1">Date</label>
@@ -150,16 +178,7 @@ export function QBICalculator({ totalIncome, currentYear, taxRate }: Props) {
           </div>
           <div>
             <label className="block text-xs font-medium text-mono-medium mb-1">Amount ($)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              className={INPUT_CLS}
-              required
-            />
+            <CurrencyInput value={amount} onChange={setAmount} min={0} placeholder="0.00" className={INPUT_CLS} />
           </div>
           <div>
             <label className="block text-xs font-medium text-mono-medium mb-1">Description (optional)</label>
@@ -175,7 +194,7 @@ export function QBICalculator({ totalIncome, currentYear, taxRate }: Props) {
           {incomeSuccess && <p className="text-sm text-accent-sage font-medium">{incomeSuccess}</p>}
           <button
             type="submit"
-            disabled={incomeSaving || !vendor.trim() || !amount}
+            disabled={incomeSaving || !vendor.trim() || amount <= 0}
             className="btn-primary text-sm"
           >
             {incomeSaving ? "Saving…" : "Add income"}
@@ -184,7 +203,7 @@ export function QBICalculator({ totalIncome, currentYear, taxRate }: Props) {
       )}
 
       {/* QBI result */}
-      <div className="border-t border-bg-tertiary/40 pt-5 space-y-3">
+      <div className="border-t border-bg-tertiary/40 pt-3 space-y-3">
         <p className="text-sm font-medium text-mono-dark">QBI deduction (20% of qualified business income)</p>
         <p className="text-2xl font-bold text-accent-sage tabular-nums">
           ${qbiAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -198,15 +217,35 @@ export function QBICalculator({ totalIncome, currentYear, taxRate }: Props) {
         {deductionError && (
           <p className="text-sm text-danger">{deductionError}</p>
         )}
-        <button
-          type="button"
-          onClick={handleSaveDeduction}
-          disabled={deductionSaving || qbiAmount <= 0}
-          className="btn-primary text-sm disabled:opacity-50"
-        >
-          {deductionSaving ? "Saving…" : deductionSaved ? "Saved" : "Save QBI deduction"}
-        </button>
+        <div className="flex flex-wrap gap-3 pt-1">
+          <button
+            type="button"
+            onClick={handleSaveDeduction}
+            disabled={deductionSaving || qbiAmount <= 0}
+            className="btn-primary text-sm disabled:opacity-50"
+          >
+            {deductionSaving ? "Saving…" : deductionSaved ? "Saved" : "Save QBI deduction"}
+          </button>
+          <button
+            type="button"
+            onClick={handleClearDeduction}
+            disabled={deductionClearing}
+            className="rounded-full border border-bg-tertiary/60 px-4 py-2 text-sm font-medium text-mono-medium hover:bg-bg-tertiary/40 transition disabled:opacity-50"
+          >
+            {deductionClearing ? "Clearing…" : "Clear deduction"}
+          </button>
+        </div>
       </div>
+
+      {toast && (
+        <div
+          className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded-lg px-4 py-2.5 text-sm shadow-lg ${
+            toast.kind === "success" ? "bg-accent-sage text-white" : "bg-accent-red/90 text-white"
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }

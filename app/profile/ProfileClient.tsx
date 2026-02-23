@@ -285,7 +285,7 @@ export function ProfileClient({
                 className="w-full border border-bg-tertiary/40 rounded-xl px-4 py-3 text-sm bg-bg-secondary text-mono-light"
               />
               <p className="text-xs text-accent-terracotta mt-1">
-                Please reach out to hello@expenseterminal.com if you&apos;d like to change your email
+                Please reach out to expenseterminal@outlook.com if you&apos;d like to change your email
               </p>
             </div>
 

@@ -112,3 +112,8 @@ export const deductionPostSchema = z.object({
   tax_savings: amountSchema,
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
+
+export const deductionDeleteSchema = z.object({
+  type: z.string().min(1, "Type is required").max(200),
+  tax_year: taxYearSchema,
+});

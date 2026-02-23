@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { CurrencyInput } from "@/components/CurrencyInput";
 
 export function LogIncomeForm({ currentYear }: { currentYear: number }) {
   const router = useRouter();
@@ -9,7 +10,7 @@ export function LogIncomeForm({ currentYear }: { currentYear: number }) {
     new Date().toISOString().slice(0, 10)
   );
   const [vendor, setVendor] = useState("");
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(0);
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,8 +22,7 @@ export function LogIncomeForm({ currentYear }: { currentYear: number }) {
     setError(null);
     setSuccess(null);
 
-    const parsedAmount = parseFloat(amount);
-    if (!parsedAmount || parsedAmount <= 0) {
+    if (!amount || amount <= 0) {
       setError("Please enter a valid amount greater than 0");
       setSaving(false);
       return;
@@ -35,7 +35,7 @@ export function LogIncomeForm({ currentYear }: { currentYear: number }) {
         body: JSON.stringify({
           date,
           vendor: vendor.trim(),
-          amount: parsedAmount,
+          amount,
           description: description.trim() || undefined,
           transaction_type: "income",
         }),
@@ -45,9 +45,9 @@ export function LogIncomeForm({ currentYear }: { currentYear: number }) {
         throw new Error(data.error ?? "Failed to save");
       }
       const saved = await res.json();
-      setSuccess(`$${parsedAmount.toFixed(2)} income from ${vendor.trim()} logged`);
+      setSuccess(`$${amount.toFixed(2)} income from ${vendor.trim()} logged`);
       setVendor("");
-      setAmount("");
+      setAmount(0);
       setDescription("");
       setTimeout(() => setSuccess(null), 5000);
       router.refresh();
@@ -88,16 +88,7 @@ export function LogIncomeForm({ currentYear }: { currentYear: number }) {
         <label className="block text-sm font-medium text-mono-dark mb-1">
           Amount ($)
         </label>
-        <input
-          type="number"
-          step="0.01"
-          min="0.01"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="0.00"
-          className="w-full border border-bg-tertiary rounded-md px-3 py-2 text-sm"
-          required
-        />
+        <CurrencyInput value={amount} onChange={setAmount} min={0} placeholder="0.00" />
       </div>
       <div>
         <label className="block text-sm font-medium text-mono-medium mb-1">
@@ -119,7 +110,7 @@ export function LogIncomeForm({ currentYear }: { currentYear: number }) {
       )}
       <button
         type="submit"
-        disabled={saving || !vendor.trim() || !amount}
+        disabled={saving || !vendor.trim() || amount <= 0}
         className="btn-primary text-sm"
       >
         {saving ? "Saving…" : "Log income"}

@@ -170,11 +170,20 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
       [businessPurpose],
     );
 
+    const maxQuickLabel = 500;
+    const maxTextField = 2000;
+    const normalizedDeduction = Math.min(100, Math.max(0, deductionPct));
+
     const saveData: TransactionUpdate = {
-      quick_label: selectedLabel,
-      business_purpose: selectedLabel === "Personal" ? "" : businessPurpose,
-      notes,
-      deduction_percent: deductionPct,
+      quick_label: selectedLabel ? selectedLabel.slice(0, maxQuickLabel) : undefined,
+      business_purpose:
+        selectedLabel === "Personal"
+          ? ""
+          : businessPurpose
+          ? businessPurpose.slice(0, maxTextField)
+          : undefined,
+      notes: notes ? notes.slice(0, maxTextField) : undefined,
+      deduction_percent: normalizedDeduction,
       category: selectedCategory,
       schedule_c_line: selectedScheduleLine,
     };
@@ -328,10 +337,13 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
               <span className="text-[11px] text-mono-light">{formatDate(transaction.date)}</span>
             </div>
             <p className="text-xs text-mono-light mt-0.5">
-              {transaction.category ?? "Uncategorized"}
-              {confPct != null && (
-                <span className="ml-1.5 text-mono-light/50">{confPct}%</span>
+              {transaction.auto_sort_rule_id != null && (
+                <span className="text-mono-medium">Past sort · </span>
               )}
+              {transaction.auto_sort_rule_id == null && confPct != null && (
+                <span className="text-accent-sage font-medium">AI {confPct}% · </span>
+              )}
+              {displayCategoryName}
             </p>
           </div>
           <span className="text-sm font-semibold text-mono-dark tabular-nums shrink-0">
@@ -350,9 +362,9 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
           <div className="mt-3">
             {/* Meal cap warning */}
             {isMeal && !isTravel && (
-              <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200/60 px-2.5 py-1.5 mb-3">
-                <span className="text-amber-600 text-xs">!</span>
-                <p className="text-[11px] text-amber-800">Meals outside travel typically 50%.</p>
+              <div className="flex items-center gap-2 rounded-lg bg-sky-50 border border-sky-200/60 px-2.5 py-1.5 mb-3">
+                <span className="material-symbols-rounded text-sky-600 text-base">info</span>
+                <p className="text-[11px] text-sky-800">Meals outside travel typically 50%.</p>
               </div>
             )}
 
@@ -362,11 +374,16 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                 {/* Category: one line */}
                 <div className="relative flex items-center gap-2 flex-wrap text-xs">
                   <span className="text-mono-light shrink-0">Category:</span>
-                  <span className="text-mono-medium">{displayCategoryName}</span>
-                  {isAiCategorized && confPct != null && (
-                    <span className="text-accent-sage font-medium">AI {confPct}%</span>
-                  )}
-                  {!isAiCategorized && (
+                  <span className="text-mono-medium">
+                    {transaction.auto_sort_rule_id != null && (
+                      <span className="text-mono-medium">Past sort · </span>
+                    )}
+                    {transaction.auto_sort_rule_id == null && isAiCategorized && confPct != null && (
+                      <span className="text-accent-sage font-medium">AI {confPct}% · </span>
+                    )}
+                    {displayCategoryName}
+                  </span>
+                  {!isAiCategorized && transaction.auto_sort_rule_id == null && (
                     <span className="text-amber-600 text-[11px]">Not yet categorized by AI</span>
                   )}
                   <button
@@ -379,9 +396,9 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                         setCategoryHighlightIdx(idx >= 0 ? idx : 0);
                       }
                     }}
-                    className="px-1 py-0.5 text-[11px] text-mono-medium hover:text-mono-dark transition flex items-center gap-0.5"
+                    className="px-1 py-0.5 text-[11px] text-mono-medium hover:text-mono-dark transition flex items-center gap-1.5"
                   >
-                    <kbd className="kbd-hint text-[10px]">c</kbd>
+                    <kbd className="kbd-hint text-[10px] mr-1.5">c</kbd>
                     {categoryPickerOpen ? "Close" : "Change"}
                   </button>
                   {categoryPickerOpen && (
@@ -489,10 +506,10 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                   <button
                     type="button"
                     onClick={handleNext}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-accent-sage/5 border border-accent-sage/20 px-4 py-2.5 text-xs font-medium text-accent-sage hover:bg-accent-sage/10 transition"
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 transition border border-[var(--color-accent-terracotta-dark)]/80 bg-[var(--color-accent-terracotta-dark)]"
                   >
                     Next
-                    <kbd className="kbd-hint ml-1">s</kbd>
+                    <kbd className="kbd-hint ml-1 !text-white !bg-white/20 !border-white/30">s</kbd>
                   </button>
                   <button
                     type="button"
@@ -500,7 +517,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                     className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition"
                     title="View details"
                   >
-                    <span className="material-symbols-rounded text-[16px]">open_in_new</span>
+                    <span className="material-symbols-rounded text-[16px]">tune</span>
                     <kbd className="kbd-hint">Enter</kbd>
                   </button>
                   {onDelete && (
@@ -598,7 +615,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                     type="button"
                     onClick={handleNext}
                     disabled={saving || (!selectedLabel && !businessPurpose)}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-accent-sage px-4 py-2.5 text-xs font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-40"
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-[var(--color-accent-terracotta-dark)] border border-[var(--color-accent-terracotta-dark)]/80 px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-40"
                   >
                     Next
                     <kbd className="kbd-hint !bg-white/20 !text-white !border-white/30 ml-1">s</kbd>

@@ -58,7 +58,7 @@ export default function TermsPage() {
               <li>If acting on behalf of a business entity, you have authority to bind that entity to these Terms</li>
             </ul>
             <p>
-              You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. You must notify us immediately at <a href="mailto:hello@expenseterminal.com" className="text-accent-navy underline">hello@expenseterminal.com</a> of any unauthorized access or breach.
+              You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. You must notify us immediately at <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a> of any unauthorized access or breach.
             </p>
           </section>
 
@@ -211,7 +211,7 @@ export default function TermsPage() {
               <strong>Assignment:</strong> You may not assign your rights or obligations under these Terms without our prior written consent. We may assign our rights freely.
             </p>
             <p className="mb-2">
-              <strong>Notices:</strong> Legal notices to the Company must be sent to <a href="mailto:hello@expenseterminal.com" className="text-accent-navy underline">hello@expenseterminal.com</a>.
+              <strong>Notices:</strong> Legal notices to the Company must be sent to <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>.
             </p>
             <p>
               <strong>Force Majeure:</strong> The Company shall not be liable for delays or failures in performance resulting from circumstances beyond its reasonable control.
@@ -220,7 +220,7 @@ export default function TermsPage() {
 
           <section>
             <p>
-              For questions about these Terms, contact us at: <a href="mailto:hello@expenseterminal.com" className="text-accent-navy underline">hello@expenseterminal.com</a>
+              For questions about these Terms, contact us at: <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>
             </p>
           </section>
         </div>

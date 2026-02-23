@@ -11,7 +11,7 @@ const GUIDES_URL = "https://www.notion.so/guides";
 const mainNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/data-sources", label: "Data Sources", icon: "database" },
-  { href: "/inbox", label: "Inbox", icon: "inbox" },
+  { href: "/inbox", label: "Inbox", icon: "visibility" },
   { href: "/tax-details", label: "Tax Details", icon: "receipt_long" },
 ];
 
@@ -31,13 +31,25 @@ export function Sidebar() {
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
-  useEffect(() => {
+  const loadInboxCount = useCallback(() => {
     const year = getStickyTaxYearClient();
     fetch(`/api/transactions?tax_year=${year}&status=pending&transaction_type=expense&count_only=true`)
       .then((r) => r.json())
       .then((d) => setInboxCount(d.count ?? 0))
       .catch(() => {});
-  }, [pathname]);
+  }, []);
+
+  useEffect(() => {
+    loadInboxCount();
+  }, [pathname, loadInboxCount]);
+
+  useEffect(() => {
+    function handleInboxChanged() {
+      loadInboxCount();
+    }
+    window.addEventListener("inbox-count-changed", handleInboxChanged);
+    return () => window.removeEventListener("inbox-count-changed", handleInboxChanged);
+  }, [loadInboxCount]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -134,7 +146,7 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Bottom nav - left align with Guides and main nav (px-5) */}
+      {/* Bottom nav - left align with main nav (px-5) */}
       <div className="px-5 pb-3 space-y-0.5">
         {bottomNav.map((item) => (
           <Link
@@ -157,9 +169,18 @@ export function Sidebar() {
             <span className="ml-2">{item.label}</span>
           </Link>
         ))}
+        <a
+          href="mailto:expenseterminal@outlook.com"
+          className="flex items-center py-2.5 text-base transition-all group text-mono-light hover:text-mono-medium"
+        >
+          <span className="shrink-0 overflow-hidden flex items-center transition-all duration-500 w-0 group-hover:w-[20px]">
+            <span className="h-0.5 w-[20px] rounded-full bg-accent-terracotta" />
+          </span>
+          <span className="ml-2">Contact Our Team</span>
+        </a>
       </div>
 
-      {/* Footer */}
+      {/* Footer - Guides and Support commented out
       <div className="px-5 pb-4 flex items-center gap-3">
         <a
           href={GUIDES_URL}
@@ -170,12 +191,13 @@ export function Sidebar() {
           <span className="material-symbols-rounded text-[12px]">menu_book</span> Guides
         </a>
         <a
-          href="mailto:hello@expenseterminal.com"
+          href="mailto:expenseterminal@outlook.com"
           className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg border border-bg-tertiary/60 text-sm text-mono-medium hover:text-mono-dark hover:border-bg-tertiary transition-all"
         >
           <span className="material-symbols-rounded text-[12px]">mail</span> Support
         </a>
       </div>
+      */}
     </aside>
   );
 }

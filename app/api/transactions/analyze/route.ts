@@ -15,18 +15,22 @@ type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
 /* ------------------------------------------------------------------ */
 const systemPrompt = `You categorize business transactions for IRS Schedule C.
 
-Categories (Line: Name):
+Categories (Line: Name). Return scheduleCLine as the KEY ONLY (e.g. "8", "27a", "24b"), not "Line 8":
 8:Advertising, 9:Car/truck, 10:Commissions/fees, 11:Contract labor,
 13:Depreciation, 15:Insurance, 16b:Other interest, 17:Legal/professional,
 18:Office expense, 21:Rent/lease, 22:Repairs, 23:Supplies, 24a:Travel,
 24b:Meals, 25:Utilities, 26:Wages, 27a:Other expenses
 
 Rules:
-- SaaS/software/subscriptions → 27a
-- Meals → 24b (50% deductible; 100% if overnight travel)
-- Phone/internet → 25
-- Coworking → 21
-- Equipment >$2500 → 13
+- Prefer the MOST SPECIFIC category. Use 27a (Other expenses) ONLY when no other line fits.
+- Office supplies, software for office work, productivity tools, and general business SaaS → 18 (Office expense). Do NOT use 27a for these.
+- Phone, internet, cloud hosting, business phone → 25 (Utilities).
+- Meals → 24b (50% deductible; 100% if overnight travel).
+- Coworking, office rent → 21.
+- Equipment >$2500 → 13.
+- Advertising / marketing / Google Ads → 8.
+- Legal, accounting, tax prep, consulting → 17.
+- Use 27a only for: education, professional memberships, bank fees, or truly miscellaneous expenses that don't fit 8–26. When unsure between 18 and 27a for software/tools, prefer 18.
 - Personal expenses → mark "likely_personal"
 - If ambiguous → "needs_review"
 
@@ -88,6 +92,13 @@ function getDefaultDeduction(scheduleCLine: string | null, isMeal: boolean, isTr
   return CATEGORY_DEDUCTION_DEFAULTS[lineNum] ?? 100;
 }
 
+/** Normalize AI output to stored form: "27a", "24b", etc. */
+function normalizeScheduleLine(raw: string | null | undefined): string | null {
+  if (raw == null || raw === "") return null;
+  const s = raw.replace(/^Line\s*/i, "").trim();
+  return s || null;
+}
+
 const BATCH_SIZE = 25;
 const DB_FETCH_CHUNK = 80;
 const BATCH_CONCURRENCY = 4;
@@ -120,7 +131,9 @@ function buildBatchPrompt(
     (t) => `${t.id}|${t.vendor}|$${Math.abs(t.amount).toFixed(2)}|${t.date}${t.category ? `|${t.category}` : ""}`
   );
   return `Categorize these ${txns.length} transactions. Return JSON array:
-[{"id":"...","category":"Category Name","scheduleCLine":"Line N","confidence":0.85,"quickLabels":["Specific Reason 1","Specific Reason 2","Specific Reason 3"],"suggestedDeductionPct":100,"deductibility":"likely_deductible|needs_review|likely_personal","isMeal":false,"isTravel":false}]
+[{"id":"...","category":"Category Name","scheduleCLine":"27a","confidence":0.85,"quickLabels":["Specific Reason 1","Specific Reason 2","Specific Reason 3"],"suggestedDeductionPct":100,"deductibility":"likely_deductible|needs_review|likely_personal","isMeal":false,"isTravel":false}]
+
+Use scheduleCLine as the line KEY only (e.g. "8", "18", "24b", "27a"), not "Line 27a".
 
 id|vendor|amount|date[|hint]
 ${lines.join("\n")}`;
@@ -472,17 +485,18 @@ export async function POST(req: Request) {
                   continue;
                 }
 
+                const scheduleLine = normalizeScheduleLine(result.scheduleCLine) ?? result.scheduleCLine;
                 const isMealResult = result.isMeal ?? result.category.toLowerCase().includes("meal");
                 const isTravelResult = result.isTravel ?? false;
                 const deductPct = result.deductibility === "likely_personal"
                   ? 0
-                  : result.suggestedDeductionPct ?? getDefaultDeduction(result.scheduleCLine, isMealResult, isTravelResult);
+                  : result.suggestedDeductionPct ?? getDefaultDeduction(scheduleLine, isMealResult, isTravelResult);
 
                 const { error: updateError } = await (supabase as any)
                   .from("transactions")
                   .update({
                     category: result.category,
-                    schedule_c_line: result.scheduleCLine,
+                    schedule_c_line: scheduleLine,
                     ai_confidence: result.confidence ?? 0.5,
                     ai_suggestions: result.quickLabels ?? [],
                     deduction_percent: deductPct,
@@ -502,7 +516,7 @@ export async function POST(req: Request) {
                 batchSuccess++;
                 send({
                   type: "success", id: t.id, vendor: t.vendor,
-                  category: result.category, line: result.scheduleCLine,
+                  category: result.category, line: scheduleLine,
                   confidence: result.confidence,
                   quickLabels: result.quickLabels ?? [],
                   deductionPct: deductPct,
@@ -511,7 +525,7 @@ export async function POST(req: Request) {
                 });
 
                 try {
-                  await upsertVendorPattern(supabase as any, userId, vn, { ...result, id: t.id });
+                  await upsertVendorPattern(supabase as any, userId, vn, { ...result, scheduleCLine: scheduleLine });
                 } catch {
                   // vendor_patterns table may not exist yet
                 }

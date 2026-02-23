@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { BackToDeductionsLink } from "@/components/BackToDeductionsLink";
+import { CurrencyInput } from "@/components/CurrencyInput";
 import { getStickyTaxYearClient } from "@/lib/tax-year-cookie";
 
 const RATE_PER_SQ_FT = 5;
@@ -27,21 +29,56 @@ export default function HomeOfficePage() {
   const [method, setMethod] = useState<"simplified" | "regular">("simplified");
   const [squareFeet, setSquareFeet] = useState(150);
   const [saving, setSaving] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [toast, setToast] = useState<{ message: string; kind: "success" | "error" } | null>(null);
 
   // Regular method inputs
-  const [homeValue, setHomeValue] = useState("");
+  const [homeValue, setHomeValue] = useState(0);
   const [businessPct, setBusinessPct] = useState("15");
-  const [utilities, setUtilities] = useState("");
-  const [insurance, setInsurance] = useState("");
-  const [repairs, setRepairs] = useState("");
+  const [utilities, setUtilities] = useState(0);
+  const [insurance, setInsurance] = useState(0);
+  const [repairs, setRepairs] = useState(0);
+
+  const taxYear = getStickyTaxYearClient();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await fetch(`/api/deductions?tax_year=${taxYear}`);
+      if (!res.ok || cancelled) return;
+      const json = await res.json().catch(() => ({}));
+      const list = json.data ?? [];
+      const existing = list.find((d: { type: string }) => d.type === "home_office");
+      const meta = (existing?.metadata ?? null) as Record<string, unknown> | null;
+      if (!existing || !meta || cancelled) return;
+      if (meta.deduction_type === "standard" || meta.deduction_type === "itemized") {
+        setDeductionType(meta.deduction_type);
+      }
+      if (meta.filing_status && typeof meta.filing_status === "string" && meta.filing_status in STANDARD_DEDUCTION) {
+        setFilingStatus(meta.filing_status as FilingStatus);
+      }
+      if (meta.method === "simplified" || meta.method === "regular") {
+        setMethod(meta.method);
+      }
+      if (typeof meta.square_feet === "number" && meta.square_feet >= 0) {
+        setSquareFeet(Math.min(MAX_SQ_FT, Math.round(meta.square_feet)));
+      }
+      if (typeof meta.home_value === "number") setHomeValue(meta.home_value);
+      if (typeof meta.business_pct === "number") setBusinessPct(String(meta.business_pct));
+      if (typeof meta.utilities === "number") setUtilities(meta.utilities);
+      if (typeof meta.insurance === "number") setInsurance(meta.insurance);
+      if (typeof meta.repairs === "number") setRepairs(meta.repairs);
+    })();
+    return () => { cancelled = true; };
+  }, [taxYear]);
 
   const simplifiedDeduction = Math.min(squareFeet, MAX_SQ_FT) * RATE_PER_SQ_FT;
 
   const pct = (parseFloat(businessPct) || 0) / 100;
-  const regularHomeDeduction = (parseFloat(homeValue) || 0) * pct;
-  const regularUtilities = (parseFloat(utilities) || 0) * pct;
-  const regularInsurance = (parseFloat(insurance) || 0) * pct;
-  const regularRepairs = parseFloat(repairs) || 0;
+  const regularHomeDeduction = homeValue * pct;
+  const regularUtilities = utilities * pct;
+  const regularInsurance = insurance * pct;
+  const regularRepairs = repairs;
   const regularDeduction = regularHomeDeduction + regularUtilities + regularInsurance + regularRepairs;
 
   const activeDeduction = method === "simplified" ? simplifiedDeduction : regularDeduction;
@@ -59,7 +96,7 @@ export default function HomeOfficePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "home_office",
-          tax_year: getStickyTaxYearClient(),
+          tax_year: taxYear,
           amount,
           tax_savings: amount * DEFAULT_TAX_RATE,
           metadata: {
@@ -70,34 +107,64 @@ export default function HomeOfficePage() {
               ? { method, square_feet: squareFeet }
               : {
                   method,
-                  home_value: parseFloat(homeValue) || 0,
+                  home_value: homeValue,
                   business_pct: parseFloat(businessPct) || 0,
-                  utilities: parseFloat(utilities) || 0,
-                  insurance: parseFloat(insurance) || 0,
-                  repairs: parseFloat(repairs) || 0,
+                  utilities,
+                  insurance,
+                  repairs,
                 }),
           },
         }),
       });
       if (!res.ok) throw new Error("Failed to save");
-      router.push("/dashboard");
+      setToast({ message: `Home office deduction added for ${taxYear}`, kind: "success" });
+      setTimeout(() => setToast(null), 4000);
+      router.refresh();
     } catch (e) {
       console.error(e);
+      setToast({ message: "Failed to save deduction", kind: "error" });
+      setTimeout(() => setToast(null), 4000);
     } finally {
       setSaving(false);
     }
   }
 
+  async function handleClear() {
+    if (!confirm(`Remove home office deduction for ${taxYear}? This cannot be undone.`)) return;
+    setClearing(true);
+    setToast(null);
+    try {
+      const res = await fetch("/api/deductions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "home_office", tax_year: taxYear }),
+      });
+      if (!res.ok) throw new Error("Failed to clear");
+      setToast({ message: `Home office deduction cleared for ${taxYear}`, kind: "success" });
+      setTimeout(() => setToast(null), 4000);
+      router.refresh();
+    } catch {
+      setToast({ message: "Failed to clear deduction", kind: "error" });
+      setTimeout(() => setToast(null), 4000);
+    } finally {
+      setClearing(false);
+    }
+  }
+
   return (
-    <div className="space-y-8 max-w-xl">
+    <div className="space-y-6 max-w-xl">
       <div>
-        <h1 className="text-3xl text-mono-dark mb-2">Home Office Deduction</h1>
+        <h1 className="text-3xl font-bold text-mono-dark mb-2">Home Office Deduction</h1>
         <p className="text-mono-medium text-sm">
           Choose between the standard deduction or itemized home office deduction
         </p>
       </div>
 
-      <div className="card p-6 space-y-6">
+      <div className="space-y-2">
+        <div>
+          <BackToDeductionsLink>Go Back</BackToDeductionsLink>
+        </div>
+        <div className="card p-6 space-y-6">
         <div>
           <p className="text-sm font-medium text-mono-dark mb-3">Deduction Type</p>
           <div className="flex gap-2">
@@ -260,13 +327,7 @@ export default function HomeOfficePage() {
                     <label className="block text-xs font-medium text-mono-medium mb-1">
                       Annual Home Value / Rent
                     </label>
-                    <input
-                      type="number"
-                      value={homeValue}
-                      onChange={(e) => setHomeValue(e.target.value)}
-                      placeholder="e.g. 24000 (annual rent) or home value"
-                      className={INPUT_CLS}
-                    />
+                    <CurrencyInput value={homeValue} onChange={setHomeValue} min={0} placeholder="e.g. 24,000" className={INPUT_CLS} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-mono-medium mb-1">
@@ -285,37 +346,19 @@ export default function HomeOfficePage() {
                     <label className="block text-xs font-medium text-mono-medium mb-1">
                       Annual Utilities
                     </label>
-                    <input
-                      type="number"
-                      value={utilities}
-                      onChange={(e) => setUtilities(e.target.value)}
-                      placeholder="e.g. 3600"
-                      className={INPUT_CLS}
-                    />
+                    <CurrencyInput value={utilities} onChange={setUtilities} min={0} placeholder="e.g. 3,600" className={INPUT_CLS} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-mono-medium mb-1">
                       Annual Insurance
                     </label>
-                    <input
-                      type="number"
-                      value={insurance}
-                      onChange={(e) => setInsurance(e.target.value)}
-                      placeholder="e.g. 1200"
-                      className={INPUT_CLS}
-                    />
+                    <CurrencyInput value={insurance} onChange={setInsurance} min={0} placeholder="e.g. 1,200" className={INPUT_CLS} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-mono-medium mb-1">
                       Office Repairs (100% deductible)
                     </label>
-                    <input
-                      type="number"
-                      value={repairs}
-                      onChange={(e) => setRepairs(e.target.value)}
-                      placeholder="e.g. 500"
-                      className={INPUT_CLS}
-                    />
+                    <CurrencyInput value={repairs} onChange={setRepairs} min={0} placeholder="e.g. 500" className={INPUT_CLS} />
                   </div>
                 </div>
 
@@ -360,7 +403,29 @@ export default function HomeOfficePage() {
             )}
           </div>
         )}
+
+        <div className="border-t border-bg-tertiary/40 pt-3 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={clearing}
+            className="rounded-full border border-bg-tertiary/60 px-4 py-2 text-sm font-medium text-mono-medium hover:bg-bg-tertiary/40 transition disabled:opacity-50"
+          >
+            {clearing ? "Clearing…" : "Clear deduction"}
+          </button>
+        </div>
       </div>
+      </div>
+
+      {toast && (
+        <div
+          className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded-lg px-4 py-2.5 text-sm shadow-lg ${
+            toast.kind === "success" ? "bg-accent-sage text-white" : "bg-accent-red/90 text-white"
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }

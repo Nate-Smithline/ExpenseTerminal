@@ -4,7 +4,7 @@ import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
-import { deductionPostSchema, parseQueryLimit, parseQueryOffset } from "@/lib/validation/schemas";
+import { deductionPostSchema, deductionDeleteSchema, parseQueryLimit, parseQueryOffset } from "@/lib/validation/schemas";
 
 export async function POST(req: Request) {
   const authClient = await createSupabaseRouteClient();
@@ -55,7 +55,6 @@ export async function POST(req: Request) {
 
   revalidatePath("/dashboard");
   revalidatePath("/deductions/qbi");
-  revalidatePath("/deductions/mileage");
   return NextResponse.json(data);
 }
 
@@ -99,4 +98,53 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({ data: data ?? [], count: count ?? (data?.length ?? 0) });
+}
+
+export async function DELETE(req: Request) {
+  const authClient = await createSupabaseRouteClient();
+  const auth = await requireAuth(authClient);
+  if (!auth.authorized) {
+    return NextResponse.json(auth.body, { status: auth.status });
+  }
+  const userId = auth.userId;
+  const { success: rlOk } = await rateLimitForRequest(req, userId, generalApiLimit);
+  if (!rlOk) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+  const supabase = authClient;
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  const parsed = deductionDeleteSchema.safeParse(body);
+  if (!parsed.success) {
+    const msg = parsed.error.flatten().formErrors[0] ?? "Invalid request body";
+    return NextResponse.json({ error: msg }, { status: 400 });
+  }
+  const { type, tax_year } = parsed.data;
+
+  const { data: deleted, error } = await (supabase as any)
+    .from("deductions")
+    .delete()
+    .eq("user_id", userId)
+    .eq("type", type)
+    .eq("tax_year", tax_year)
+    .select("id");
+
+  if (error) {
+    return NextResponse.json(
+      { error: safeErrorMessage(error.message, "Failed to clear deduction") },
+      { status: 500 }
+    );
+  }
+
+  const count = deleted?.length ?? 0;
+  revalidatePath("/dashboard");
+  revalidatePath("/other-deductions");
+  revalidatePath("/deductions/qbi");
+  revalidatePath("/deductions/mileage");
+  return NextResponse.json({ deleted: count });
 }

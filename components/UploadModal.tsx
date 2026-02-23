@@ -1,9 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Papa from "papaparse";
 import { getStickyTaxYearClient } from "@/lib/tax-year-cookie";
 import ExcelJS from "exceljs";
+
+type DataSource = { id: string; name: string; account_type: string; institution?: string | null };
+const ACCOUNT_TYPES = [
+  { value: "checking", label: "Business Checking" },
+  { value: "credit", label: "Business Credit Card" },
+  { value: "savings", label: "Business Savings" },
+  { value: "other", label: "Other" },
+];
 
 type UploadResult = {
   imported?: number;
@@ -120,10 +128,37 @@ function parseCsvToRows(content: string): ParsedRow[] {
     .filter((r) => r.date && r.vendor && !Number.isNaN(r.amount));
 }
 
-export function UploadModal({ onClose, onCompleted, dataSourceId }: UploadModalProps) {
+export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdProp }: UploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [previewRows, setPreviewRows] = useState<ParsedRow[]>([]);
   const [taxYear, setTaxYear] = useState(new Date().getFullYear());
+
+  const needsDataSourceStep = dataSourceIdProp == null;
+  const [step, setStep] = useState<"choose_source" | "upload">(needsDataSourceStep ? "choose_source" : "upload");
+  const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [dataSourcesLoading, setDataSourcesLoading] = useState(needsDataSourceStep);
+  const [selectedDataSourceId, setSelectedDataSourceId] = useState<string | null>(dataSourceIdProp ?? null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createAccountType, setCreateAccountType] = useState("checking");
+  const [createInstitution, setCreateInstitution] = useState("");
+  const [createSaving, setCreateSaving] = useState(false);
+
+  const effectiveDataSourceId = selectedDataSourceId ?? dataSourceIdProp ?? null;
+
+  const fetchDataSources = useCallback(async () => {
+    const res = await fetch("/api/data-sources");
+    if (!res.ok) return;
+    const body = await res.json();
+    setDataSources(body.data ?? []);
+  }, []);
+
+  useEffect(() => {
+    if (needsDataSourceStep) {
+      setDataSourcesLoading(true);
+      fetchDataSources().finally(() => setDataSourcesLoading(false));
+    }
+  }, [needsDataSourceStep, fetchDataSources]);
 
   useEffect(() => {
     setTaxYear(getStickyTaxYearClient());
@@ -162,6 +197,31 @@ export function UploadModal({ onClose, onCompleted, dataSourceId }: UploadModalP
       if (date && vendor && !Number.isNaN(amount)) rows.push({ date, vendor, amount });
     });
     setPreviewRows(rows.slice(0, 8));
+  }
+
+  async function handleCreateDataSource() {
+    if (!createName.trim()) return;
+    setCreateSaving(true);
+    try {
+      const res = await fetch("/api/data-sources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: createName.trim(), account_type: createAccountType, institution: createInstitution || undefined }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setError((err as { error?: string }).error ?? "Failed to create account");
+        return;
+      }
+      const { data } = await res.json();
+      setDataSources((prev) => [data, ...prev]);
+      setSelectedDataSourceId(data.id);
+      setCreateName("");
+      setCreateInstitution("");
+      setShowCreateForm(false);
+    } finally {
+      setCreateSaving(false);
+    }
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -221,7 +281,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId }: UploadModalP
       const res = await fetch("/api/transactions/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows, taxYear, ...(dataSourceId ? { dataSourceId } : {}) }),
+        body: JSON.stringify({ rows, taxYear, ...(effectiveDataSourceId ? { dataSourceId: effectiveDataSourceId } : {}) }),
       });
 
       const body = (await res.json().catch(() => ({}))) as {
@@ -251,18 +311,131 @@ export function UploadModal({ onClose, onCompleted, dataSourceId }: UploadModalP
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="rounded-xl bg-white shadow-lg max-w-lg w-full mx-4 overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-mono-dark/20 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="upload-modal-title"
+    >
+      <div className="rounded-xl bg-white border border-bg-tertiary/40 shadow-lg max-w-lg w-full mx-4 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-bg-tertiary/40">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-bg-tertiary/40">
           <div>
-            <h2 className="text-sm font-semibold text-mono-dark">Upload Transactions</h2>
-            <p className="text-[11px] text-mono-light mt-0.5">CSV or Excel. AI categorization runs in the background.</p>
+            <h2 id="upload-modal-title" className="text-sm font-semibold text-mono-dark">
+              {step === "choose_source" ? "Choose data source" : "Upload Transactions"}
+            </h2>
+            <p className="text-[11px] text-mono-light mt-0.5">
+              {step === "choose_source"
+                ? "Select an account for this upload, or create one."
+                : "CSV or Excel. AI categorization runs in the background."}
+            </p>
           </div>
-          <button onClick={onClose} className="text-mono-light hover:text-mono-dark text-xs">Close</button>
+          <button
+            onClick={onClose}
+            className="h-8 w-8 rounded-full flex items-center justify-center text-mono-light hover:text-mono-dark hover:bg-bg-secondary"
+            aria-label="Close"
+          >
+            <span className="material-symbols-rounded text-[18px]">close</span>
+          </button>
         </div>
 
-        <div className="px-5 py-4 space-y-4">
+        <div className="px-6 py-5 space-y-4">
+          {step === "choose_source" ? (
+            <>
+              {dataSourcesLoading ? (
+                <p className="text-sm text-mono-medium">Loading accounts…</p>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-mono-medium block">Account</label>
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto border border-bg-tertiary/60 rounded-lg p-1">
+                      {dataSources.map((ds) => (
+                        <button
+                          key={ds.id}
+                          type="button"
+                          onClick={() => setSelectedDataSourceId(ds.id)}
+                          className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition ${
+                            selectedDataSourceId === ds.id
+                              ? "bg-accent-sage/12 text-accent-sage font-medium"
+                              : "text-mono-dark hover:bg-bg-secondary"
+                          }`}
+                        >
+                          {ds.name}
+                          {ds.institution && (
+                            <span className="text-mono-light ml-1">· {ds.institution}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {!showCreateForm ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateForm(true)}
+                      className="text-sm text-mono-medium hover:text-mono-dark underline underline-offset-2"
+                    >
+                      Create new account
+                    </button>
+                  ) : (
+                    <div className="border border-bg-tertiary/60 rounded-lg p-4 space-y-3 bg-bg-secondary/30">
+                      <h3 className="text-xs font-semibold text-mono-dark">New account</h3>
+                      <div>
+                        <label className="text-[11px] font-medium text-mono-medium block mb-1">Account name *</label>
+                        <input
+                          type="text"
+                          value={createName}
+                          onChange={(e) => setCreateName(e.target.value)}
+                          placeholder="e.g. Chase Business Checking"
+                          className="w-full border border-bg-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-medium text-mono-medium block mb-1">Account type *</label>
+                        <select
+                          value={createAccountType}
+                          onChange={(e) => setCreateAccountType(e.target.value)}
+                          className="w-full border border-bg-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                        >
+                          {ACCOUNT_TYPES.map((t) => (
+                            <option key={t.value} value={t.value}>{t.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-medium text-mono-medium block mb-1">Institution</label>
+                        <input
+                          type="text"
+                          value={createInstitution}
+                          onChange={(e) => setCreateInstitution(e.target.value)}
+                          placeholder="e.g. Chase, Amex"
+                          className="w-full border border-bg-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowCreateForm(false)}
+                          className="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-mono-medium hover:bg-bg-secondary"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCreateDataSource}
+                          disabled={createSaving || !createName.trim()}
+                          className="rounded-md bg-accent-sage px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 disabled:opacity-40"
+                        >
+                          {createSaving ? "Creating…" : "Create account"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {error && <p className="text-xs text-red-600">{error}</p>}
+                </>
+              )}
+            </>
+          ) : (
+            <>
           <p className="text-[11px] text-mono-light">
             Each transaction is assigned to the tax year of its date (e.g. 2026 dates → 2026 records).
           </p>
@@ -338,11 +511,26 @@ export function UploadModal({ onClose, onCompleted, dataSourceId }: UploadModalP
           )}
 
           {error && <p className="text-xs text-red-600">{error}</p>}
+            </>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-5 py-3 border-t border-bg-tertiary/40 bg-bg-secondary/30">
-          {stage === "done" ? (
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-bg-tertiary/40 bg-bg-secondary/30">
+          {step === "choose_source" ? (
+            <>
+              <button onClick={onClose} className="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-mono-medium hover:bg-bg-secondary transition">
+                Cancel
+              </button>
+              <button
+                onClick={() => { setStep("upload"); setError(null); }}
+                disabled={!selectedDataSourceId || dataSourcesLoading}
+                className="rounded-md bg-accent-sage px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-40"
+              >
+                Continue
+              </button>
+            </>
+          ) : stage === "done" ? (
             <button onClick={onClose} className="rounded-md bg-accent-sage px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 transition">
               Done
             </button>
@@ -352,7 +540,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId }: UploadModalP
                 Cancel
               </button>
               <button
-                disabled={!file || loading}
+                disabled={!file || loading || (needsDataSourceStep && !effectiveDataSourceId)}
                 onClick={handleImport}
                 className="rounded-md bg-accent-sage px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-40"
               >

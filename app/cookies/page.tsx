@@ -138,7 +138,7 @@ export default function CookiesPage() {
           <section>
             <h2 className="text-lg text-mono-dark mb-3">6. California Residents</h2>
             <p>
-              Under the CCPA/CPRA, certain cookie-derived data may constitute &ldquo;personal information.&rdquo; We do not sell cookie-derived personal information. If you have questions about your California privacy rights in connection with our cookie practices, please see the California Privacy Rights section of our <Link href="/privacy" className="text-accent-navy underline">Privacy Policy</Link> or contact us at <a href="mailto:hello@expenseterminal.com" className="text-accent-navy underline">hello@expenseterminal.com</a>.
+              Under the CCPA/CPRA, certain cookie-derived data may constitute &ldquo;personal information.&rdquo; We do not sell cookie-derived personal information. If you have questions about your California privacy rights in connection with our cookie practices, please see the California Privacy Rights section of our <Link href="/privacy" className="text-accent-navy underline">Privacy Policy</Link> or contact us at <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>.
             </p>
           </section>
 
@@ -165,7 +165,7 @@ export default function CookiesPage() {
               <strong>Smith Global LLC, doing business as ExpenseTerminal</strong>
             </p>
             <p className="mb-1">
-              Email: <a href="mailto:hello@expenseterminal.com" className="text-accent-navy underline">hello@expenseterminal.com</a>
+              Email: <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>
             </p>
             <p>
               Mailing Address: Tenafly, New Jersey 07670

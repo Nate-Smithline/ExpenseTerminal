@@ -38,7 +38,7 @@ export default async function QBIPage() {
     incomeTx?.reduce((sum: number, t: { amount: string }) => sum + Math.abs(Number(t.amount)), 0) ?? 0;
 
   return (
-    <div className="space-y-8 max-w-xl">
+    <div className="space-y-6 max-w-xl">
       <div>
         <h1 className="text-3xl font-bold text-mono-dark mb-2">QBI Deduction</h1>
         <p className="text-mono-medium text-sm">
@@ -46,14 +46,15 @@ export default async function QBIPage() {
         </p>
       </div>
 
-      <QBICalculator
-        totalIncome={totalIncome}
-        currentYear={taxYear}
-        taxRate={taxRate}
-      />
-
-      <div>
-        <BackToDeductionsLink>Back to Deductions</BackToDeductionsLink>
+      <div className="space-y-2">
+        <div>
+          <BackToDeductionsLink>Go Back</BackToDeductionsLink>
+        </div>
+        <QBICalculator
+          totalIncome={totalIncome}
+          currentYear={taxYear}
+          taxRate={taxRate}
+        />
       </div>
     </div>
   );

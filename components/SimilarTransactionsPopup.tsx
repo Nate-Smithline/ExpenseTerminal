@@ -35,11 +35,26 @@ export function SimilarTransactionsPopup({
   applying = false,
 }: SimilarTransactionsPopupProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full mx-4">
-        <h2 className="text-xl font-bold text-mono-dark mb-4">
-          Similar Transactions Found
-        </h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-mono-dark/20 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="similar-transactions-title"
+    >
+      <div className="bg-white rounded-xl border border-bg-tertiary/40 shadow-lg p-8 max-w-md w-full mx-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 id="similar-transactions-title" className="text-xl font-bold text-mono-dark">
+            Similar Transactions Found
+          </h2>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="h-8 w-8 rounded-full flex items-center justify-center text-mono-light hover:text-mono-dark hover:bg-bg-secondary"
+            aria-label="Close"
+          >
+            <span className="material-symbols-rounded text-[18px]">close</span>
+          </button>
+        </div>
 
         <p className="text-mono-medium mb-4">
           We found {transactions.length} more transaction

@@ -3,11 +3,12 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { Database } from "@/lib/types/database";
 import { normalizeVendor } from "@/lib/vendor-matching";
-import { persistTaxYear } from "@/lib/tax-year-cookie";
+import { TaxYearSelector } from "@/components/TaxYearSelector";
 import { UploadModal } from "@/components/UploadModal";
 import { TransactionCard } from "@/components/TransactionCard";
 import type { TransactionUpdate, TransactionCardRef } from "@/components/TransactionCard";
 import { TransactionDetailPanel } from "@/components/TransactionDetailPanel";
+import { SimilarTransactionsPopup } from "@/components/SimilarTransactionsPopup";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
@@ -22,27 +23,81 @@ interface InboxPageClientProps {
 
 async function fetchTransactions(params: Record<string, string>): Promise<Transaction[]> {
   const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`/api/transactions?${qs}`);
+  const url = `/api/transactions?${qs}`;
+  const res = await fetch(url);
+  const body = await res.json().catch(() => ({}));
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c912a5" },
+    body: JSON.stringify({
+      sessionId: "c912a5",
+      runId: "pre-fix",
+      hypothesisId: "H3",
+      location: "InboxPageClient:fetchTransactions",
+      message: "client_fetch_transactions_result",
+      data: { ok: res.ok, status: res.status, dataLength: (body.data ?? []).length },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   if (!res.ok) return [];
-  const body = await res.json();
   return body.data ?? [];
 }
 
 async function fetchCount(params: Record<string, string>): Promise<number> {
   const qs = new URLSearchParams({ ...params, count_only: "true" }).toString();
-  const res = await fetch(`/api/transactions?${qs}`);
+  const url = `/api/transactions?${qs}`;
+  const res = await fetch(url);
+  const body = await res.json().catch(() => ({}));
+  // #region agent log
+  fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c912a5" },
+    body: JSON.stringify({
+      sessionId: "c912a5",
+      runId: "pre-fix",
+      hypothesisId: "H3",
+      location: "InboxPageClient:fetchCount",
+      message: "client_fetch_count_result",
+      data: { ok: res.ok, status: res.status, count: body.count ?? 0 },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
   if (!res.ok) return 0;
-  const body = await res.json();
   return body.count ?? 0;
 }
 
 async function fetchUnanalyzedIds(params: Record<string, string>): Promise<string[]> {
-  const qs = new URLSearchParams({ ...params, analyzed_only: "false", limit: "500" }).toString();
-  const res = await fetch(`/api/transactions?${qs}`);
-  if (!res.ok) return [];
-  const body = await res.json();
-  const data = body.data ?? [];
-  return data.map((t: { id: string }) => t.id);
+  const limit = 1000;
+  let offset = 0;
+  const allIds: string[] = [];
+
+  // Fetch in batches until fewer than `limit` rows are returned
+  // or we hit the offset ceiling enforced by the API.
+  // This ensures we analyze all remaining transactions, not just the first page.
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const qs = new URLSearchParams({
+      ...params,
+      analyzed_only: "false",
+      limit: String(limit),
+      offset: String(offset),
+    }).toString();
+    const res = await fetch(`/api/transactions?${qs}`);
+    if (!res.ok) {
+      throw new Error("Failed to load unanalyzed transactions");
+    }
+    const body = await res.json();
+    const data = (body.data ?? []) as { id: string }[];
+    const batchIds = data.map((t) => t.id);
+    allIds.push(...batchIds);
+    if (batchIds.length < limit) break;
+    offset += limit;
+  }
+
+  return allIds;
 }
 
 export function InboxPageClient({
@@ -64,12 +119,63 @@ export function InboxPageClient({
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [manageTx, setManageTx] = useState<Transaction | null>(null);
   const [bulkAnalyzing, setBulkAnalyzing] = useState(false);
+  const [similarPopup, setSimilarPopup] = useState<{
+    transaction: Transaction;
+    update: TransactionUpdate;
+    similarTransactions: Transaction[];
+  } | null>(null);
+  const [applyingSimilar, setApplyingSimilar] = useState(false);
+
+  const [dismissedDuplicateKeys, setDismissedDuplicateKeys] = useState<Set<string>>(new Set());
 
   const [aiProgress, setAiProgress] = useState<{ completed: number; total: number; current: string } | null>(null);
+  const [aiStalled, setAiStalled] = useState(false);
 
   const cardRefs = useRef<Map<string, TransactionCardRef>>(new Map());
 
+  function duplicateKey(t: Transaction): string {
+    return `${t.date}|${t.amount}|${t.vendor ?? ""}`;
+  }
+
+  const duplicateGroups = (() => {
+    const byKey = new Map<string, Transaction[]>();
+    for (const t of transactions) {
+      const key = duplicateKey(t);
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key)!.push(t);
+    }
+    const groups: Transaction[][] = [];
+    for (const [, group] of byKey) {
+      if (group.length >= 2) {
+        const sorted = [...group].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        );
+        groups.push(sorted);
+      }
+    }
+    return groups;
+  })();
+
+  const visibleDuplicateGroups = duplicateGroups.filter(
+    (group) => group.length >= 2 && !dismissedDuplicateKeys.has(duplicateKey(group[0])),
+  );
+
   const reloadInbox = useCallback(async () => {
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c912a5" },
+      body: JSON.stringify({
+        sessionId: "c912a5",
+        runId: "pre-fix",
+        hypothesisId: "H4",
+        location: "InboxPageClient:reloadInbox_start",
+        message: "reload_inbox_start",
+        data: { selectedYear },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     const [txs, count, unanalyzed] = await Promise.all([
       fetchTransactions({
         tax_year: String(selectedYear),
@@ -89,15 +195,35 @@ export function InboxPageClient({
         analyzed_only: "false",
       }),
     ]);
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c912a5" },
+      body: JSON.stringify({
+        sessionId: "c912a5",
+        runId: "pre-fix",
+        hypothesisId: "H4",
+        location: "InboxPageClient:reloadInbox_done",
+        message: "reload_inbox_done",
+        data: { txsLength: txs.length, count, unanalyzed },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     setTransactions(txs);
     setPendingCount(count);
     setUnanalyzedCount(unanalyzed);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("inbox-count-changed"));
+    }
   }, [selectedYear]);
 
   function runBackgroundAI(txIds: string[]): Promise<{ ok: boolean; error?: string }> {
     if (txIds.length === 0) return Promise.resolve({ ok: true });
 
     setAiProgress({ completed: 0, total: txIds.length, current: "Starting..." });
+    const lastEventAt = { current: Date.now() };
+    const stalledCheckRef = { id: null as ReturnType<typeof setInterval> | null };
 
     return (async () => {
       try {
@@ -111,6 +237,8 @@ export function InboxPageClient({
           const errBody = await res.json().catch(() => ({}));
           const msg = (errBody as { error?: string }).error ?? res.statusText ?? "Analysis failed";
           setAiProgress(null);
+          setAiStalled(false);
+          if (stalledCheckRef.id != null) clearInterval(stalledCheckRef.id);
           setToast(msg);
           setTimeout(() => setToast(null), 5000);
           return { ok: false, error: msg };
@@ -120,10 +248,22 @@ export function InboxPageClient({
         const decoder = new TextDecoder();
         let buffer = "";
 
+        // Stall detection: if no event for 90s, show "taking longer" and offer refresh
+        stalledCheckRef.id = setInterval(() => {
+          if (Date.now() - lastEventAt.current > 90_000) {
+            setAiStalled(true);
+            if (stalledCheckRef.id != null) {
+              clearInterval(stalledCheckRef.id);
+              stalledCheckRef.id = null;
+            }
+          }
+        }, 10_000);
+
         if (reader) {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
+            lastEventAt.current = Date.now();
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n");
             buffer = lines.pop() ?? "";
@@ -133,12 +273,26 @@ export function InboxPageClient({
               try {
                 const event = JSON.parse(line) as Record<string, unknown>;
                 if (event.type === "progress") {
-                  setAiProgress({
-                    completed: (event.completed as number) ?? 0,
-                    total: (event.total as number) ?? txIds.length,
-                    current: (event.current as string) ?? "",
+                  setAiProgress((prev) => {
+                    const completed = (event.completed as number) ?? 0;
+                    const total = (event.total as number) ?? txIds.length;
+                    const current = (event.current as string) ?? "";
+                    return {
+                      completed: prev ? Math.max(prev.completed, completed) : completed,
+                      total,
+                      current,
+                    };
                   });
                 } else if (event.type === "success") {
+                  setAiProgress((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          completed: Math.min(prev.completed + 1, prev.total),
+                          current: prev.current || "Categorizing...",
+                        }
+                      : null,
+                  );
                   setTransactions((prev) =>
                     prev.map((t) =>
                       t.id === event.id
@@ -156,6 +310,11 @@ export function InboxPageClient({
                     ),
                   );
                 } else if (event.type === "done") {
+                  if (stalledCheckRef.id != null) {
+                    clearInterval(stalledCheckRef.id);
+                    stalledCheckRef.id = null;
+                  }
+                  setAiStalled(false);
                   setAiProgress(null);
                   const s = (event.successful as number) ?? 0;
                   const c = (event.cachedCount as number) ?? 0;
@@ -174,9 +333,14 @@ export function InboxPageClient({
             }
           }
         }
+        if (stalledCheckRef.id != null) {
+          clearInterval(stalledCheckRef.id);
+        }
+        setAiStalled(false);
         setAiProgress(null);
         return { ok: true };
       } catch (e) {
+        setAiStalled(false);
         setAiProgress(null);
         const msg = e instanceof Error ? e.message : "AI analysis failed";
         setToast(msg);
@@ -189,20 +353,25 @@ export function InboxPageClient({
   async function runBulkAnalyze() {
     setBulkAnalyzing(true);
     try {
-      const ids = await fetchUnanalyzedIds({
+      const allIds = await fetchUnanalyzedIds({
         tax_year: String(selectedYear),
         status: "pending",
         transaction_type: "expense",
       });
-      if (ids.length === 0) {
+      if (allIds.length === 0) {
         setToast("No transactions need analysis");
         setTimeout(() => setToast(null), 3000);
         return;
       }
-      const result = await runBackgroundAI(ids);
-      if (!result.ok) {
-        setToast(result.error ?? "Bulk analysis failed");
-        setTimeout(() => setToast(null), 5000);
+      const batchSize = 1000;
+      for (let i = 0; i < allIds.length; i += batchSize) {
+        const batch = allIds.slice(i, i + batchSize);
+        const result = await runBackgroundAI(batch);
+        if (!result.ok) {
+          setToast(result.error ?? "Bulk analysis failed");
+          setTimeout(() => setToast(null), 5000);
+          break;
+        }
       }
     } finally {
       setBulkAnalyzing(false);
@@ -252,6 +421,12 @@ export function InboxPageClient({
     reloadInbox().finally(() => setLoading(false));
   }, [reloadInbox]);
 
+  function notifyInboxCountChanged() {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("inbox-count-changed"));
+    }
+  }
+
   function handleSave(
     id: string,
     update: {
@@ -276,14 +451,36 @@ export function InboxPageClient({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id, ...update }),
         });
-        if (!res.ok) throw new Error("Update failed");
+        if (!res.ok) {
+          let message = "Failed to save";
+          try {
+            const body = (await res.json()) as { error?: string };
+            message = body.error ?? res.statusText ?? message;
+          } catch {
+            message = res.statusText || message;
+          }
+          throw new Error(message);
+        }
         if (opts?.applyToSimilar) {
           await handleApplyToAllSimilar(tx, update);
+        } else {
+          const similar = await handleCheckSimilar(tx.vendor, id);
+          if (similar.length > 0) {
+            setSimilarPopup({
+              transaction: tx,
+              update,
+              similarTransactions: similar,
+            });
+          }
         }
-      } catch {
+        notifyInboxCountChanged();
+      } catch (e) {
         setTransactions((prev) => [...prev, tx]);
         setPendingCount((prev) => prev + 1);
-        setToast("Failed to save");
+        const message = e instanceof Error ? e.message : "Failed to save";
+        // eslint-disable-next-line no-console
+        console.warn("[inbox] save failed", { id, update, error: message });
+        setToast(message);
         setTimeout(() => setToast(null), 4000);
       }
     })();
@@ -306,15 +503,28 @@ export function InboxPageClient({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id }),
         });
-        if (!res.ok) throw new Error("Delete failed");
-      } catch {
+        if (!res.ok) {
+          let message = "Failed to delete";
+          try {
+            const body = (await res.json()) as { error?: string };
+            message = body.error ?? res.statusText ?? message;
+          } catch {
+            message = res.statusText || message;
+          }
+          throw new Error(message);
+        }
+        notifyInboxCountChanged();
+      } catch (e) {
         setTransactions((prev) => {
           const next = [...prev];
           next.splice(idx, 0, tx);
           return next;
         });
         setPendingCount((prev) => prev + 1);
-        setToast("Failed to delete");
+        const message = e instanceof Error ? e.message : "Failed to delete";
+        // eslint-disable-next-line no-console
+        console.warn("[inbox] delete failed", { id, error: message });
+        setToast(message);
         setTimeout(() => setToast(null), 4000);
       }
     })();
@@ -335,21 +545,26 @@ export function InboxPageClient({
 
   const handleApplyToAllSimilar = useCallback(
     async (transaction: Transaction, data: TransactionUpdate) => {
+      const isPersonal = data.quick_label === "Personal" || (data.deduction_percent === 0);
+      const quickLabel = isPersonal
+        ? "Personal"
+        : (data.quick_label || data.business_purpose || "Business expense");
       const res = await fetch("/api/transactions/auto-sort", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vendorNormalized: transaction.vendor_normalized ?? normalizeVendor(transaction.vendor),
-          quickLabel: data.quick_label,
-          businessPurpose: data.business_purpose,
+          quickLabel,
+          businessPurpose: isPersonal ? "" : (data.business_purpose ?? ""),
           category: data.category ?? transaction.category ?? undefined,
-          deductionPercent: data.deduction_percent,
           taxYear: selectedYear,
         }),
       });
-      if (!res.ok) throw new Error("Failed to apply to all");
-      const { updatedCount } = await res.json();
-      setToast(`${updatedCount} transaction${updatedCount === 1 ? "" : "s"} auto-sorted`);
+      const body = (await res.json().catch(() => ({}))) as { error?: string; updatedCount?: number };
+      if (!res.ok) {
+        throw new Error(body.error ?? "Failed to apply to all");
+      }
+      setToast(`${body.updatedCount ?? 0} transaction${(body.updatedCount ?? 0) === 1 ? "" : "s"} auto-sorted`);
       setTimeout(() => setToast(null), 4000);
       await reloadInbox();
     },
@@ -401,6 +616,10 @@ export function InboxPageClient({
           e.preventDefault();
           setUploadOpen(true);
           break;
+        case "e":
+          e.preventDefault();
+          if (unanalyzedCount > 0 && !bulkAnalyzing) runBulkAnalyze();
+          break;
         case "Enter":
           e.preventDefault();
           activeCard?.expand();
@@ -426,7 +645,7 @@ export function InboxPageClient({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeIdx, transactions, manageTx]);
+  }, [activeIdx, transactions, manageTx, unanalyzedCount, bulkAnalyzing]);
 
   useEffect(() => {
     if (activeIdx >= transactions.length && transactions.length > 0) {
@@ -446,29 +665,23 @@ export function InboxPageClient({
 
       {/* Controls */}
       <div className="flex items-center gap-3">
-        <select
+        <TaxYearSelector
           value={selectedYear}
-          onChange={(e) => {
-            const y = parseInt(e.target.value, 10);
-            persistTaxYear(y);
-            setSelectedYear(y);
-          }}
-          className="bg-white border border-bg-tertiary/60 rounded-full px-4 py-2 text-sm text-mono-dark"
-        >
-          {[0, 1, 2].map((i) => {
-            const y = new Date().getFullYear() - i;
-            return <option key={y} value={y}>{y}</option>;
-          })}
-        </select>
+          onChange={(y) => setSelectedYear(y)}
+          label="Tax year"
+          compact={false}
+        />
         <button
           onClick={() => setUploadOpen(true)}
           className="btn-primary"
         >
           Upload CSV
+          <kbd className="kbd-hint ml-1.5">u</kbd>
         </button>
         <button
           onClick={() => setShowShortcuts((v) => !v)}
-          className="btn-secondary text-xs"
+          type="button"
+          className="inline-flex items-center text-sm text-mono-medium hover:text-mono-dark"
           title="Keyboard shortcuts"
         >
           <kbd className="kbd-hint mr-1.5">?</kbd> Shortcuts
@@ -477,34 +690,63 @@ export function InboxPageClient({
 
       {/* Background AI progress banner */}
       {aiProgress && (
-        <div className="card px-5 py-3 flex items-center gap-4">
-          <div className="h-2 flex-1 rounded-full bg-bg-tertiary overflow-hidden">
-            <div
-              className="h-full bg-accent-sage transition-all duration-300"
-              style={{ width: `${aiProgress.total > 0 ? Math.round((aiProgress.completed / aiProgress.total) * 100) : 0}%` }}
-            />
+        <div className="card px-5 py-3 flex flex-col gap-3">
+          <div className="flex items-center gap-4">
+            <div className="h-2 flex-1 rounded-full bg-bg-tertiary overflow-hidden">
+              <div
+                className="h-full bg-accent-sage transition-all duration-500 ease-out"
+                style={{ width: `${aiProgress.total > 0 ? Math.round((aiProgress.completed / aiProgress.total) * 100) : 0}%` }}
+              />
+            </div>
+            <span className="text-xs text-accent-sage font-medium shrink-0 tabular-nums">
+              AI: {aiProgress.completed}/{aiProgress.total}
+            </span>
+            <span className="text-xs text-mono-light truncate max-w-[200px]">{aiProgress.current}</span>
           </div>
-          <span className="text-xs text-accent-sage font-medium shrink-0 tabular-nums">
-            AI: {aiProgress.completed}/{aiProgress.total}
-          </span>
-          <span className="text-xs text-mono-light truncate max-w-[200px]">{aiProgress.current}</span>
+          {aiStalled && (
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-bg-tertiary/40">
+              <span className="text-xs text-mono-medium">This is taking longer than usual. You can refresh and run examination again, or keep waiting.</span>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="text-xs font-medium text-accent-sage hover:underline"
+              >
+                Refresh page
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiStalled(false)}
+                className="text-xs font-medium text-mono-medium hover:text-mono-dark"
+              >
+                Keep waiting
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {/* Unanalyzed: need AI before they appear in inbox */}
       {!loading && unanalyzedCount > 0 && !aiProgress && (
-        <div className="card px-5 py-4 flex flex-wrap items-center justify-between gap-3 bg-amber-50 border border-amber-200/60">
-          <p className="text-sm text-amber-900">
-            <strong>{unanalyzedCount}</strong> transaction{unanalyzedCount === 1 ? "" : "s"} need AI categorization before they appear in the inbox.
-          </p>
-          <button
-            type="button"
-            onClick={runBulkAnalyze}
-            disabled={bulkAnalyzing}
-            className="btn-primary text-sm py-2"
-          >
-            {bulkAnalyzing ? "Analyzing…" : "Run AI on all"}
-          </button>
+        <div className="rounded-xl border border-bg-tertiary/40 bg-white p-6 space-y-5">
+          <div>
+            <h3 className="text-sm font-semibold text-mono-dark mb-1">
+              AI categorization needed
+            </h3>
+            <p className="text-sm text-mono-medium">
+              <strong>{unanalyzedCount}</strong> transaction{unanalyzedCount === 1 ? "" : "s"} need examination before they appear in the inbox.
+            </p>
+          </div>
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={runBulkAnalyze}
+              disabled={bulkAnalyzing}
+              className="inline-flex items-center gap-2 rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-40"
+            >
+              {bulkAnalyzing ? "Analyzing…" : "Start examination"}
+              <kbd className="kbd-hint ml-1.5 !bg-white/20 !text-white !border-white/30">e</kbd>
+            </button>
+          </div>
         </div>
       )}
 
@@ -538,6 +780,7 @@ export function InboxPageClient({
               ["s", "Next / Save"],
               ["⌫ / Del", "Delete transaction"],
               ["u", "Upload CSV"],
+              ["e", "Start examination (when unanalyzed)"],
               ["?", "Toggle this help"],
               ["Esc", "Close overlays"],
             ].map(([key, desc]) => (
@@ -549,6 +792,54 @@ export function InboxPageClient({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Possible duplicates */}
+      {!loading && visibleDuplicateGroups.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-mono-dark">Possible duplicates</h3>
+          {visibleDuplicateGroups.map((group) => {
+            const key = duplicateKey(group[0]);
+            const first = group[0];
+            return (
+              <div
+                key={key}
+                className="rounded-xl border border-bg-tertiary/60 bg-white p-4 space-y-3"
+              >
+                <p className="text-xs text-mono-medium">
+                  {group.length} transactions with same date, amount, and vendor
+                </p>
+                <ul className="text-xs text-mono-dark space-y-1">
+                  {group.map((t) => (
+                    <li key={t.id}>
+                      {t.vendor} — {t.date} — ${Number(t.amount).toFixed(2)}
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDelete(first.id);
+                    }}
+                    className="rounded-lg px-3 py-2 text-xs font-medium bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition"
+                  >
+                    Mark as duplicate (remove first)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDismissedDuplicateKeys((prev) => new Set(prev).add(key));
+                    }}
+                    className="rounded-lg px-3 py-2 text-xs font-medium bg-bg-secondary text-mono-medium border border-bg-tertiary hover:bg-bg-tertiary/60 transition"
+                  >
+                    Not a duplicate (keep all)
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -564,7 +855,7 @@ export function InboxPageClient({
           </p>
           <p className="text-sm text-mono-light">
             {unanalyzedCount > 0
-              ? "Run AI on the unanalyzed transactions above to categorize them, or upload a CSV."
+              ? "Start examination above to categorize them, or upload a CSV."
               : "Upload a CSV to get started, or check All Activity for reviewed items."}
           </p>
         </div>
@@ -629,6 +920,32 @@ export function InboxPageClient({
             setManageTx(null);
           }}
           taxRate={taxRate}
+        />
+      )}
+
+      {/* Similar transactions popup (after save without "apply to similar") */}
+      {similarPopup && (
+        <SimilarTransactionsPopup
+          vendor={similarPopup.transaction.vendor}
+          transactions={similarPopup.similarTransactions}
+          quickLabel={similarPopup.update.quick_label ?? ""}
+          businessPurpose={similarPopup.update.business_purpose ?? ""}
+          onCancel={() => setSimilarPopup(null)}
+          onJustThisOne={() => setSimilarPopup(null)}
+          onApplyToAll={async () => {
+            setApplyingSimilar(true);
+            try {
+              await handleApplyToAllSimilar(similarPopup.transaction, similarPopup.update);
+              setSimilarPopup(null);
+            } catch (err) {
+              const message = err instanceof Error ? err.message : "Apply to all failed";
+              setToast(message);
+              setTimeout(() => setToast(null), 5000);
+            } finally {
+              setApplyingSimilar(false);
+            }
+          }}
+          applying={applyingSimilar}
         />
       )}
     </div>

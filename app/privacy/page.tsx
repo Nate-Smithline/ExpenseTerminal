@@ -162,7 +162,7 @@ export default function PrivacyPage() {
               <li><strong>Opt-Out of Sale/Sharing</strong> — We do not sell personal data; if this changes, you will have the right to opt out</li>
             </ul>
             <p className="mb-3">
-              To exercise any of these rights, submit a request to <a href="mailto:hello@expenseterminal.com" className="text-accent-navy underline">hello@expenseterminal.com</a>. We will respond within 30 days (or as required by applicable law). We may need to verify your identity before fulfilling requests.
+              To exercise any of these rights, submit a request to <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>. We will respond within 30 days (or as required by applicable law). We may need to verify your identity before fulfilling requests.
             </p>
             <p>
               You also have the right to lodge a complaint with the applicable data protection supervisory authority in your jurisdiction.
@@ -183,14 +183,14 @@ export default function PrivacyPage() {
               <li><strong>Right to Non-Discrimination</strong> — We will not discriminate against you for exercising your CCPA/CPRA rights</li>
             </ul>
             <p>
-              To submit a CCPA/CPRA request, contact us at <a href="mailto:hello@expenseterminal.com" className="text-accent-navy underline">hello@expenseterminal.com</a> or call (201) 657-6035. We will verify your identity and respond within 45 days.
+              To submit a CCPA/CPRA request, contact us at <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a> or call (201) 657-6035. We will verify your identity and respond within 45 days.
             </p>
           </section>
 
           <section>
             <h2 className="text-lg text-mono-dark mb-3">10. Children&apos;s Privacy</h2>
             <p>
-              The Platform is not directed to individuals under the age of 18. We do not knowingly collect personal information from children. If we become aware that a child under 18 has provided us with personal information without parental consent, we will take steps to delete such information promptly. If you believe we may have collected information from a child, please contact us at <a href="mailto:hello@expenseterminal.com" className="text-accent-navy underline">hello@expenseterminal.com</a>.
+              The Platform is not directed to individuals under the age of 18. We do not knowingly collect personal information from children. If we become aware that a child under 18 has provided us with personal information without parental consent, we will take steps to delete such information promptly. If you believe we may have collected information from a child, please contact us at <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>.
             </p>
           </section>
 
@@ -224,7 +224,7 @@ export default function PrivacyPage() {
               <strong>Smith Global LLC</strong>
             </p>
             <p className="mb-1">
-              Privacy Team: <a href="mailto:hello@expenseterminal.com" className="text-accent-navy underline">hello@expenseterminal.com</a>
+              Privacy Team: <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>
             </p>
             <p>
               Mailing Address: Tenafly, New Jersey 07670

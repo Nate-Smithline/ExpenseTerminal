@@ -282,7 +282,7 @@ export function LandingPage() {
             <Link href="/signup" className="hover:text-white/70 transition-colors">Sign Up</Link>
             <Link href="/terms" className="hover:text-white/70 transition-colors">Terms</Link>
             <Link href="/privacy" className="hover:text-white/70 transition-colors">Privacy</Link>
-            <a href="mailto:hello@expenseterminal.com" className="hover:text-white/70 transition-colors">Contact</a>
+            <a href="mailto:expenseterminal@outlook.com" className="hover:text-white/70 transition-colors">Contact</a>
           </div>
           <p className="text-xs text-white/30">
             &copy; {new Date().getFullYear()} ExpenseTerminal

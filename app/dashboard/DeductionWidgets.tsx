@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CurrencyInput } from "@/components/CurrencyInput";
 
 interface DeductionWidgetsProps {
   currentYear: number;
@@ -11,7 +12,7 @@ const INPUT_CLS =
   "w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none tabular-nums";
 
 export function DeductionWidgets({ currentYear, taxRate }: DeductionWidgetsProps) {
-  const [qbiIncome, setQbiIncome] = useState("");
+  const [qbiIncome, setQbiIncome] = useState(0);
   const [qbiSaving, setQbiSaving] = useState(false);
   const [qbiSaved, setQbiSaved] = useState(false);
 
@@ -23,39 +24,37 @@ export function DeductionWidgets({ currentYear, taxRate }: DeductionWidgetsProps
   const [officeSaving, setOfficeSaving] = useState(false);
   const [officeSaved, setOfficeSaved] = useState(false);
 
-  const [healthPremium, setHealthPremium] = useState("");
+  const [healthPremium, setHealthPremium] = useState(0);
   const [healthSaving, setHealthSaving] = useState(false);
   const [healthSaved, setHealthSaved] = useState(false);
 
-  const [retirementContrib, setRetirementContrib] = useState("");
+  const [retirementContrib, setRetirementContrib] = useState(0);
   const [retirementSaving, setRetirementSaving] = useState(false);
   const [retirementSaved, setRetirementSaved] = useState(false);
 
-  const [eduExpense, setEduExpense] = useState("");
+  const [eduExpense, setEduExpense] = useState(0);
   const [eduSaving, setEduSaving] = useState(false);
   const [eduSaved, setEduSaved] = useState(false);
 
-  const [phoneBill, setPhoneBill] = useState("");
+  const [phoneBill, setPhoneBill] = useState(0);
   const [phonePct, setPhonePct] = useState("50");
   const [phoneSaving, setPhoneSaving] = useState(false);
   const [phoneSaved, setPhoneSaved] = useState(false);
 
-  const [vehicleExpense, setVehicleExpense] = useState("");
+  const [vehicleExpense, setVehicleExpense] = useState(0);
   const [vehiclePct, setVehiclePct] = useState("50");
   const [vehicleSaving, setVehicleSaving] = useState(false);
   const [vehicleSaved, setVehicleSaved] = useState(false);
 
-  const qbiAmount = parseFloat(qbiIncome) > 0 ? parseFloat(qbiIncome) * 0.2 : 0;
+  const qbiAmount = qbiIncome > 0 ? qbiIncome * 0.2 : 0;
   const mileageRate = 0.7;
   const mileageAmount = parseFloat(miles) > 0 ? parseFloat(miles) * mileageRate : 0;
   const officeAmount = Math.min(parseFloat(sqFt) || 0, 300) * 5;
-  const healthAmount = parseFloat(healthPremium) > 0 ? parseFloat(healthPremium) : 0;
-  const retirementAmount = parseFloat(retirementContrib) > 0 ? parseFloat(retirementContrib) : 0;
-  const eduAmount = parseFloat(eduExpense) > 0 ? parseFloat(eduExpense) : 0;
-  const phoneAmount =
-    parseFloat(phoneBill) > 0 ? (parseFloat(phoneBill) * (parseFloat(phonePct) || 0)) / 100 : 0;
-  const vehicleAmount =
-    parseFloat(vehicleExpense) > 0 ? (parseFloat(vehicleExpense) * (parseFloat(vehiclePct) || 0)) / 100 : 0;
+  const healthAmount = healthPremium > 0 ? healthPremium : 0;
+  const retirementAmount = retirementContrib > 0 ? retirementContrib : 0;
+  const eduAmount = eduExpense > 0 ? eduExpense : 0;
+  const phoneAmount = phoneBill > 0 ? (phoneBill * (parseFloat(phonePct) || 0)) / 100 : 0;
+  const vehicleAmount = vehicleExpense > 0 ? (vehicleExpense * (parseFloat(vehiclePct) || 0)) / 100 : 0;
 
   async function saveDeduction(
     type: string,
@@ -134,7 +133,7 @@ export function DeductionWidgets({ currentYear, taxRate }: DeductionWidgetsProps
           </div>
           <div>
             <label className="text-xs font-medium text-mono-medium block mb-1">Net Business Income</label>
-            <input type="number" value={qbiIncome} onChange={(e) => setQbiIncome(e.target.value)} placeholder="e.g. 80000" className={INPUT_CLS} />
+            <CurrencyInput value={qbiIncome} onChange={setQbiIncome} min={0} placeholder="e.g. 80,000" className={INPUT_CLS} />
           </div>
           <ResultBox amount={qbiAmount} />
           <SaveBtn onClick={() => saveDeduction("qbi", qbiAmount, setQbiSaving, setQbiSaved)} disabled={qbiSaving || qbiAmount <= 0} saving={qbiSaving} saved={qbiSaved} label="Save QBI Deduction" />
@@ -176,7 +175,7 @@ export function DeductionWidgets({ currentYear, taxRate }: DeductionWidgetsProps
           </div>
           <div>
             <label className="text-xs font-medium text-mono-medium block mb-1">Annual Premiums Paid</label>
-            <input type="number" value={healthPremium} onChange={(e) => setHealthPremium(e.target.value)} placeholder="e.g. 6000" className={INPUT_CLS} />
+            <CurrencyInput value={healthPremium} onChange={setHealthPremium} min={0} placeholder="e.g. 6,000" className={INPUT_CLS} />
           </div>
           <ResultBox amount={healthAmount} />
           <SaveBtn onClick={() => saveDeduction("health_insurance", healthAmount, setHealthSaving, setHealthSaved)} disabled={healthSaving || healthAmount <= 0} saving={healthSaving} saved={healthSaved} label="Save Health Insurance" />
@@ -190,7 +189,7 @@ export function DeductionWidgets({ currentYear, taxRate }: DeductionWidgetsProps
           </div>
           <div>
             <label className="text-xs font-medium text-mono-medium block mb-1">Annual Contribution</label>
-            <input type="number" value={retirementContrib} onChange={(e) => setRetirementContrib(e.target.value)} placeholder="e.g. 20000" className={INPUT_CLS} />
+            <CurrencyInput value={retirementContrib} onChange={setRetirementContrib} min={0} placeholder="e.g. 20,000" className={INPUT_CLS} />
           </div>
           <ResultBox amount={retirementAmount} />
           <SaveBtn onClick={() => saveDeduction("retirement", retirementAmount, setRetirementSaving, setRetirementSaved)} disabled={retirementSaving || retirementAmount <= 0} saving={retirementSaving} saved={retirementSaved} label="Save Retirement Deduction" />
@@ -204,7 +203,7 @@ export function DeductionWidgets({ currentYear, taxRate }: DeductionWidgetsProps
           </div>
           <div>
             <label className="text-xs font-medium text-mono-medium block mb-1">Education Expenses</label>
-            <input type="number" value={eduExpense} onChange={(e) => setEduExpense(e.target.value)} placeholder="e.g. 2000" className={INPUT_CLS} />
+            <CurrencyInput value={eduExpense} onChange={setEduExpense} min={0} placeholder="e.g. 2,000" className={INPUT_CLS} />
           </div>
           <ResultBox amount={eduAmount} />
           <SaveBtn onClick={() => saveDeduction("education", eduAmount, setEduSaving, setEduSaved)} disabled={eduSaving || eduAmount <= 0} saving={eduSaving} saved={eduSaved} label="Save Education Deduction" />
@@ -218,7 +217,7 @@ export function DeductionWidgets({ currentYear, taxRate }: DeductionWidgetsProps
           </div>
           <div>
             <label className="text-xs font-medium text-mono-medium block mb-1">Annual Bill Total</label>
-            <input type="number" value={phoneBill} onChange={(e) => setPhoneBill(e.target.value)} placeholder="e.g. 2400" className={INPUT_CLS} />
+            <CurrencyInput value={phoneBill} onChange={setPhoneBill} min={0} placeholder="e.g. 2,400" className={INPUT_CLS} />
           </div>
           <div>
             <label className="text-xs font-medium text-mono-medium block mb-1">Business Use %</label>
@@ -236,7 +235,7 @@ export function DeductionWidgets({ currentYear, taxRate }: DeductionWidgetsProps
           </div>
           <div>
             <label className="text-xs font-medium text-mono-medium block mb-1">Total Vehicle Costs</label>
-            <input type="number" value={vehicleExpense} onChange={(e) => setVehicleExpense(e.target.value)} placeholder="e.g. 8000" className={INPUT_CLS} />
+            <CurrencyInput value={vehicleExpense} onChange={setVehicleExpense} min={0} placeholder="e.g. 8,000" className={INPUT_CLS} />
           </div>
           <div>
             <label className="text-xs font-medium text-mono-medium block mb-1">Business Use %</label>

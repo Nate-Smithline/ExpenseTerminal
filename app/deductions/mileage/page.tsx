@@ -35,7 +35,7 @@ export default async function MileagePage() {
   const ratePerMile = MILEAGE_RATE_BY_YEAR[taxYear] ?? MILEAGE_RATE_BY_YEAR[2026];
 
   return (
-    <div className="space-y-8 max-w-xl">
+    <div className="space-y-6 max-w-xl">
       <div>
         <h1 className="text-3xl font-bold text-mono-dark mb-2">Mileage Deduction</h1>
         <p className="text-mono-medium text-sm">
@@ -43,14 +43,15 @@ export default async function MileagePage() {
         </p>
       </div>
 
-      <MileageCalculator
-        currentYear={taxYear}
-        taxRate={taxRate}
-        ratePerMile={ratePerMile}
-      />
-
-      <div>
-        <BackToDeductionsLink>Back to Deductions</BackToDeductionsLink>
+      <div className="space-y-2">
+        <div>
+          <BackToDeductionsLink>Go Back</BackToDeductionsLink>
+        </div>
+        <MileageCalculator
+          currentYear={taxYear}
+          taxRate={taxRate}
+          ratePerMile={ratePerMile}
+        />
       </div>
     </div>
   );
