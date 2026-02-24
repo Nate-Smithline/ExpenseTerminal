@@ -47,12 +47,13 @@ export function TaxFormCard({ title, subtitle, lineBreakdown, transactions, onSe
       return;
     }
     const expiresAt = undoState.expiresAt;
+    const transactionId = undoState.transaction.id;
     function tick() {
       const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
       setUndoSecondsLeft(remaining);
       if (remaining <= 0) {
         setHiddenTransactionIds((prev) =>
-          prev.includes(undoState.transaction.id) ? prev : [...prev, undoState.transaction.id],
+          prev.includes(transactionId) ? prev : [...prev, transactionId],
         );
         setUndoState(null);
       }
