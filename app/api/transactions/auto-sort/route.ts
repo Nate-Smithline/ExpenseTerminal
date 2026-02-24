@@ -56,15 +56,23 @@ export async function POST(req: Request) {
   }
 
   // 2. Update all matching pending transactions
+  const updatePayload: Record<string, unknown> = {
+    quick_label: quickLabel,
+    business_purpose: businessPurpose || null,
+    auto_sort_rule_id: rule.id,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (quickLabel === "Personal") {
+    updatePayload.status = "personal";
+    updatePayload.deduction_percent = 0;
+  } else {
+    updatePayload.status = "auto_sorted";
+  }
+
   const updateQuery = (supabase as any)
     .from("transactions")
-    .update({
-      status: "auto_sorted",
-      quick_label: quickLabel,
-      business_purpose: businessPurpose || null,
-      auto_sort_rule_id: rule.id,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq("user_id", userId)
     .eq("vendor_normalized", vendorNormalized)
     .eq("status", "pending");

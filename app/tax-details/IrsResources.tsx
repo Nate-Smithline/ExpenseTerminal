@@ -144,36 +144,29 @@ export function IrsResources() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   return (
-    <div className="card p-0 overflow-hidden">
-      <div className="bg-gradient-to-r from-[#2d3748] via-[#3f5147] to-[#635a43] px-6 pt-6 pb-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-1">
-              IRS Resources &amp; Filing Guide
-            </h3>
-            <p className="text-xs text-white/80 max-w-xl leading-relaxed">
-              Curated links and plain‑English notes to help you and your tax professional file with confidence.
-            </p>
-          </div>
-          <span className="material-symbols-rounded text-[26px] text-white/70 mt-0.5 hidden md:inline-flex">
-            library_books
-          </span>
+    <div className="card p-6">
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <div>
+          <h3 className="text-lg font-semibold text-mono-dark">
+            IRS Resources &amp; Filing Guide
+          </h3>
+          <p className="text-xs text-mono-light mt-0.5">
+            Short, plain-English answers to common questions, plus links out to the IRS when you need more detail.
+          </p>
         </div>
       </div>
 
-      <div className="px-6 py-5 space-y-3 bg-bg-secondary/40">
-        {RESOURCES.map((section) => {
+      <div className="divide-y divide-bg-tertiary/40">
+        {RESOURCES.map((section, idx) => {
           const isOpen = expanded === section.category;
           return (
-            <div
-              key={section.category}
-              className="border border-bg-tertiary/40 rounded-xl overflow-hidden bg-white/80 backdrop-blur-sm"
-            >
+            <div key={section.category} className="py-3">
               <button
+                type="button"
                 onClick={() => setExpanded(isOpen ? null : section.category)}
-                className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-bg-secondary/60 transition-colors"
+                className="w-full flex items-center justify-between text-left hover:text-mono-dark"
               >
-                <span className="text-sm font-medium text-mono-dark tracking-wide">
+                <span className="text-sm font-medium text-mono-dark">
                   {section.category}
                 </span>
                 <span className="material-symbols-rounded text-[18px] text-mono-light">
@@ -182,26 +175,16 @@ export function IrsResources() {
               </button>
 
               {isOpen && (
-                <div className="px-4 pb-4 space-y-2 animate-in">
+                <div className="mt-2 space-y-2">
                   {section.items.map((item) => {
-                    const Inner = (
-                      <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-bg-secondary/70 transition-colors">
-                        <span className="material-symbols-rounded text-[20px] text-accent-sage/90 mt-0.5 shrink-0">
-                          {item.icon}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-mono-dark">
-                            {item.title}
-                          </p>
-                          <p className="text-xs text-mono-medium mt-0.5 leading-relaxed">
-                            {item.description}
-                          </p>
-                        </div>
-                        {item.url && (
-                          <span className="material-symbols-rounded text-[16px] text-mono-light shrink-0 mt-0.5">
-                            open_in_new
-                          </span>
-                        )}
+                    const Content = (
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium text-mono-dark">
+                          {item.title}
+                        </p>
+                        <p className="text-xs text-mono-medium leading-relaxed">
+                          {item.description}
+                        </p>
                       </div>
                     );
 
@@ -211,12 +194,12 @@ export function IrsResources() {
                         href={item.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block"
+                        className="block text-accent-sage hover:underline"
                       >
-                        {Inner}
+                        {Content}
                       </a>
                     ) : (
-                      <div key={item.title}>{Inner}</div>
+                      <div key={item.title}>{Content}</div>
                     );
                   })}
                 </div>

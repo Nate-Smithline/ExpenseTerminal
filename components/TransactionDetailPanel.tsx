@@ -1,15 +1,39 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Database } from "@/lib/types/database";
+import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
 
-type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
+type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
+
+/** Partial transaction shape from tax details summary (no description, ai_* etc.) */
+export type PartialTransaction = Pick<
+  TransactionRow,
+  "id" | "vendor" | "amount" | "date" | "status" | "transaction_type" | "category" | "schedule_c_line" | "deduction_percent" | "business_purpose" | "quick_label" | "notes" | "is_meal" | "is_travel"
+> & {
+  ai_confidence?: number | null;
+  ai_reasoning?: string | null;
+  description?: string | null;
+  source?: string | null;
+  vendor_normalized?: string | null;
+};
+
+export type TransactionDetailUpdate = {
+  category?: string | null;
+  schedule_c_line?: string | null;
+  deduction_percent?: number | null;
+  business_purpose?: string | null;
+  notes?: string | null;
+};
 
 interface TransactionDetailPanelProps {
-  transaction: Transaction;
+  transaction: TransactionRow | PartialTransaction;
   onClose: () => void;
   onReanalyze?: (id: string) => Promise<void>;
   onMarkPersonal?: () => Promise<void>;
+  /** When set, show editable tax fields and call onSave when user saves */
+  editable?: boolean;
+  onSave?: (id: string, update: TransactionDetailUpdate) => Promise<void>;
   taxRate?: number;
 }
 
@@ -41,14 +65,26 @@ function Tag({ children, variant = "default" }: { children: React.ReactNode; var
   );
 }
 
+const SNAP_POINTS = [0, 25, 50, 75, 100];
+
 export function TransactionDetailPanel({
   transaction,
   onClose,
   onReanalyze,
   onMarkPersonal,
+  editable = false,
+  onSave,
   taxRate = 0.24,
 }: TransactionDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const [editCategory, setEditCategory] = useState(transaction.category ?? "");
+  const [editScheduleLine, setEditScheduleLine] = useState(transaction.schedule_c_line ?? "");
+  const [editDeductionPct, setEditDeductionPct] = useState(transaction.deduction_percent ?? 100);
+  const [editBusinessPurpose, setEditBusinessPurpose] = useState(transaction.business_purpose ?? "");
+  const [editNotes, setEditNotes] = useState(transaction.notes ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const amount = Math.abs(Number(transaction.amount));
   const deductionPct = transaction.deduction_percent ?? 100;
@@ -62,6 +98,34 @@ export function TransactionDetailPanel({
     if (s === "personal") return "red";
     return "default";
   };
+
+  async function handleSaveEdits() {
+    if (!editable || !onSave) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const update: TransactionDetailUpdate = {};
+      if (editCategory !== (transaction.category ?? "")) update.category = editCategory || null;
+      if (editScheduleLine !== (transaction.schedule_c_line ?? "")) update.schedule_c_line = editScheduleLine || null;
+      if (editDeductionPct !== (transaction.deduction_percent ?? 100)) update.deduction_percent = editDeductionPct;
+      if (editBusinessPurpose !== (transaction.business_purpose ?? "")) update.business_purpose = editBusinessPurpose || null;
+      if (editNotes !== (transaction.notes ?? "")) update.notes = editNotes || null;
+      if (Object.keys(update).length === 0) return;
+      await onSave(transaction.id, update);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    setEditCategory(transaction.category ?? "");
+    setEditScheduleLine(transaction.schedule_c_line ?? "");
+    setEditDeductionPct(transaction.deduction_percent ?? 100);
+    setEditBusinessPurpose(transaction.business_purpose ?? "");
+    setEditNotes(transaction.notes ?? "");
+  }, [transaction.id, transaction.category, transaction.schedule_c_line, transaction.deduction_percent, transaction.business_purpose, transaction.notes]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -127,26 +191,76 @@ export function TransactionDetailPanel({
           </PropertyRow>
 
           <PropertyRow label="Category">
-            {transaction.category ? (
+            {editable && onSave ? (
+              <select
+                value={editCategory}
+                onChange={(e) => setEditCategory(e.target.value)}
+                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+              >
+                <option value="">Uncategorized</option>
+                {SCHEDULE_C_LINES.map((l) => (
+                  <option key={l.line} value={l.label}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            ) : transaction.category ? (
               <Tag variant="sage">{transaction.category}</Tag>
             ) : (
               <span className="text-mono-light text-xs">Uncategorized</span>
             )}
           </PropertyRow>
 
-          {transaction.schedule_c_line && (
-            <PropertyRow label="Schedule C Line">
+          <PropertyRow label="Schedule C Line">
+            {editable && onSave ? (
+              <select
+                value={editScheduleLine}
+                onChange={(e) => setEditScheduleLine(e.target.value)}
+                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+              >
+                <option value="">—</option>
+                {SCHEDULE_C_LINES.map((l) => (
+                  <option key={l.line} value={l.line}>
+                    Line {l.line} — {l.label}
+                  </option>
+                ))}
+              </select>
+            ) : transaction.schedule_c_line ? (
               <span className="text-xs">{transaction.schedule_c_line}</span>
-            </PropertyRow>
-          )}
+            ) : (
+              <span className="text-mono-light text-xs">—</span>
+            )}
+          </PropertyRow>
 
           <PropertyRow label="Deduction">
-            <div>
-              <span className="font-semibold tabular-nums">{deductionPct}%</span>
-              <span className="text-xs text-mono-light ml-2">
-                (${deductibleAmount.toFixed(2)} deductible, saves ~${(deductibleAmount * taxRate).toFixed(2)})
-              </span>
-            </div>
+            {editable && onSave ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                {SNAP_POINTS.map((pct) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => setEditDeductionPct(pct)}
+                    className={`rounded px-2 py-1 text-xs font-medium tabular-nums ${
+                      editDeductionPct === pct
+                        ? "bg-accent-sage text-white"
+                        : "border border-bg-tertiary hover:bg-bg-secondary"
+                    }`}
+                  >
+                    {pct}%
+                  </button>
+                ))}
+                <span className="text-xs text-mono-light ml-1">
+                  (${((amount * editDeductionPct) / 100).toFixed(2)} deductible)
+                </span>
+              </div>
+            ) : (
+              <div>
+                <span className="font-semibold tabular-nums">{deductionPct}%</span>
+                <span className="text-xs text-mono-light ml-2">
+                  (${deductibleAmount.toFixed(2)} deductible, saves ~${(deductibleAmount * taxRate).toFixed(2)})
+                </span>
+              </div>
+            )}
           </PropertyRow>
 
           {confPct != null && (
@@ -163,46 +277,83 @@ export function TransactionDetailPanel({
             </PropertyRow>
           )}
 
-          {transaction.ai_reasoning && (
+          {transaction.ai_reasoning != null && transaction.ai_reasoning !== "" && (
             <PropertyRow label="AI Reasoning">
               <p className="text-xs text-mono-medium leading-relaxed">{transaction.ai_reasoning}</p>
             </PropertyRow>
           )}
 
-          {transaction.business_purpose && (
-            <PropertyRow label="Business Purpose">
+          <PropertyRow label="Business Purpose">
+            {editable && onSave ? (
+              <textarea
+                value={editBusinessPurpose}
+                onChange={(e) => setEditBusinessPurpose(e.target.value)}
+                placeholder="Business purpose"
+                rows={2}
+                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white resize-none"
+              />
+            ) : transaction.business_purpose ? (
               <p className="text-xs">{transaction.business_purpose}</p>
-            </PropertyRow>
-          )}
+            ) : (
+              <span className="text-mono-light text-xs">—</span>
+            )}
+          </PropertyRow>
 
-          {transaction.quick_label && (
+          {transaction.quick_label != null && transaction.quick_label !== "" && (
             <PropertyRow label="Label">
               <Tag variant="sage">{transaction.quick_label}</Tag>
             </PropertyRow>
           )}
 
-          {transaction.description && (
+          {transaction.description != null && transaction.description !== "" && (
             <PropertyRow label="Description">
               <p className="text-xs text-mono-medium">{transaction.description}</p>
             </PropertyRow>
           )}
 
-          {transaction.notes && (
-            <PropertyRow label="Notes">
+          <PropertyRow label="Notes">
+            {editable && onSave ? (
+              <textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Notes"
+                rows={2}
+                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white resize-none"
+              />
+            ) : transaction.notes ? (
               <p className="text-xs text-mono-medium">{transaction.notes}</p>
-            </PropertyRow>
-          )}
+            ) : (
+              <span className="text-mono-light text-xs">—</span>
+            )}
+          </PropertyRow>
 
           <PropertyRow label="Source">
             <span className="text-xs text-mono-medium">{transaction.source ?? "CSV Upload"}</span>
           </PropertyRow>
 
-          {transaction.vendor_normalized && (
+          {transaction.vendor_normalized != null && transaction.vendor_normalized !== "" && (
             <PropertyRow label="Vendor Key">
               <span className="text-xs text-mono-light font-mono">{transaction.vendor_normalized}</span>
             </PropertyRow>
           )}
         </div>
+
+        {/* Editable: Save button and error */}
+        {editable && onSave && (
+          <div className="px-6 py-4 border-t border-bg-tertiary/20 space-y-2">
+            {saveError && (
+              <p className="text-xs text-red-600">{saveError}</p>
+            )}
+            <button
+              type="button"
+              onClick={handleSaveEdits}
+              disabled={saving}
+              className="w-full flex items-center justify-center gap-2 rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save tax details"}
+            </button>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="px-6 py-4 border-t border-bg-tertiary/20 space-y-2">

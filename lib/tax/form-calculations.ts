@@ -27,6 +27,9 @@ interface Transaction {
   is_travel: boolean | null;
   deduction_percent: number | null;
   date: string;
+  status?: string | null;
+  quick_label?: string | null;
+  business_purpose?: string | null;
 }
 
 interface Deduction {
@@ -42,6 +45,23 @@ function deductibleAmount(t: Transaction): number {
   const pct = (t.deduction_percent ?? 100) / 100;
   if (t.is_meal) return amt * 0.5 * pct;
   return amt * pct;
+}
+
+export function filterDeductibleTransactions(transactions: Transaction[]): Transaction[] {
+  return transactions.filter((t) => {
+    if (!(t.transaction_type === "expense" || !t.transaction_type)) return false;
+
+    const pct = t.deduction_percent ?? 100;
+    if (pct <= 0) return false;
+
+    const status = (t.status ?? "").toLowerCase();
+    if (status === "personal") return false;
+
+    const label = (t.quick_label ?? "").trim().toLowerCase();
+    if (label === "personal") return false;
+
+    return true;
+  });
 }
 
 /**
@@ -78,7 +98,7 @@ export function calculateTaxSummary(
   deductions: Deduction[],
   taxRate: number = 0.24
 ): TaxSummary {
-  const expenses = transactions.filter((t) => t.transaction_type === "expense" || !t.transaction_type);
+  const expenses = filterDeductibleTransactions(transactions);
   const income = transactions.filter((t) => t.transaction_type === "income");
 
   const grossIncome = income.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);

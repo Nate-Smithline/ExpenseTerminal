@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
-import { calculateTaxSummary, filterByQuarter } from "@/lib/tax/form-calculations";
+import { calculateTaxSummary, filterByQuarter, filterDeductibleTransactions } from "@/lib/tax/form-calculations";
 
 export async function GET(req: Request) {
   const authClient = await createSupabaseRouteClient();
@@ -21,7 +21,8 @@ export async function GET(req: Request) {
   const taxYear = parseInt(searchParams.get("tax_year") || String(new Date().getFullYear()), 10);
   const quarter = searchParams.get("quarter") ? parseInt(searchParams.get("quarter")!, 10) : null;
 
-  const txCols = "id,vendor,amount,date,status,transaction_type,schedule_c_line,category,is_meal,is_travel,deduction_percent";
+  const txCols =
+    "id,vendor,amount,date,status,transaction_type,schedule_c_line,category,is_meal,is_travel,deduction_percent,quick_label,business_purpose,notes";
   const { data: allTransactions } = await (supabase as any)
     .from("transactions")
     .select(txCols)
@@ -63,6 +64,7 @@ export async function GET(req: Request) {
   const taxRate = taxSettings?.tax_rate ? Number(taxSettings.tax_rate) : 0.24;
   const transactions = filterByQuarter(allTransactions ?? [], quarter);
   const summary = calculateTaxSummary(transactions, deductions ?? [], taxRate);
+  const deductibleTransactions = filterDeductibleTransactions(transactions ?? []);
 
   const pendingCount = pendingTx?.length ?? 0;
   const pendingDeductionPotential =
@@ -79,7 +81,8 @@ export async function GET(req: Request) {
       quarter,
       filingType: orgSettings?.filing_type ?? null,
       transactionCount: transactions.length,
-      transactions: transactions,
+      transactions,
+      deductibleTransactions,
       pendingCount,
       pendingDeductionPotential,
     },

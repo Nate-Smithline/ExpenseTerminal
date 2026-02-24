@@ -7,6 +7,7 @@ import { TaxFormCard } from "./TaxFormCard";
 import { CategoryBreakout } from "./CategoryBreakout";
 import { PdfExportModal } from "./PdfExportModal";
 import { IrsResources } from "./IrsResources";
+import { TransactionDetailPanel, type PartialTransaction, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
 import { calculateScheduleSE } from "@/lib/tax/form-calculations";
 import { getFilingTypeConfig } from "@/lib/tax/schedule-c-lines";
 import { TaxYearSelector } from "@/components/TaxYearSelector";
@@ -56,6 +57,7 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<PartialTransaction | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -81,6 +83,49 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
     filingConfig.type === "sole_proprietor" || filingConfig.type === "single_llc";
   const se = data ? calculateScheduleSE(data.netProfit ?? 0) : null;
 
+  const deductibleTxs = data?.deductibleTransactions ?? data?.transactions ?? [];
+
+  function handleSelectTransaction(id: string) {
+    const tx = deductibleTxs.find((t: PartialTransaction) => t.id === id);
+    if (tx) setSelectedTransaction(tx as PartialTransaction);
+  }
+
+  async function handleMoveCategory(id: string, targetCategory: string) {
+    const res = await fetch("/api/transactions/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, category: targetCategory }),
+    });
+    if (!res.ok) throw new Error("Failed to move");
+    await fetchData();
+  }
+
+  async function handleMoveScheduleLine(id: string, targetScheduleLine: string) {
+    const res = await fetch("/api/transactions/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, schedule_c_line: targetScheduleLine }),
+    });
+    if (!res.ok) throw new Error("Failed to move");
+    await fetchData();
+  }
+
+  async function handleSaveTransaction(id: string, update: TransactionDetailUpdate) {
+    const res = await fetch("/api/transactions/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...update }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(body.error ?? "Failed to update");
+    }
+    await fetchData();
+    setSelectedTransaction((prev) =>
+      prev && prev.id === id ? { ...prev, ...update } : prev,
+    );
+  }
+
   return (
     <div className="space-y-8">
       {/* Page header */}
@@ -91,12 +136,6 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
             {filingConfig.label} &middot; {filingConfig.forms.join(", ")}
           </p>
         </div>
-        <button
-          onClick={() => setPdfModalOpen(true)}
-          className="btn-primary"
-        >
-          Export Tax Documents
-        </button>
       </div>
 
       {/* Controls */}
@@ -113,6 +152,20 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
             Showing Q{quarter} only (transactions). Additional deductions are full-year.
           </span>
         )}
+      </div>
+
+      {/* Export callout — compact */}
+      <div className="rounded-lg border border-accent-sage/40 bg-accent-sage/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <p className="text-sm font-medium text-mono-dark">
+          Export tax-ready documents for your preparer
+        </p>
+        <button
+          type="button"
+          onClick={() => setPdfModalOpen(true)}
+          className="btn-primary shrink-0"
+        >
+          Export Tax Documents
+        </button>
       </div>
 
       {data?.pendingCount > 0 && (
@@ -143,30 +196,30 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
       ) : data ? (
         <>
           {/* Key metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="card p-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="card p-5 min-w-0">
               <p className="text-xs text-mono-light mb-1">Gross Income</p>
-              <p className="text-xl font-semibold text-mono-dark tabular-nums">
+              <p className="text-lg sm:text-xl font-semibold text-mono-dark tabular-nums break-words">
                 {formatCurrency(data.grossIncome)}
               </p>
             </div>
-            <div className="card p-5">
+            <div className="card p-5 min-w-0">
               <p className="text-xs text-mono-light mb-1">Total Deductions</p>
-              <p className="text-xl font-semibold text-accent-sage tabular-nums">
+              <p className="text-lg sm:text-xl font-semibold text-accent-sage tabular-nums break-words">
                 {formatCurrency(data.totalExpenses)}
               </p>
             </div>
-            <div className="card p-5">
+            <div className="card p-5 min-w-0">
               <p className="text-xs text-mono-light mb-1">Net Profit</p>
-              <p className="text-xl font-semibold text-mono-dark tabular-nums">
+              <p className="text-lg sm:text-xl font-semibold text-mono-dark tabular-nums break-words">
                 {formatCurrency(data.netProfit)}
               </p>
             </div>
-            <div className="card p-5">
+            <div className="card p-5 min-w-0">
               <p className="text-xs text-mono-light mb-1">
                 {quarter ? `Q${quarter} Est. Payment` : "Quarterly Est. Payment"}
               </p>
-              <p className="text-xl font-semibold text-accent-warm tabular-nums">
+              <p className="text-lg sm:text-xl font-semibold text-accent-warm tabular-nums break-words">
                 {formatCurrency(data.estimatedQuarterlyPayment)}
               </p>
               <p className="text-xs text-mono-light mt-1">
@@ -203,6 +256,12 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
                     {formatCurrency(data.netProfit)}
                   </span>
                 </div>
+                <p className="text-[11px] text-mono-light mt-2 max-w-md">
+                  Total expenses here include both card-sorted business expenses and any additional
+                  deductions you have entered (like QBI, home office, and retirement). That means this
+                  total may be higher than the Schedule C card alone, which only shows expenses that
+                  live directly on Schedule C.
+                </p>
               </div>
               {isScheduleCFiler && se && (
                 <div className="space-y-2">
@@ -235,7 +294,9 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
               title="Schedule C — Profit or Loss"
               subtitle="Form 1040, Line-by-line expense deductions"
               lineBreakdown={data.lineBreakdown ?? {}}
-              transactions={data.transactions ?? []}
+              transactions={data.deductibleTransactions ?? data.transactions ?? []}
+              onSelectTransaction={handleSelectTransaction}
+              onMoveTransaction={handleMoveScheduleLine}
             />
           )}
 
@@ -277,7 +338,9 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
           {/* Category breakout */}
           <CategoryBreakout
             categoryBreakdown={data.categoryBreakdown}
-            transactions={data.transactions ?? []}
+            transactions={data.deductibleTransactions ?? data.transactions ?? []}
+            onSelectTransaction={handleSelectTransaction}
+            onMoveTransaction={handleMoveCategory}
           />
 
           {/* IRS Resources */}
@@ -297,6 +360,17 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
         quarter={quarter}
         filingType={data?.filingType}
       />
+
+      {/* Transaction detail sidebar (from Category Breakout or Schedule C) */}
+      {selectedTransaction && (
+        <TransactionDetailPanel
+          transaction={selectedTransaction}
+          onClose={() => setSelectedTransaction(null)}
+          editable
+          onSave={handleSaveTransaction}
+          taxRate={0.24}
+        />
+      )}
     </div>
   );
 }
