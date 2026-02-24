@@ -60,7 +60,7 @@ export function TaxYearSelector({
           hover:border-accent-sage/40 hover:shadow-sm
           focus:outline-none focus:ring-2 focus:ring-accent-sage/30 focus:ring-offset-1
           ${open ? "border-accent-sage/50 shadow-md ring-2 ring-accent-sage/20" : "border-bg-tertiary/60"}
-          ${compact ? "px-3 py-1.5 text-sm" : "px-4 py-2.5 text-base font-medium"}
+          ${compact ? "px-4 py-1.5 text-xs" : "px-4 py-2.5 text-base font-medium"}
         `}
       >
         <span className="text-mono-dark tabular-nums">{value}</span>

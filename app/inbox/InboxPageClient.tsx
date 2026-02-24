@@ -145,13 +145,39 @@ export function InboxPageClient({
       setUndoSecondsLeft(0);
       return;
     }
+
+    // #region agent log
+    fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Debug-Session-Id": "4318a3",
+      },
+      body: JSON.stringify({
+        sessionId: "4318a3",
+        runId: "pre-fix",
+        hypothesisId: "H1",
+        location: "InboxPageClient:undoEffect",
+        message: "undo_effect_start",
+        data: {
+          hasUndoState: !!undoState,
+          expiresAt: undoState.expiresAt,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+
+    const expiresAt = undoState.expiresAt;
+
     function tick() {
-      const remaining = Math.max(0, Math.ceil((undoState.expiresAt - Date.now()) / 1000));
+      const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
       setUndoSecondsLeft(remaining);
       if (remaining <= 0) {
         setUndoState(null);
       }
     }
+
     tick();
     const id = window.setInterval(tick, 250);
     return () => window.clearInterval(id);

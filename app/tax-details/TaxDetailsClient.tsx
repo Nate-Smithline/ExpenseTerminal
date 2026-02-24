@@ -95,7 +95,7 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
           onClick={() => setPdfModalOpen(true)}
           className="btn-primary"
         >
-          Generate PDF
+          Export Tax Documents
         </button>
       </div>
 
@@ -174,6 +174,9 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
               </p>
             </div>
           </div>
+
+          {/* Disclaimer — for awareness */}
+          <DisclaimerDisclosure />
 
           {/* "How much should I file" summary */}
           <div className="card p-6 border-l-4 border-l-accent-sage">
@@ -276,9 +279,6 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
             categoryBreakdown={data.categoryBreakdown}
             transactions={data.transactions ?? []}
           />
-
-          {/* Disclaimer — for awareness */}
-          <DisclaimerDisclosure />
 
           {/* IRS Resources */}
           <IrsResources />

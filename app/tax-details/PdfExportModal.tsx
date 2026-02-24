@@ -50,31 +50,55 @@ export function PdfExportModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Modal */}
-      <div className="relative card p-8 w-full max-w-md animate-in mx-4">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-mono-dark">Generate PDF</h2>
-          <button
-            onClick={onClose}
-            className="text-mono-light hover:text-mono-medium transition-colors"
-          >
-            <span className="material-symbols-rounded text-[20px]">close</span>
-          </button>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="export-tax-documents-title"
+    >
+      <div className="rounded-xl bg-white shadow-[0_8px_30px_-6px_rgba(0,0,0,0.14)] max-w-[480px] w-full mx-4 overflow-hidden">
+        {/* Header */}
+        <div className="rounded-t-xl bg-[#2d3748] px-6 pt-6 pb-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2
+                id="export-tax-documents-title"
+                className="text-xl font-bold text-white tracking-tight"
+              >
+                Export Tax Documents
+              </h2>
+              <p className="text-sm text-white/80 mt-1.5">
+                Choose which sections to include in your{" "}
+                <span className="font-semibold">{taxYear}</span>
+                {quarter ? (
+                  <>
+                    {" "}
+                    Q{quarter}
+                  </>
+                ) : null}{" "}
+                PDF package.
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="h-8 w-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition shrink-0"
+              aria-label="Close"
+            >
+              <span className="material-symbols-rounded text-[18px]">close</span>
+            </button>
+          </div>
         </div>
 
-        <p className="text-sm text-mono-medium mb-6">
-          Select which sections to include in your {taxYear}
-          {quarter ? ` Q${quarter}` : ""} tax report.
-        </p>
+        {/* Body */}
+        <div className="px-6 py-6 space-y-4">
+          <p className="text-xs text-mono-medium leading-relaxed">
+            These PDFs are designed for{" "}
+            <span className="font-medium">your tax professional</span> or records.
+            They summarize your income, deductions, and categories based on what
+            you&apos;ve tracked in ExpenseTerminal.
+          </p>
 
-        <div className="space-y-3 mb-8">
+          <div className="space-y-3">
           {isScheduleCFiler && (
             <>
               <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-bg-secondary/60 transition-colors">
@@ -85,7 +109,7 @@ export function PdfExportModal({
                   className="w-4 h-4 rounded accent-accent-sage"
                 />
                 <div>
-                  <p className="text-sm font-medium text-mono-dark">Schedule C Summary</p>
+                  <p className="text-sm font-medium text-mono-dark">Schedule C summary (Form 1040)</p>
                   <p className="text-xs text-mono-light">Line-by-line expense breakdown</p>
                 </div>
               </label>
@@ -98,8 +122,8 @@ export function PdfExportModal({
                   className="w-4 h-4 rounded accent-accent-sage"
                 />
                 <div>
-                  <p className="text-sm font-medium text-mono-dark">Schedule SE</p>
-                  <p className="text-xs text-mono-light">Self-employment tax calculation</p>
+                  <p className="text-sm font-medium text-mono-dark">Schedule SE (Self-employment tax)</p>
+                  <p className="text-xs text-mono-light">Shows SE tax and deductible half</p>
                 </div>
               </label>
             </>
@@ -114,21 +138,27 @@ export function PdfExportModal({
             />
             <div>
               <p className="text-sm font-medium text-mono-dark">Category Breakout</p>
-              <p className="text-xs text-mono-light">Expense distribution by category</p>
+              <p className="text-xs text-mono-light">Expense distribution by category for your return</p>
             </div>
           </label>
         </div>
+        </div>
 
-        <div className="flex gap-3">
-          <button onClick={onClose} className="btn-secondary flex-1">
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-bg-tertiary/40">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
+          >
             Cancel
           </button>
           <button
             onClick={handleDownload}
             disabled={loading}
-            className="btn-primary flex-1"
+            className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition disabled:opacity-40"
           >
-            {loading ? "Generating..." : "Download PDF"}
+            {loading ? "Generating…" : "Download tax PDF"}
           </button>
         </div>
       </div>

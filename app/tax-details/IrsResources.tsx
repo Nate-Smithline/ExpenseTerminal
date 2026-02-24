@@ -144,24 +144,36 @@ export function IrsResources() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   return (
-    <div className="card p-6">
-      <h3 className="text-lg font-semibold text-mono-dark mb-1">
-        IRS Resources &amp; Filing Guide
-      </h3>
-      <p className="text-xs text-mono-light mb-5">
-        Everything you need to file your taxes correctly
-      </p>
+    <div className="card p-0 overflow-hidden">
+      <div className="bg-gradient-to-r from-[#2d3748] via-[#3f5147] to-[#635a43] px-6 pt-6 pb-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-1">
+              IRS Resources &amp; Filing Guide
+            </h3>
+            <p className="text-xs text-white/80 max-w-xl leading-relaxed">
+              Curated links and plain‑English notes to help you and your tax professional file with confidence.
+            </p>
+          </div>
+          <span className="material-symbols-rounded text-[26px] text-white/70 mt-0.5 hidden md:inline-flex">
+            library_books
+          </span>
+        </div>
+      </div>
 
-      <div className="space-y-2">
+      <div className="px-6 py-5 space-y-3 bg-bg-secondary/40">
         {RESOURCES.map((section) => {
           const isOpen = expanded === section.category;
           return (
-            <div key={section.category} className="border border-bg-tertiary/30 rounded-xl overflow-hidden">
+            <div
+              key={section.category}
+              className="border border-bg-tertiary/40 rounded-xl overflow-hidden bg-white/80 backdrop-blur-sm"
+            >
               <button
                 onClick={() => setExpanded(isOpen ? null : section.category)}
-                className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-bg-secondary/40 transition-colors"
+                className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-bg-secondary/60 transition-colors"
               >
-                <span className="text-sm font-medium text-mono-dark">
+                <span className="text-sm font-medium text-mono-dark tracking-wide">
                   {section.category}
                 </span>
                 <span className="material-symbols-rounded text-[18px] text-mono-light">
@@ -173,8 +185,8 @@ export function IrsResources() {
                 <div className="px-4 pb-4 space-y-2 animate-in">
                   {section.items.map((item) => {
                     const Inner = (
-                      <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-bg-secondary/60 transition-colors">
-                        <span className="material-symbols-rounded text-[20px] text-accent-sage mt-0.5 shrink-0">
+                      <div className="flex items-start gap-3 p-3 rounded-lg hover:bg-bg-secondary/70 transition-colors">
+                        <span className="material-symbols-rounded text-[20px] text-accent-sage/90 mt-0.5 shrink-0">
                           {item.icon}
                         </span>
                         <div className="flex-1 min-w-0">

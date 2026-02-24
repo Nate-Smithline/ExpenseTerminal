@@ -1,8 +1,12 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
+import { getProfileOnboarding } from "@/lib/profile";
+import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
 import { DEDUCTION_TYPE_CARDS } from "@/lib/deduction-types";
+import { OtherDeductionsHeader } from "./OtherDeductionsHeader";
 
 export default async function OtherDeductionsPage() {
   const supabase = await createSupabaseServerClient();
@@ -10,21 +14,19 @@ export default async function OtherDeductionsPage() {
 
   if (!userId) redirect("/login");
 
-  const currentYear = new Date().getFullYear();
+  const cookieStore = await cookies();
+  const profile = await getProfileOnboarding((supabase as any), userId);
+  const taxYear = getEffectiveTaxYear(cookieStore, profile);
+
   const { data: additionalDeductions } = await (supabase as any)
     .from("deductions")
     .select("type")
     .eq("user_id", userId)
-    .eq("tax_year", currentYear);
+    .eq("tax_year", taxYear);
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-mono-dark mb-2">Other Deductions</h1>
-        <p className="text-mono-medium text-sm">
-          Calculate and track additional tax deductions
-        </p>
-      </div>
+      <OtherDeductionsHeader taxYear={taxYear} />
 
       <div className="card px-6 pt-3 pb-3">
         <ul className="divide-y divide-bg-tertiary/40">
