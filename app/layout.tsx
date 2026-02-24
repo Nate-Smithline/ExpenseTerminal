@@ -18,9 +18,9 @@ export const metadata: Metadata = {
   title: "ExpenseTerminal — Business Deduction Tracker",
   description: "Inbox-first tax deduction tracker for small businesses",
   icons: {
-    icon: "/icon",
-    shortcut: "/icon",
-    apple: "/apple-icon",
+    icon: [{ url: "/icon.png", type: "image/png", sizes: "32x32" }, { url: "/icon.png", type: "image/png", sizes: "192x192" }],
+    shortcut: "/icon.png",
+    apple: "/icon.png",
   },
 };
 
@@ -32,7 +32,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link rel="icon" href="/icon" type="image/png" sizes="32x32" />
+        <link rel="icon" href="/icon.png" type="image/png" sizes="32x32" />
+        <link rel="apple-touch-icon" href="/icon.png" />
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"

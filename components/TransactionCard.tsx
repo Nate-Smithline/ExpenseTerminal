@@ -190,6 +190,9 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
 
     function handleNext() {
       if (step === 1) {
+        if (!selectedLabel && suggestions.length > 0) {
+          handleQuickAction(suggestions[0]);
+        }
         setStep(2);
         return;
       }

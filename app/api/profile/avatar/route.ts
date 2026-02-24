@@ -1,5 +1,6 @@
 import {
   createSupabaseRouteClient,
+  createSupabaseServiceClient,
 } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
@@ -16,7 +17,6 @@ export async function POST(req: Request) {
   if (!rlOk) {
     return Response.json({ error: "Too many requests" }, { status: 429 });
   }
-  const supabase = authClient;
 
   const formData = await req.formData();
   const file = formData.get("avatar") as File | null;
@@ -55,7 +55,10 @@ export async function POST(req: Request) {
     );
   }
 
-  const filePath = `avatars/${userId}.${ext}`;
+  const filePath = `${userId}.${ext}`;
+
+  // Use service-role client so storage upload bypasses RLS (we already validated auth above)
+  const supabase = createSupabaseServiceClient();
 
   const { error: uploadError } = await (supabase as any).storage
     .from("avatars")
@@ -65,18 +68,23 @@ export async function POST(req: Request) {
     return Response.json({ error: safeErrorMessage(uploadError.message, "Failed to upload avatar") }, { status: 500 });
   }
 
-  const { data: urlData } = (supabase as any).storage
-    .from("avatars")
-    .getPublicUrl(filePath);
-
-  const avatarUrl = urlData?.publicUrl
-    ? `${urlData.publicUrl}?t=${Date.now()}`
+  // Build public URL from env so it matches the app's Supabase project (bucket must be public)
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "") ?? "";
+  const avatarUrl = baseUrl
+    ? `${baseUrl}/storage/v1/object/public/avatars/${encodeURIComponent(filePath)}?t=${Date.now()}`
     : null;
 
-  await (supabase as any)
+  const { error: updateError } = await (supabase as any)
     .from("profiles")
     .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
     .eq("id", userId);
+
+  if (updateError) {
+    return Response.json(
+      { error: safeErrorMessage(updateError.message, "Failed to save profile") },
+      { status: 500 }
+    );
+  }
 
   return Response.json({ data: { avatar_url: avatarUrl } });
 }
@@ -92,19 +100,22 @@ export async function DELETE(req: Request) {
   if (!rlOk) {
     return Response.json({ error: "Too many requests" }, { status: 429 });
   }
-  const supabase = authClient;
 
-  const { data: profile } = await (supabase as any)
+  // Use route client for profile read (RLS allows own profile), then service client for storage + update
+  const { data: profile } = await (authClient as any)
     .from("profiles")
     .select("avatar_url")
     .eq("id", userId)
     .single();
 
+  const supabase = createSupabaseServiceClient();
+
   if (profile?.avatar_url) {
     const url = new URL(profile.avatar_url.split("?")[0]);
-    const pathParts = url.pathname.split("/storage/v1/object/public/avatars/");
-    if (pathParts[1]) {
-      await (supabase as any).storage.from("avatars").remove([pathParts[1]]);
+    // Object key is either "userId.ext" or "avatars/userId.ext" depending on when it was uploaded
+    const pathAfterBucket = url.pathname.split("/storage/v1/object/public/avatars/")[1];
+    if (pathAfterBucket) {
+      await (supabase as any).storage.from("avatars").remove([pathAfterBucket]);
     }
   }
 

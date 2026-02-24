@@ -281,6 +281,14 @@ kbd {
   color: var(--color-mono-medium);
   line-height: 1;
 }
+.kbd-hint.opacity-50 {
+  background: rgba(255, 255, 255, 0.5);
+}
+.kbd-hint.kbd-on-primary {
+  border: 1px solid white;
+  background: transparent;
+  color: white;
+}
 
 /* ---- Page headings — display font with generous spacing ---- */
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Database } from "@/lib/types/database";
@@ -18,19 +18,6 @@ const ACCOUNT_TYPES = [
 
 function accountTypeLabel(type: string): string {
   return ACCOUNT_TYPES.find((a) => a.value === type)?.label ?? type;
-}
-
-function accountIconName(type: string): string {
-  switch (type) {
-    case "checking":
-      return "account_balance";
-    case "credit":
-      return "credit_card";
-    case "savings":
-      return "savings";
-    default:
-      return "description";
-  }
 }
 
 function formatCurrency(n: number): string {
@@ -69,6 +56,8 @@ export function DataSourcesClient({
   const [editAccountType, setEditAccountType] = useState("checking");
   const [editInstitution, setEditInstitution] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+
+  const addAccountInputRef = useRef<HTMLInputElement>(null);
 
   async function handleCreate() {
     if (!name.trim()) return;
@@ -128,62 +117,102 @@ export function DataSourcesClient({
     router.refresh();
   }
 
+  const closeAdd = useCallback(() => setShowAdd(false), []);
+  const closeEdit = useCallback(() => setEditSource(null), []);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        if (showAdd) closeAdd();
+        if (editSource) closeEdit();
+      }
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "a" && !showAdd && !editSource) {
+        e.preventDefault();
+        setShowAdd(true);
+      }
+    }
+    if (showAdd || editSource) {
+      document.addEventListener("keydown", onKeyDown);
+      return () => document.removeEventListener("keydown", onKeyDown);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [showAdd, editSource, closeAdd, closeEdit]);
+
+  useEffect(() => {
+    if (showAdd) {
+      const t = setTimeout(() => addAccountInputRef.current?.focus(), 0);
+      return () => clearTimeout(t);
+    }
+  }, [showAdd]);
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-mono-dark">Data Sources</h1>
           <p className="text-sm text-mono-medium mt-1">
-            Financial accounts that feed into your transactions
+            Accounts you upload transactions from
           </p>
         </div>
         <button onClick={() => setShowAdd(true)} className="btn-primary">
-          Add Account
+          <kbd className="kbd-hint kbd-on-primary mr-2.5">a</kbd>
+          New Source
         </button>
       </div>
 
       {/* Add Account Modal */}
       {showAdd && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-mono-dark/20 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-labelledby="add-account-title"
         >
-          <div className="rounded-xl bg-white border border-bg-tertiary/40 shadow-lg max-w-md w-full mx-4 overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-bg-tertiary/40">
-              <h2 id="add-account-title" className="text-sm font-semibold text-mono-dark">
-                New Account
-              </h2>
-              <button
-                onClick={() => setShowAdd(false)}
-                className="h-8 w-8 rounded-full flex items-center justify-center text-mono-light hover:text-mono-dark hover:bg-bg-secondary"
-                aria-label="Close"
-              >
-                <span className="material-symbols-rounded text-[18px]">close</span>
-              </button>
+          <div className="rounded-xl bg-white shadow-[0_8px_30px_-6px_rgba(0,0,0,0.14)] max-w-[500px] w-full mx-4 overflow-hidden">
+            <div className="rounded-t-xl bg-[#2d3748] px-6 pt-6 pb-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 id="add-account-title" className="text-xl font-bold text-white tracking-tight">
+                    New Source
+                  </h2>
+                  <p className="text-sm text-white/80 mt-1.5 leading-relaxed">
+                    Create a financial account to upload transaction CSVs and track income, expenses, and savings.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAdd(false)}
+                  className="h-8 w-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition shrink-0"
+                  aria-label="Close"
+                >
+                  <span className="material-symbols-rounded text-[18px]">close</span>
+                </button>
+              </div>
             </div>
-            <div className="px-6 py-5 space-y-4">
+            <div className="px-6 py-6 space-y-5">
               <div>
-                <label className="text-xs font-medium text-mono-medium block mb-1">
+                <label className="text-sm font-medium text-mono-dark block mb-2">
                   Account Name *
                 </label>
                 <input
+                  ref={addAccountInputRef}
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Chase Business Checking"
-                  className="w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                  className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white placeholder:text-mono-light focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-mono-medium block mb-1">
+                <label className="text-sm font-medium text-mono-dark block mb-2">
                   Account Type *
                 </label>
                 <select
                   value={accountType}
                   onChange={(e) => setAccountType(e.target.value)}
-                  className="w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                  className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
                 >
                   {ACCOUNT_TYPES.map((t) => (
                     <option key={t.value} value={t.value}>
@@ -193,7 +222,7 @@ export function DataSourcesClient({
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium text-mono-medium block mb-1">
+                <label className="text-sm font-medium text-mono-dark block mb-2">
                   Institution
                 </label>
                 <input
@@ -201,24 +230,24 @@ export function DataSourcesClient({
                   value={institution}
                   onChange={(e) => setInstitution(e.target.value)}
                   placeholder="e.g. Chase, Amex"
-                  className="w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                  className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white placeholder:text-mono-light focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 px-6 py-4 border-t border-bg-tertiary/40 bg-bg-secondary/30">
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-bg-tertiary/40">
               <button
                 onClick={() => setShowAdd(false)}
                 disabled={saving}
-                className="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-mono-medium hover:bg-bg-secondary transition disabled:opacity-40"
+                className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCreate}
                 disabled={saving || !name.trim()}
-                className="rounded-md bg-accent-sage px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-40"
+                className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition disabled:opacity-40"
               >
-                {saving ? "Creating..." : "Create Account"}
+                {saving ? "Creating..." : "Create source"}
               </button>
             </div>
           </div>
@@ -228,27 +257,34 @@ export function DataSourcesClient({
       {/* Edit Account Modal */}
       {editSource && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-mono-dark/20 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-labelledby="edit-account-title"
         >
-          <div className="rounded-xl bg-white border border-bg-tertiary/40 shadow-lg max-w-md w-full mx-4 overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-bg-tertiary/40">
-              <h2 id="edit-account-title" className="text-sm font-semibold text-mono-dark">
-                Edit Account
-              </h2>
-              <button
-                onClick={() => setEditSource(null)}
-                className="h-8 w-8 rounded-full flex items-center justify-center text-mono-light hover:text-mono-dark hover:bg-bg-secondary"
-                aria-label="Close"
-              >
-                <span className="material-symbols-rounded text-[18px]">close</span>
-              </button>
+          <div className="rounded-xl bg-white shadow-[0_8px_30px_-6px_rgba(0,0,0,0.14)] max-w-[500px] w-full mx-4 overflow-hidden">
+            <div className="rounded-t-xl bg-[#2d3748] px-6 pt-6 pb-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 id="edit-account-title" className="text-xl font-bold text-white tracking-tight">
+                    Edit Account
+                  </h2>
+                  <p className="text-sm text-white/80 mt-1.5">
+                    Update account details below.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setEditSource(null)}
+                  className="h-8 w-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition shrink-0"
+                  aria-label="Close"
+                >
+                  <span className="material-symbols-rounded text-[18px]">close</span>
+                </button>
+              </div>
             </div>
-            <div className="px-6 py-5 space-y-4">
+            <div className="px-6 py-6 space-y-5">
               <div>
-                <label className="text-xs font-medium text-mono-medium block mb-1">
+                <label className="text-sm font-medium text-mono-dark block mb-2">
                   Account Name *
                 </label>
                 <input
@@ -256,17 +292,17 @@ export function DataSourcesClient({
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
                   placeholder="e.g. Chase Business Checking"
-                  className="w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                  className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white placeholder:text-mono-light focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-mono-medium block mb-1">
+                <label className="text-sm font-medium text-mono-dark block mb-2">
                   Account Type *
                 </label>
                 <select
                   value={editAccountType}
                   onChange={(e) => setEditAccountType(e.target.value)}
-                  className="w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                  className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
                 >
                   {ACCOUNT_TYPES.map((t) => (
                     <option key={t.value} value={t.value}>
@@ -276,7 +312,7 @@ export function DataSourcesClient({
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium text-mono-medium block mb-1">
+                <label className="text-sm font-medium text-mono-dark block mb-2">
                   Institution
                 </label>
                 <input
@@ -284,22 +320,22 @@ export function DataSourcesClient({
                   value={editInstitution}
                   onChange={(e) => setEditInstitution(e.target.value)}
                   placeholder="e.g. Chase, Amex"
-                  className="w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                  className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white placeholder:text-mono-light focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 px-6 py-4 border-t border-bg-tertiary/40 bg-bg-secondary/30">
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-bg-tertiary/40">
               <button
                 onClick={() => setEditSource(null)}
                 disabled={editSaving}
-                className="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-mono-medium hover:bg-bg-secondary transition disabled:opacity-40"
+                className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveEdit}
                 disabled={editSaving || !editName.trim()}
-                className="rounded-md bg-accent-sage px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-40"
+                className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition disabled:opacity-40"
               >
                 {editSaving ? "Saving…" : "Save"}
               </button>
@@ -318,89 +354,76 @@ export function DataSourcesClient({
       )}
 
       {sources.length > 0 && (
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-bg-secondary/60 border-b border-bg-tertiary/40">
-                <tr>
-                  <th className="text-left py-3 px-4 font-medium text-mono-medium">Account</th>
-                  <th className="text-right py-3 px-4 font-medium text-mono-medium">Transactions</th>
-                  <th className="text-right py-3 px-4 font-medium text-mono-medium">Income</th>
-                  <th className="text-right py-3 px-4 font-medium text-mono-medium">Expenses</th>
-                  <th className="text-right py-3 px-4 font-medium text-mono-medium">% Reviewed</th>
-                  <th className="text-right py-3 px-4 font-medium text-mono-medium">Est. Savings</th>
-                  <th className="text-right py-3 px-4 font-medium text-mono-medium w-48">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-bg-tertiary/30">
-                {sources.map((source) => {
-                  const s = stats[source.id] ?? {
-                    transactionCount: 0,
-                    totalIncome: 0,
-                    totalExpenses: 0,
-                    pctReviewed: 0,
-                    totalSavings: 0,
-                  };
-                  return (
-                    <tr key={source.id} className="hover:bg-bg-secondary/30 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          <span
-                            className="material-symbols-rounded text-[22px] text-accent-sage shrink-0"
-                            aria-hidden
-                          >
-                            {accountIconName(source.account_type)}
-                          </span>
-                          <div>
-                            <p className="font-medium text-mono-dark">{source.name}</p>
-                            <p className="text-xs text-mono-light">
-                              {accountTypeLabel(source.account_type)}
-                              {source.institution && ` · ${source.institution}`}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-right tabular-nums text-mono-medium">
-                        {s.transactionCount}
-                      </td>
-                      <td className="py-3 px-4 text-right tabular-nums text-mono-medium text-success">
-                        {formatCurrency(s.totalIncome)}
-                      </td>
-                      <td className="py-3 px-4 text-right tabular-nums text-mono-medium">
-                        {formatCurrency(s.totalExpenses)}
-                      </td>
-                      <td className="py-3 px-4 text-right tabular-nums text-mono-medium">
-                        {s.pctReviewed}%
-                      </td>
-                      <td className="py-3 px-4 text-right tabular-nums font-medium text-accent-sage">
-                        {formatCurrency(s.totalSavings)}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => openEdit(source)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-bg-tertiary/60 px-2.5 py-1.5 text-xs font-medium text-mono-medium hover:bg-bg-secondary/60 transition"
-                            aria-label="Edit account"
-                          >
-                            <span className="material-symbols-rounded text-[16px]">edit</span>
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => setUploadSourceId(source.id)}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-accent-sage/12 text-accent-sage border border-accent-sage/30 px-2.5 py-1.5 text-xs font-medium hover:bg-accent-sage/20 transition"
-                          >
-                            <span className="material-symbols-rounded text-[16px]">upload_file</span>
-                            Upload CSV
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <ul className="space-y-4">
+          {sources.map((source) => {
+            const s = stats[source.id] ?? {
+              transactionCount: 0,
+              totalIncome: 0,
+              totalExpenses: 0,
+              pctReviewed: 0,
+              totalSavings: 0,
+            };
+            return (
+              <li key={source.id} className="card overflow-hidden">
+                <div className="p-4">
+                  <div>
+                    <p className="text-xs font-medium text-mono-light uppercase tracking-wide">
+                      {accountTypeLabel(source.account_type)}
+                    </p>
+                    <p className="text-lg font-semibold text-mono-dark">{source.name}</p>
+                    {source.institution && (
+                      <p className="text-sm text-mono-light">{source.institution}</p>
+                    )}
+                  </div>
+                  {s.transactionCount > 0 && (
+                    <>
+                  <div className="mt-3">
+                    <p className="text-xs text-mono-light mb-1.5">
+                      <span className="tabular-nums font-medium text-mono-dark">{s.transactionCount}</span>
+                      {" transactions"}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-accent-sage transition-all duration-300"
+                          style={{ width: `${Math.min(100, Math.max(0, s.pctReviewed))}%` }}
+                        />
+                      </div>
+                      <span className="text-xs tabular-nums font-medium text-mono-medium shrink-0">
+                        {s.pctReviewed}% reviewed
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <p className="text-xs text-mono-light">Est. savings</p>
+                    <p className="text-base tabular-nums font-semibold text-accent-sage">
+                      {formatCurrency(s.totalSavings)}
+                    </p>
+                  </div>
+                    </>
+                  )}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setUploadSourceId(source.id)}
+                      className="inline-flex items-center gap-2 rounded-md bg-accent-terracotta px-3 py-2 text-sm font-medium text-white hover:bg-accent-terracotta-dark transition"
+                    >
+                      <span className="material-symbols-rounded text-[6px]">upload_file</span>
+                      Upload CSV
+                    </button>
+                    <button
+                      onClick={() => openEdit(source)}
+                      className="inline-flex items-center gap-2 rounded-md border border-bg-tertiary/60 px-3 py-2 text-sm font-medium text-mono-medium hover:bg-bg-secondary/60 transition"
+                      aria-label="Edit account"
+                    >
+                      <span className="material-symbols-rounded text-[6px]">edit</span>
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
 
       {toast && (

@@ -17,19 +17,59 @@ const mainNav = [
 
 const bottomNav = [
   { href: "/activity", label: "All Activity", icon: "history" },
-  { href: "/org-profile", label: "Org Profile", icon: "settings" },
   { href: "/other-deductions", label: "Other Deductions", icon: "calculate" },
 ];
+
+function getGreeting(profile: { name_prefix?: string | null; first_name?: string | null; last_name?: string | null } | null): string {
+  if (!profile) return "Hi";
+  const { name_prefix, first_name, last_name } = profile;
+  const prefix = (name_prefix ?? "").trim();
+  const first = (first_name ?? "").trim();
+  const last = (last_name ?? "").trim();
+  if (prefix && last) return `Hi ${prefix} ${last}`;
+  if (prefix && first) return `Hi ${prefix} ${first}`;
+  if (prefix) return `Hi ${prefix}`;
+  if (first) return `Hi ${first}`;
+  if (last) return `Hi ${last}`;
+  return "Hi";
+}
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [profileOpen, setProfileOpen] = useState(false);
   const [inboxCount, setInboxCount] = useState<number | null>(null);
+  const [profile, setProfile] = useState<{ name_prefix?: string | null; first_name?: string | null; last_name?: string | null } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
+
+  const greeting = getGreeting(profile);
+
+  const loadProfile = useCallback(() => {
+    fetch("/api/profile")
+      .then((r) => r.ok ? r.json() : null)
+      .then((body) => setProfile(body?.data ?? null))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  useEffect(() => {
+    function handleProfileUpdated(e: Event) {
+      const ev = e as CustomEvent<{ name_prefix?: string | null; first_name?: string | null; last_name?: string | null }>;
+      if (ev.detail) {
+        setProfile((prev) => ({ ...(prev ?? {}), ...ev.detail }));
+      } else {
+        loadProfile();
+      }
+    }
+    window.addEventListener("profile-updated", handleProfileUpdated);
+    return () => window.removeEventListener("profile-updated", handleProfileUpdated);
+  }, [loadProfile]);
 
   const loadInboxCount = useCallback(() => {
     const year = getStickyTaxYearClient();
@@ -72,18 +112,20 @@ export function Sidebar() {
 
   return (
     <aside className="sticky top-0 h-screen w-[260px] shrink-0 bg-bg-secondary flex flex-col">
-      {/* Profile dropdown */}
+      {/* Profile dropdown — left align "Hi" with nav icons (px-5 + pl-3 = same as nav link content) */}
       <div className="px-5 pt-6 pb-4 relative" ref={dropdownRef}>
         <button
-          onClick={() => setProfileOpen((v) => !v)}
-          className="flex items-center gap-2.5 w-full text-left hover:opacity-80 transition-opacity"
+          onClick={() => {
+            setProfileOpen((v) => !v);
+            if (!profileOpen) loadProfile();
+          }}
+          className="w-full text-left rounded-lg py-2 pl-3 pr-2 hover:bg-bg-tertiary/20 transition-colors"
         >
-          <div className="h-9 w-9 rounded-full bg-accent-sage/10 flex items-center justify-center">
-            <span className="text-xs font-semibold text-accent-sage">NS</span>
-          </div>
-          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-            <span className="text-sm font-medium text-mono-dark truncate">Hi Nathan</span>
-            <span className="material-symbols-rounded text-[14px] text-mono-light">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <span className="font-display text-lg text-mono-dark tracking-tight truncate">
+              {greeting}
+            </span>
+            <span className="material-symbols-rounded text-[18px] text-mono-light shrink-0">
               {profileOpen ? "expand_less" : "expand_more"}
             </span>
           </div>

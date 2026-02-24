@@ -126,12 +126,36 @@ export function InboxPageClient({
   } | null>(null);
   const [applyingSimilar, setApplyingSimilar] = useState(false);
 
+  const [undoState, setUndoState] = useState<{
+    id: string;
+    previous: Transaction;
+    expiresAt: number;
+  } | null>(null);
+  const [undoSecondsLeft, setUndoSecondsLeft] = useState(0);
+
   const [dismissedDuplicateKeys, setDismissedDuplicateKeys] = useState<Set<string>>(new Set());
 
   const [aiProgress, setAiProgress] = useState<{ completed: number; total: number; current: string } | null>(null);
   const [aiStalled, setAiStalled] = useState(false);
 
   const cardRefs = useRef<Map<string, TransactionCardRef>>(new Map());
+
+  useEffect(() => {
+    if (!undoState) {
+      setUndoSecondsLeft(0);
+      return;
+    }
+    function tick() {
+      const remaining = Math.max(0, Math.ceil((undoState.expiresAt - Date.now()) / 1000));
+      setUndoSecondsLeft(remaining);
+      if (remaining <= 0) {
+        setUndoState(null);
+      }
+    }
+    tick();
+    const id = window.setInterval(tick, 250);
+    return () => window.clearInterval(id);
+  }, [undoState]);
 
   function duplicateKey(t: Transaction): string {
     return `${t.date}|${t.amount}|${t.vendor ?? ""}`;
@@ -442,6 +466,13 @@ export function InboxPageClient({
   ) {
     const tx = transactions.find((t) => t.id === id);
     if (!tx) return;
+
+    // Set undo window for this save (5 seconds, last transaction only)
+    setUndoState({
+      id,
+      previous: tx,
+      expiresAt: Date.now() + 5000,
+    });
     setTransactions((prev) => prev.filter((t) => t.id !== id));
     setPendingCount((prev) => Math.max(prev - 1, 0));
     (async () => {
@@ -475,6 +506,7 @@ export function InboxPageClient({
         }
         notifyInboxCountChanged();
       } catch (e) {
+        setUndoState(null);
         setTransactions((prev) => [...prev, tx]);
         setPendingCount((prev) => prev + 1);
         const message = e instanceof Error ? e.message : "Failed to save";
@@ -571,6 +603,49 @@ export function InboxPageClient({
     [selectedYear, reloadInbox],
   );
 
+  const handleUndoLast = useCallback(async () => {
+    if (!undoState) return;
+    const { previous, id } = undoState;
+    setUndoState(null);
+
+    setTransactions((prev) => [previous, ...prev]);
+    setPendingCount((prev) => prev + 1);
+
+    try {
+      const body: Record<string, unknown> = { id };
+      if (previous.quick_label != null) body.quick_label = previous.quick_label;
+      if (previous.business_purpose != null) body.business_purpose = previous.business_purpose;
+      if (previous.notes != null) body.notes = previous.notes;
+      if (previous.status != null) body.status = previous.status;
+      if (previous.deduction_percent != null) body.deduction_percent = previous.deduction_percent;
+      if (previous.category !== undefined) body.category = previous.category ?? null;
+      if (previous.schedule_c_line !== undefined) body.schedule_c_line = previous.schedule_c_line ?? null;
+
+      const res = await fetch("/api/transactions/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        let message = "Failed to undo";
+        try {
+          const body = (await res.json()) as { error?: string };
+          message = body.error ?? res.statusText ?? message;
+        } catch {
+          // ignore
+        }
+        throw new Error(message);
+      }
+      notifyInboxCountChanged();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to undo";
+      // eslint-disable-next-line no-console
+      console.warn("[inbox] undo failed", { id, error: message });
+      setToast(message);
+      setTimeout(() => setToast(null), 4000);
+    }
+  }, [undoState, notifyInboxCountChanged, setTransactions, setPendingCount]);
+
   // Keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -607,6 +682,12 @@ export function InboxPageClient({
         case "s":
           e.preventDefault();
           activeCard?.save();
+          break;
+        case "z":
+          if (undoState) {
+            e.preventDefault();
+            void handleUndoLast();
+          }
           break;
         case "d":
           e.preventDefault();
@@ -645,7 +726,7 @@ export function InboxPageClient({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeIdx, transactions, manageTx, unanalyzedCount, bulkAnalyzing]);
+  }, [activeIdx, transactions, manageTx, unanalyzedCount, bulkAnalyzing, undoState, handleUndoLast]);
 
   useEffect(() => {
     if (activeIdx >= transactions.length && transactions.length > 0) {
@@ -750,12 +831,35 @@ export function InboxPageClient({
         </div>
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div className="rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white">
-          {toast}
-        </div>
-      )}
+      {/* Undo + Toast */}
+      <div className="space-y-3">
+        {undoState && (
+          <div className="flex items-center justify-between rounded-lg bg-mono-dark px-4 py-2.5 text-sm text-white">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+              <span>Last sort saved.</span>
+              {undoSecondsLeft > 0 && (
+                <span className="text-white/70">
+                  Undo available for {undoSecondsLeft}s.
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleUndoLast()}
+              className="inline-flex items-center gap-1 rounded-full border border-white/40 px-3 py-1.5 text-xs font-semibold hover:bg-white/10 transition"
+            >
+              Undo
+              <kbd className="kbd-hint kbd-on-primary ml-1">z</kbd>
+            </button>
+          </div>
+        )}
+
+        {toast && (
+          <div className="rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white">
+            {toast}
+          </div>
+        )}
+      </div>
 
       {/* Keyboard shortcut overlay */}
       {showShortcuts && (
@@ -778,6 +882,7 @@ export function InboxPageClient({
               ["w", "Write in purpose"],
               ["d", "Cycle deduction %"],
               ["s", "Next / Save"],
+              ["z", "Undo last sort (5s)"],
               ["⌫ / Del", "Delete transaction"],
               ["u", "Upload CSV"],
               ["e", "Start examination (when unanalyzed)"],
@@ -930,6 +1035,7 @@ export function InboxPageClient({
           transactions={similarPopup.similarTransactions}
           quickLabel={similarPopup.update.quick_label ?? ""}
           businessPurpose={similarPopup.update.business_purpose ?? ""}
+          deductionPercent={similarPopup.update.deduction_percent ?? null}
           onCancel={() => setSimilarPopup(null)}
           onJustThisOne={() => setSimilarPopup(null)}
           onApplyToAll={async () => {

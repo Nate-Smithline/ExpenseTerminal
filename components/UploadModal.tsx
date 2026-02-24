@@ -163,10 +163,33 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
   useEffect(() => {
     setTaxYear(getStickyTaxYearClient());
   }, []);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState<"idle" | "parsing" | "uploading" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
   const [rowCount, setRowCount] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+
+  async function setFileAndParse(f: File) {
+    setFile(f);
+    setError(null);
+    const ext = f.name.toLowerCase().split(".").pop();
+    if (ext === "csv") {
+      parseCsv(await f.text());
+    } else if (ext === "xlsx" || ext === "xls") {
+      await parseExcel(f);
+    } else {
+      setError("Unsupported file type. Upload CSV or Excel.");
+    }
+  }
 
   function parseCsv(content: string) {
     setPreviewRows(parseCsvToRows(content).slice(0, 8));
@@ -227,12 +250,15 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
-    setFile(f);
-    setError(null);
-    const ext = f.name.toLowerCase().split(".").pop();
-    if (ext === "csv") { parseCsv(await f.text()); }
-    else if (ext === "xlsx" || ext === "xls") { await parseExcel(f); }
-    else { setError("Unsupported file type. Upload CSV or Excel."); }
+    await setFileAndParse(f);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    const f = e.dataTransfer.files?.[0];
+    if (!f) return;
+    setFileAndParse(f);
   }
 
   async function handleImport() {
@@ -312,34 +338,36 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-mono-dark/20 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="upload-modal-title"
     >
-      <div className="rounded-xl bg-white border border-bg-tertiary/40 shadow-lg max-w-lg w-full mx-4 overflow-hidden">
+      <div className="rounded-xl bg-white shadow-[0_8px_30px_-6px_rgba(0,0,0,0.14)] max-w-lg w-full mx-4 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-bg-tertiary/40">
-          <div>
-            <h2 id="upload-modal-title" className="text-sm font-semibold text-mono-dark">
-              {step === "choose_source" ? "Choose data source" : "Upload Transactions"}
-            </h2>
-            <p className="text-[11px] text-mono-light mt-0.5">
-              {step === "choose_source"
-                ? "Select an account for this upload, or create one."
-                : "CSV or Excel. AI categorization runs in the background."}
-            </p>
+        <div className="rounded-t-xl bg-[#2d3748] px-6 pt-6 pb-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 id="upload-modal-title" className="text-xl font-bold text-white tracking-tight">
+                {step === "choose_source" ? "Choose data source" : "Upload Transactions"}
+              </h2>
+              <p className="text-sm text-white/80 mt-1.5">
+                {step === "choose_source"
+                  ? "Select an account for this upload, or create one."
+                  : "CSV or Excel. AI categorization runs in the background."}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="h-8 w-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition shrink-0"
+              aria-label="Close"
+            >
+              <span className="material-symbols-rounded text-[18px]">close</span>
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="h-8 w-8 rounded-full flex items-center justify-center text-mono-light hover:text-mono-dark hover:bg-bg-secondary"
-            aria-label="Close"
-          >
-            <span className="material-symbols-rounded text-[18px]">close</span>
-          </button>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
+        <div className="px-6 py-6 space-y-5">
           {step === "choose_source" ? (
             <>
               {dataSourcesLoading ? (
@@ -347,8 +375,8 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
               ) : (
                 <>
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-mono-medium block">Account</label>
-                    <div className="space-y-1.5 max-h-40 overflow-y-auto border border-bg-tertiary/60 rounded-lg p-1">
+                    <label className="text-sm font-medium text-mono-dark block">Account</label>
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto border border-bg-tertiary rounded-md p-1">
                       {dataSources.map((ds) => (
                         <button
                           key={ds.id}
@@ -377,24 +405,24 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                       Create new account
                     </button>
                   ) : (
-                    <div className="border border-bg-tertiary/60 rounded-lg p-4 space-y-3 bg-bg-secondary/30">
-                      <h3 className="text-xs font-semibold text-mono-dark">New account</h3>
+                    <div className="border border-bg-tertiary rounded-md p-4 space-y-3 bg-bg-secondary/30">
+                      <h3 className="text-sm font-semibold text-mono-dark">New account</h3>
                       <div>
-                        <label className="text-[11px] font-medium text-mono-medium block mb-1">Account name *</label>
+                        <label className="text-sm font-medium text-mono-dark block mb-2">Account name *</label>
                         <input
                           type="text"
                           value={createName}
                           onChange={(e) => setCreateName(e.target.value)}
                           placeholder="e.g. Chase Business Checking"
-                          className="w-full border border-bg-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                          className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white placeholder:text-mono-light focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-medium text-mono-medium block mb-1">Account type *</label>
+                        <label className="text-sm font-medium text-mono-dark block mb-2">Account type *</label>
                         <select
                           value={createAccountType}
                           onChange={(e) => setCreateAccountType(e.target.value)}
-                          className="w-full border border-bg-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                          className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
                         >
                           {ACCOUNT_TYPES.map((t) => (
                             <option key={t.value} value={t.value}>{t.label}</option>
@@ -402,20 +430,20 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                         </select>
                       </div>
                       <div>
-                        <label className="text-[11px] font-medium text-mono-medium block mb-1">Institution</label>
+                        <label className="text-sm font-medium text-mono-dark block mb-2">Institution</label>
                         <input
                           type="text"
                           value={createInstitution}
                           onChange={(e) => setCreateInstitution(e.target.value)}
                           placeholder="e.g. Chase, Amex"
-                          className="w-full border border-bg-tertiary rounded-lg px-3 py-2 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none"
+                          className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white placeholder:text-mono-light focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
                         />
                       </div>
                       <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => setShowCreateForm(false)}
-                          className="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-mono-medium hover:bg-bg-secondary"
+                          className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition"
                         >
                           Cancel
                         </button>
@@ -423,7 +451,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                           type="button"
                           onClick={handleCreateDataSource}
                           disabled={createSaving || !createName.trim()}
-                          className="rounded-md bg-accent-sage px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 disabled:opacity-40"
+                          className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 disabled:opacity-40 transition"
                         >
                           {createSaving ? "Creating…" : "Create account"}
                         </button>
@@ -436,19 +464,34 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
             </>
           ) : (
             <>
-          <p className="text-[11px] text-mono-light">
+          <p className="text-sm text-mono-light">
             Each transaction is assigned to the tax year of its date (e.g. 2026 dates → 2026 records).
           </p>
 
           {/* Drop zone */}
-          <div className="border-2 border-dashed border-bg-tertiary rounded-lg p-6 bg-bg-secondary/50 text-center">
-            <p className="text-xs text-mono-medium mb-2">Drop a file here, or click to browse</p>
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label="Drop file here or click to browse. CSV or Excel."
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+            className={`relative flex min-h-[160px] flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed transition-colors ${
+              isDragging
+                ? "border-accent-terracotta bg-accent-terracotta/5"
+                : "border-bg-tertiary bg-bg-secondary/50"
+            }`}
+          >
             <input
               type="file"
               accept=".csv,.xlsx,.xls"
               onChange={handleFileChange}
-              className="text-xs"
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              aria-hidden
             />
+            <span className="material-symbols-rounded text-3xl text-mono-light">upload_file</span>
+            <p className="text-sm font-medium text-mono-dark">Drop file here or browse</p>
+            <p className="text-xs text-mono-light">CSV or Excel</p>
           </div>
 
           {/* Preview */}
@@ -459,7 +502,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                   Income transactions detected. These will be added to your business revenue.
                 </div>
               )}
-              <div className="border border-bg-tertiary/60 rounded-lg overflow-auto max-h-48 text-[11px]">
+              <div className="border border-bg-tertiary rounded-md overflow-auto max-h-48 text-[11px]">
                 <table className="min-w-full">
                   <thead className="bg-bg-secondary text-mono-light">
                     <tr>
@@ -516,33 +559,33 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-bg-tertiary/40 bg-bg-secondary/30">
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-bg-tertiary/40">
           {step === "choose_source" ? (
             <>
-              <button onClick={onClose} className="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-mono-medium hover:bg-bg-secondary transition">
+              <button onClick={onClose} className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition">
                 Cancel
               </button>
               <button
                 onClick={() => { setStep("upload"); setError(null); }}
                 disabled={!selectedDataSourceId || dataSourcesLoading}
-                className="rounded-md bg-accent-sage px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-40"
+                className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition disabled:opacity-40"
               >
                 Continue
               </button>
             </>
           ) : stage === "done" ? (
-            <button onClick={onClose} className="rounded-md bg-accent-sage px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 transition">
+            <button onClick={onClose} className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition">
               Done
             </button>
           ) : (
             <>
-              <button onClick={onClose} disabled={loading} className="rounded-md border border-bg-tertiary px-3 py-1.5 text-xs text-mono-medium hover:bg-bg-secondary transition disabled:opacity-40">
+              <button onClick={onClose} disabled={loading} className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40">
                 Cancel
               </button>
               <button
                 disabled={!file || loading || (needsDataSourceStep && !effectiveDataSourceId)}
                 onClick={handleImport}
-                className="rounded-md bg-accent-sage px-4 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-40"
+                className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition disabled:opacity-40"
               >
                 {loading ? "Importing..." : "Import"}
               </button>

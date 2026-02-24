@@ -6,22 +6,22 @@ import { useState } from "react";
 
 const STEPS = [
   {
-    number: "01",
+    number: "I",
     title: "Sign Up",
     description: "Create a free account to start tracking your business deductions in minutes. Perfect for ABA professionals and small business owners.",
   },
   {
-    number: "02",
+    number: "II",
     title: "Connect Your Data",
     description: "Upload CSV or Excel files from your bank, credit card, or accounting tool.",
   },
   {
-    number: "03",
+    number: "III",
     title: "AI Categorization",
     description: "Our AI reviews each transaction and maps it to Schedule C categories automatically.",
   },
   {
-    number: "04",
+    number: "IV",
     title: "File with Confidence",
     description: "Generate tax-ready reports, track quarterly estimates, and maximize every deduction.",
   },
@@ -65,19 +65,46 @@ function MadeInAmericaSection() {
 
   return (
     <>
-      <section className="px-8 md:px-16 py-16 bg-bg-secondary border-y border-bg-tertiary/40">
-        <div className="max-w-5xl mx-auto text-center">
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="inline-flex items-center gap-2 text-mono-medium hover:text-mono-dark transition-colors group"
-          >
-            <img 
-              src="/usa-flag.png" 
-              alt="USA Flag" 
-              className="w-6 h-4 object-contain"
+      <section className="px-4 md:px-16 py-16 bg-[#f7f3ea] border-y border-bg-tertiary/40">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-mono-medium mb-3">
+              Made in America
+            </p>
+            <h2 className="font-display text-2xl md:text-3xl text-mono-dark leading-snug mb-4">
+              Considered tools<br className="hidden md:block" />
+              for American small businesses.
+            </h2>
+            <p className="text-mono-medium text-sm leading-relaxed mb-6">
+              ExpenseTerminal is proudly based in New Jersey, supporting American entrepreneurs with
+              modern, AI-driven tax tools.
+            </p>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="inline-flex items-center justify-center border border-mono-light/60 px-6 py-3 text-sm font-medium text-mono-dark hover:bg-mono-dark hover:text-white transition-colors"
+            >
+              Learn more
+            </button>
+            <p className="mt-3 text-xs text-mono-medium">
+              Learn more about America&rsquo;s 250th at{" "}
+              <a
+                href="https://america250.org"
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium underline underline-offset-4 decoration-mono-medium/60 hover:decoration-mono-dark"
+              >
+                America 250
+              </a>
+              .
+            </p>
+          </div>
+          <div className="relative w-full h-56 md:h-80 lg:h-[22rem] rounded-lg overflow-hidden">
+            <img
+              src="/made-in-america.png"
+              alt="United States Capitol building at sunset"
+              className="w-full h-full object-cover"
             />
-            <span className="text-lg font-display">Made in America</span>
-          </button>
+          </div>
         </div>
       </section>
 
@@ -129,11 +156,11 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-bg-secondary">
       {/* Navbar */}
-      <nav className="flex items-center justify-between px-8 md:px-16 py-5">
+      <nav className="flex items-center justify-between px-4 md:px-16 py-5">
         <span className="font-display text-xl text-mono-dark tracking-tight">
           ExpenseTerminal
         </span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <Link
             href="/login"
             className="text-sm text-mono-medium hover:text-mono-dark transition-colors px-4 py-2"
@@ -158,15 +185,14 @@ export function LandingPage() {
           />
           <div className="absolute inset-0 bg-black/40" />
         </div>
-        <div className="relative px-8 md:px-16 py-28 md:py-40 max-w-5xl mx-auto text-center">
+        <div className="relative px-4 md:px-16 py-24 md:py-40 max-w-5xl mx-auto text-center">
           <h1 className="font-display text-4xl md:text-6xl text-white leading-tight tracking-tight mb-6">
-            Maximize your<br />business deductions
+            Keep more of<br />what&rsquo;s yours at tax time.
           </h1>
           <p className="text-lg md:text-xl text-white/70 max-w-2xl mx-auto mb-10 leading-relaxed">
-            AI-powered expense tracking for small businesses. Upload your transactions,
-            let AI categorize them, and file your taxes with confidence.
+            AI-powered tax deduction technology that finds, organizes, and prepares your write-offs for filing.
           </p>
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <Link
               href="/signup"
               className="inline-flex items-center justify-center rounded-full bg-white px-8 py-3.5 text-sm font-medium text-accent-sage transition-all hover:shadow-lg hover:scale-[1.02]"
@@ -175,7 +201,7 @@ export function LandingPage() {
             </Link>
             <Link
               href="/login"
-              className="inline-flex items-center justify-center rounded-full border border-white/30 px-8 py-3.5 text-sm font-medium text-white transition-all hover:bg-white/10"
+              className="inline-flex items-center justify-center rounded-full border border-white/30 bg-white/5 backdrop-blur-md px-8 py-3.5 text-sm font-medium text-white transition-all hover:bg-white/10"
             >
               Login
             </Link>
@@ -208,12 +234,16 @@ export function LandingPage() {
             <div className="space-y-8">
               {STEPS.map((step) => (
                 <div key={step.number} className="flex gap-5">
-                  <span className="font-display text-sm text-white/40 italic shrink-0 mt-0.5">
+                  <span className="font-display text-base text-white shrink-0 mt-0.5">
                     {step.number}
                   </span>
                   <div>
-                    <h3 className="text-base font-semibold text-white mb-1">{step.title}</h3>
-                    <p className="text-sm text-white/60 leading-relaxed">{step.description}</p>
+                    <h3 className="text-base md:text-lg font-semibold text-white mb-1.5">
+                      {step.title}
+                    </h3>
+                    <p className="text-sm md:text-base text-white/80 leading-relaxed">
+                      {step.description}
+                    </p>
                   </div>
                 </div>
               ))}
@@ -225,23 +255,24 @@ export function LandingPage() {
       {/* Features grid */}
       <section className="px-8 md:px-16 py-24 md:py-32 bg-bg-secondary">
         <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="font-display text-3xl md:text-4xl text-mono-dark mb-4">
+          <div className="mb-14 text-center md:text-left">
+            <h2 className="font-display text-3xl md:text-4xl text-mono-dark mb-3">
               Everything you need<br />for tax season
             </h2>
-            <p className="text-mono-medium max-w-xl mx-auto">
-              From AI categorization to Schedule C reports, ExpenseTerminal handles the
-              complexity so you can focus on your business.
+            <p className="text-mono-medium max-w-xl mx-auto md:mx-0">
+              The essential tools for capturing deductions, organizing records, and staying ready when it&rsquo;s time to file.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {FEATURES.map((feature) => (
-              <div key={feature.title} className="card p-6">
-                <span className="material-symbols-rounded text-[28px] text-accent-sage mb-3 block">
-                  {feature.icon}
-                </span>
-                <h3 className="text-base font-semibold text-mono-dark mb-2">{feature.title}</h3>
+              <div key={feature.title} className="border-t border-bg-tertiary/60 pt-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="material-symbols-rounded text-[24px] text-accent-sage">
+                    {feature.icon}
+                  </span>
+                  <h3 className="text-base font-semibold text-mono-dark">{feature.title}</h3>
+                </div>
                 <p className="text-sm text-mono-medium leading-relaxed">{feature.description}</p>
               </div>
             ))}
@@ -249,29 +280,31 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Made in America */}
-      <MadeInAmericaSection />
-
       {/* About / Mission */}
-      <section className="px-8 md:px-16 py-24 md:py-32 bg-bg-tertiary/30">
+      <section className="px-8 md:px-16 py-24 md:py-32 bg-accent-sage">
         <div className="max-w-2xl mx-auto text-center">
-          <h2 className="font-display text-3xl md:text-4xl text-mono-dark mb-6">
+          <h2 className="font-display text-3xl md:text-4xl text-white mb-6">
             Small businesses deserve<br />better tax tools.
           </h2>
-          <p className="text-mono-medium leading-relaxed mb-4">
-            Most self-employed professionals overpay on taxes because tracking deductions
-            is tedious and confusing. We built ExpenseTerminal to change that.
+          <p className="text-white/80 leading-relaxed mb-4">
+            Most self-employed professionals overpay on taxes because tracking deductions is tedious and
+            easy to put off.
           </p>
-          <p className="text-mono-medium leading-relaxed mb-10">
-            With AI-powered categorization and built-in deduction calculators, you can
-            capture every legitimate deduction and file with confidence — no accounting
-            degree required.
+          <p className="text-white/80 leading-relaxed mb-10">
+            ExpenseTerminal uses AI-powered categorization and smart deduction calculators to help you
+            capture more write-offs and file with confidence.
           </p>
-          <Link href="/signup" className="btn-primary">
+          <Link
+            href="/signup"
+            className="inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-medium text-accent-sage transition-all hover:shadow-md"
+          >
             Start Tracking for Free
           </Link>
         </div>
       </section>
+
+      {/* Made in America */}
+      <MadeInAmericaSection />
 
       {/* Footer */}
       <footer className="px-8 md:px-16 py-12 bg-mono-dark">
