@@ -5,16 +5,16 @@ import { rateLimitForRequest, expensiveOpLimit } from "@/lib/middleware/rate-lim
 import { filterByQuarter, calculateTaxSummary, calculateScheduleSE, filterDeductibleTransactions } from "@/lib/tax/form-calculations";
 import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
 
-type TxRecord = Record<string, unknown> & {
-  amount: string;
+type TxRecord = {
+  amount: string | number;
   date: string;
-  vendor: string;
+  vendor?: string;
   transaction_type: string | null;
   category: string | null;
   schedule_c_line: string | null;
-  is_meal?: boolean | null;
-  is_travel?: boolean | null;
-  deduction_percent?: number | null;
+  is_meal: boolean | null;
+  is_travel: boolean | null;
+  deduction_percent: number | null;
   status?: string | null;
   quick_label?: string | null;
   business_purpose?: string | null;
@@ -110,7 +110,7 @@ export async function GET(req: Request) {
     const rows = quarterFilteredTx.map((t: TxRecord) => [
       (t.transaction_type as string) ?? "expense",
       t.date,
-      t.vendor,
+      t.vendor ?? "",
       t.amount,
       t.category ?? "",
       t.schedule_c_line ?? "",
