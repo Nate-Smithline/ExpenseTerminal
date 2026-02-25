@@ -15,6 +15,8 @@ type TaxFormCardTransaction = {
   deduction_percent: number | null;
   is_meal: boolean | null;
   is_travel: boolean | null;
+  business_purpose?: string | null;
+  quick_label?: string | null;
 };
 
 interface TaxFormCardProps {
@@ -23,14 +25,13 @@ interface TaxFormCardProps {
   lineBreakdown: Record<string, number>;
   transactions: TaxFormCardTransaction[];
   onSelectTransaction?: (id: string) => void;
-  onMoveTransaction?: (id: string, targetScheduleLine: string) => void | Promise<void>;
 }
 
 function formatCurrency(n: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 }
 
-export function TaxFormCard({ title, subtitle, lineBreakdown, transactions, onSelectTransaction, onMoveTransaction }: TaxFormCardProps) {
+export function TaxFormCard({ title, subtitle, lineBreakdown, transactions, onSelectTransaction }: TaxFormCardProps) {
   const [expandedLine, setExpandedLine] = useState<string | null>(null);
   const [hiddenTransactionIds, setHiddenTransactionIds] = useState<string[]>([]);
   const [visiblePerLine, setVisiblePerLine] = useState<Record<string, number>>({});
@@ -156,11 +157,11 @@ export function TaxFormCard({ title, subtitle, lineBreakdown, transactions, onSe
         <div>
           <h3 className="text-lg font-semibold text-mono-dark">{title}</h3>
           <p className="text-xs text-mono-light mt-0.5">{subtitle}</p>
-          <p className="text-[11px] text-mono-light mt-1 max-w-md">
-            This total only includes expenses that live on Schedule C itself. Additional deductions
-            from calculators (like QBI, home office, retirement, and health insurance) are included
-            in the totals at the top of this page and in Other Deductions, but do not appear as
-            Schedule C line items here.
+          <p className="text-[11px] text-mono-light mt-1">
+            This card is a Schedule C-only view. It shows expenses that land directly on Schedule C
+            lines; other items you add through calculators (like QBI, home office, retirement, or
+            health insurance) roll into the totals at the top of this page and in Other Deductions,
+            not as separate Schedule C line items here.
           </p>
         </div>
         <div className="text-right">
@@ -184,19 +185,7 @@ export function TaxFormCard({ title, subtitle, lineBreakdown, transactions, onSe
             .every((t) => t.status === "completed");
 
           return (
-            <div
-              key={line.line}
-              onDragOver={onMoveTransaction ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } : undefined}
-              onDrop={onMoveTransaction ? (e) => {
-                e.preventDefault();
-                const raw = e.dataTransfer.getData("application/json");
-                if (!raw) return;
-                const { id: txId, scheduleLine: sourceLine } = JSON.parse(raw) as { id: string; scheduleLine: string };
-                if (sourceLine === line.line) return;
-                void Promise.resolve(onMoveTransaction(txId, line.line));
-              } : undefined}
-              className={onMoveTransaction ? "rounded-lg border-2 border-transparent border-dashed hover:border-accent-sage/40 transition-colors" : undefined}
-            >
+            <div key={line.line}>
               <button
                 onClick={() => setExpandedLine(isExpanded ? null : line.line)}
                 className="w-full flex items-center gap-3 py-3 text-left hover:bg-bg-secondary/40 transition-colors rounded-lg px-2 -mx-2"
@@ -225,18 +214,13 @@ export function TaxFormCard({ title, subtitle, lineBreakdown, transactions, onSe
                   {lineTxs.map((tx) => {
                     const pct = tx.deduction_percent ?? 100;
                     const originalAmount = Math.abs(Number(tx.amount));
+                    const auditReason =
+                      (tx.business_purpose ?? tx.quick_label ?? "").trim() || null;
                     return (
                     <div
                       key={tx.id}
                       role={onSelectTransaction ? "button" : undefined}
                       tabIndex={onSelectTransaction ? 0 : undefined}
-                      draggable={!!onMoveTransaction}
-                      onDragStart={(e) => {
-                        if (!onMoveTransaction) return;
-                        e.dataTransfer.setData("application/json", JSON.stringify({ id: tx.id, scheduleLine: line.line }));
-                        e.dataTransfer.effectAllowed = "move";
-                        e.stopPropagation();
-                      }}
                       onClick={() => onSelectTransaction?.(tx.id)}
                       onKeyDown={(e) => {
                         if (onSelectTransaction && (e.key === "Enter" || e.key === " ")) {
@@ -246,8 +230,15 @@ export function TaxFormCard({ title, subtitle, lineBreakdown, transactions, onSe
                       }}
                       className={`flex items-center justify-between gap-2 py-1.5 px-2 text-xs rounded hover:bg-bg-secondary/60 transition-colors ${onSelectTransaction ? "cursor-pointer" : ""}`}
                     >
-                      <span className="text-mono-medium truncate flex-1 mr-3">
-                        {tx.vendor}
+                      <span className="flex-1 mr-3 min-w-0">
+                        <span className="text-mono-medium truncate block">
+                          {tx.vendor}
+                        </span>
+                        {auditReason && (
+                          <span className="text-[10px] text-mono-light truncate block mt-0.5">
+                            {auditReason}
+                          </span>
+                        )}
                       </span>
                       <span className="text-mono-light shrink-0 mr-3">
                         {new Date(tx.date).toLocaleDateString("en-US", {

@@ -136,7 +136,9 @@ export default async function DashboardPage() {
           <p className="text-2xl font-bold text-mono-dark tabular-nums">
             ${additionalTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
           </p>
-          <p className="text-xs text-mono-light mt-1">QBI, mileage, home office, etc.</p>
+          <p className="text-xs text-mono-light mt-1">
+            From deduction calculators like home office, QBI, and mileage
+          </p>
         </div>
         <div className="card p-6">
           <p className="text-xs text-mono-light mb-1 uppercase tracking-wide">Est. Savings</p>
@@ -215,13 +217,13 @@ export default async function DashboardPage() {
       <div className="card px-6 pt-6 pb-4">
         <h2 className="text-lg font-semibold text-mono-dark mb-1">Additional deductions</h2>
         <p className="text-sm text-mono-medium mb-3">
-          Track QBI, mileage, home office, and more
+          Set up deduction calculators like home office, QBI, and mileage
         </p>
         <ul className="divide-y divide-bg-tertiary/40">
           {DEDUCTION_TYPE_CARDS.map((item) => {
             const isSet = additionalDeductions?.some((d: { type: string }) => d.type === item.typeKey);
             return (
-              <li key={item.href}>
+              <li key={item.typeKey}>
                 <Link
                   href={item.href}
                   className="flex items-center gap-4 py-6 first:pt-0 last:pb-0 -mx-3 px-3 rounded-lg hover:bg-bg-tertiary/40 transition-all duration-300 ease-in-out group"
@@ -259,6 +261,27 @@ export default async function DashboardPage() {
             </Link>
           </li>
         </ul>
+      </div>
+
+      {/* Guidance on other deductible expenses */}
+      <div className="card p-6">
+        <h2 className="text-lg font-semibold text-mono-dark mb-2">
+          Other common deductible expenses
+        </h2>
+        <p className="text-sm text-mono-medium mb-3">
+          Beyond these calculators, many everyday costs can be deductible when they are ordinary
+          and necessary for your business.
+        </p>
+        <ul className="list-disc pl-5 space-y-1 text-sm text-mono-medium">
+          <li>Business portion of your phone and internet bills</li>
+          <li>Continuing education and training directly related to your work</li>
+          <li>Vehicle costs when you drive for business (fuel, maintenance, insurance, etc.)</li>
+          <li>Professional tools, subscriptions, and software used to serve clients</li>
+        </ul>
+        <p className="text-xs text-mono-light mt-3">
+          Actual deductions depend on your specific situation. This information is for general
+          education and is not tax or legal advice.
+        </p>
       </div>
 
       {/* Log Income */}

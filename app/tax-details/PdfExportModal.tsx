@@ -20,6 +20,7 @@ export function PdfExportModal({
   const [includeScheduleC, setIncludeScheduleC] = useState(true);
   const [includeScheduleSE, setIncludeScheduleSE] = useState(true);
   const [includeCategories, setIncludeCategories] = useState(true);
+  const [includeAuditList, setIncludeAuditList] = useState(false);
   const [loading, setLoading] = useState(false);
 
   if (!open) return null;
@@ -41,6 +42,7 @@ export function PdfExportModal({
     if (includeScheduleC) params.set("schedule_c", "true");
     if (includeScheduleSE) params.set("schedule_se", "true");
     if (includeCategories) params.set("categories", "true");
+    if (includeAuditList) params.set("audit_only", "true");
 
     window.open(`/api/reports/export?${params.toString()}`, "_blank");
     setTimeout(() => {
@@ -68,7 +70,7 @@ export function PdfExportModal({
                 Export Tax Documents
               </h2>
               <p className="text-sm text-white/80 mt-1.5">
-                Choose which sections to include in your{" "}
+                Choose which summaries to include in your{" "}
                 <span className="font-semibold">{taxYear}</span>
                 {quarter ? (
                   <>
@@ -92,10 +94,10 @@ export function PdfExportModal({
         {/* Body */}
         <div className="px-6 py-6 space-y-4">
           <p className="text-xs text-mono-medium leading-relaxed">
-            These PDFs are designed for{" "}
-            <span className="font-medium">your tax professional</span> or records.
-            They summarize your income, deductions, and categories based on what
-            you&apos;ve tracked in ExpenseTerminal.
+            This export is designed for{" "}
+            <span className="font-medium">your tax professional</span> or records. It pulls together
+            the same numbers you see on this page into a PDF they can reference alongside the IRS
+            forms.
           </p>
 
           <div className="space-y-3">
@@ -110,7 +112,9 @@ export function PdfExportModal({
                 />
                 <div>
                   <p className="text-sm font-medium text-mono-dark">Schedule C summary (Form 1040)</p>
-                  <p className="text-xs text-mono-light">Line-by-line expense breakdown</p>
+                  <p className="text-xs text-mono-light">
+                    Line-by-line expense totals that line up with the Schedule C expense section.
+                  </p>
                 </div>
               </label>
 
@@ -123,7 +127,10 @@ export function PdfExportModal({
                 />
                 <div>
                   <p className="text-sm font-medium text-mono-dark">Schedule SE (Self-employment tax)</p>
-                  <p className="text-xs text-mono-light">Shows SE tax and deductible half</p>
+                  <p className="text-xs text-mono-light">
+                    Breaks out the Schedule SE math: net earnings, Social Security, Medicare, and the
+                    deductible half.
+                  </p>
                 </div>
               </label>
             </>
@@ -137,8 +144,25 @@ export function PdfExportModal({
               className="w-4 h-4 rounded accent-accent-sage"
             />
             <div>
-              <p className="text-sm font-medium text-mono-dark">Category Breakout</p>
-              <p className="text-xs text-mono-light">Expense distribution by category for your return</p>
+              <p className="text-sm font-medium text-mono-dark">Category breakdown</p>
+              <p className="text-xs text-mono-light">
+                Summary of your deductible expenses by category (matches the Category Breakout card).
+              </p>
+            </div>
+          </label>
+
+          <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-bg-secondary/60 transition-colors">
+            <input
+              type="checkbox"
+              checked={includeAuditList}
+              onChange={(e) => setIncludeAuditList(e.target.checked)}
+              className="w-4 h-4 rounded accent-accent-sage"
+            />
+            <div>
+              <p className="text-sm font-medium text-mono-dark">Audit-ready transaction list</p>
+              <p className="text-xs text-mono-light">
+                Extra page listing only transactions with a non-zero deduction and a written audit reason.
+              </p>
             </div>
           </label>
         </div>

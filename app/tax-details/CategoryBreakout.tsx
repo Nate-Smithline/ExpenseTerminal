@@ -10,13 +10,14 @@ interface CategoryBreakoutTransaction {
   amount: string | number;
   date: string;
   category: string | null;
+  business_purpose?: string | null;
+  quick_label?: string | null;
 }
 
 interface CategoryBreakoutProps {
   categoryBreakdown: Record<string, number>;
   transactions: CategoryBreakoutTransaction[];
   onSelectTransaction?: (id: string) => void;
-  onMoveTransaction?: (id: string, targetCategory: string) => void | Promise<void>;
 }
 
 function formatCurrency(n: number): string {
@@ -36,7 +37,24 @@ const BAR_COLORS = [
 
 const OTHER_DEDUCTIONS_KEY = "__other_deductions__";
 
-export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTransaction, onMoveTransaction }: CategoryBreakoutProps) {
+function normalizeCategoryLabel(raw: string | null | undefined): string {
+  if (!raw) return "Uncategorized";
+  const trimmed = String(raw).trim();
+  const lower = trimmed.toLowerCase().replace(/\s+/g, " ");
+
+  // Consolidate common variants of legal/professional
+  if (
+    lower === "legal/professional" ||
+    lower === "legal & professional" ||
+    lower === "legal and professional"
+  ) {
+    return "Legal & professional";
+  }
+
+  return trimmed;
+}
+
+export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTransaction }: CategoryBreakoutProps) {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [hiddenTransactionIds, setHiddenTransactionIds] = useState<string[]>([]);
   const [visiblePerCategory, setVisiblePerCategory] = useState<Record<string, number>>({});
@@ -100,15 +118,18 @@ export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTran
     const totalAmount = entries.reduce((a, [, v]) => a + v, 0);
 
     let otherTotal = 0;
-    const regularEntries: Array<[string, number]> = [];
+    const regularMap = new Map<string, number>();
 
     for (const [category, amount] of entries) {
       if (deductionTypeMap.has(category)) {
         otherTotal += amount;
       } else {
-        regularEntries.push([category, amount]);
+        const key = normalizeCategoryLabel(category);
+        regularMap.set(key, (regularMap.get(key) ?? 0) + amount);
       }
     }
+
+    const regularEntries: Array<[string, number]> = Array.from(regularMap.entries());
 
     if (otherTotal > 0) {
       regularEntries.push([OTHER_DEDUCTIONS_KEY, otherTotal]);
@@ -162,8 +183,8 @@ export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTran
       if (rows.length === 0) {
         return (
           <p className="text-xs text-mono-light px-2">
-            No calculator-based deductions yet. Add QBI, home office, mileage, and more from the
-            Other Deductions page.
+            No calculator-based deductions yet. Add home office, QBI, mileage, and other additional
+            entries from the Other Deductions page.
           </p>
         );
       }
@@ -172,8 +193,8 @@ export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTran
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2 pb-1">
             <p className="text-xs text-mono-medium">
-              These amounts come from your deduction calculators (for example home office, QBI,
-              mileage, and others) rather than individual card-sorted transactions.
+              These amounts come from your deduction calculators (for example home office, QBI, and
+              mileage) rather than individual card-sorted transactions.
             </p>
             <Link
               href="/other-deductions"
@@ -208,7 +229,7 @@ export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTran
       return (
         <p className="text-xs text-mono-light px-2">
           This amount comes from your additional deduction entries (for example mileage, QBI, or
-          other calculators) rather than individual card-sorted transactions.
+          other calculator-based amounts) rather than individual card-sorted transactions.
         </p>
       );
     }
@@ -246,7 +267,7 @@ export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTran
           <p className="text-xs text-mono-light mt-0.5">Expense distribution by category</p>
           <p className="text-[11px] text-mono-light mt-1 max-w-md">
             This total includes both card-sorted business expenses and any additional amounts you
-            have added via deduction calculators (like QBI, home office, mileage, and more).
+            have added via deduction calculators (like home office, QBI, and mileage).
           </p>
         </div>
         <p className="text-sm font-medium text-mono-dark tabular-nums">
@@ -263,34 +284,23 @@ export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTran
           const baseTxs =
             category === OTHER_DEDUCTIONS_KEY
               ? []
-              : transactions.filter((t) => (t.category || "Uncategorized") === category);
+              : transactions.filter(
+                  (t) => normalizeCategoryLabel(t.category || "Uncategorized") === category,
+                );
           const allCatTxs = baseTxs.filter((t) => !hiddenSet.has(t.id));
-          const visibleCount = visiblePerCategory[category] ?? 20;
+          const visibleCount = visiblePerCategory[category] ?? 15;
           const catTxs = isExpanded ? allCatTxs.slice(0, visibleCount) : [];
           const remainingCount = isExpanded
             ? Math.max(allCatTxs.length - visibleCount, 0)
             : 0;
 
           const label =
-            category === OTHER_DEDUCTIONS_KEY
-              ? "Other Deductions"
-              : category;
-
-          const canDrop = category !== OTHER_DEDUCTIONS_KEY && !!onMoveTransaction;
+            category === OTHER_DEDUCTIONS_KEY ? "Other Deductions" : category;
 
           return (
             <div
               key={category}
-              onDragOver={canDrop ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } : undefined}
-              onDrop={canDrop ? (e) => {
-                e.preventDefault();
-                const raw = e.dataTransfer.getData("application/json");
-                if (!raw) return;
-                const { id: txId, category: sourceCategory } = JSON.parse(raw) as { id: string; category: string };
-                if (sourceCategory === category) return;
-                void Promise.resolve(onMoveTransaction!(txId, category));
-              } : undefined}
-              className={canDrop ? "rounded-lg border-2 border-transparent border-dashed hover:border-accent-sage/40 transition-colors" : undefined}
+              className="rounded-lg"
             >
               <button
                 onClick={() => setExpandedCategory(isExpanded ? null : category)}
@@ -321,18 +331,14 @@ export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTran
                 <div className="ml-4 mt-2 mb-3 space-y-1 animate-in">
                   {catTxs.length > 0 && (
                     <>
-                      {catTxs.slice(0, 15).map((tx) => (
+                      {catTxs.map((tx) => {
+                        const auditReason =
+                          (tx.business_purpose ?? tx.quick_label ?? "").trim() || null;
+                        return (
                         <div
                           key={tx.id}
                           role={onSelectTransaction ? "button" : undefined}
                           tabIndex={onSelectTransaction ? 0 : undefined}
-                          draggable={!!onMoveTransaction}
-                          onDragStart={(e) => {
-                            if (!onMoveTransaction) return;
-                            e.dataTransfer.setData("application/json", JSON.stringify({ id: tx.id, category }));
-                            e.dataTransfer.effectAllowed = "move";
-                            e.stopPropagation();
-                          }}
                           onClick={() => onSelectTransaction?.(tx.id)}
                           onKeyDown={(e) => {
                             if (onSelectTransaction && (e.key === "Enter" || e.key === " ")) {
@@ -342,8 +348,15 @@ export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTran
                           }}
                           className={`flex items-center justify-between gap-2 py-1.5 px-2 text-xs rounded hover:bg-bg-secondary/60 transition-colors ${onSelectTransaction ? "cursor-pointer" : ""}`}
                         >
-                          <span className="text-mono-medium truncate flex-1 mr-3">
-                            {tx.vendor}
+                          <span className="flex-1 mr-3 min-w-0">
+                            <span className="text-mono-medium truncate block">
+                              {tx.vendor}
+                            </span>
+                            {auditReason && (
+                              <span className="text-[10px] text-mono-light truncate block mt-0.5">
+                                {auditReason}
+                              </span>
+                            )}
                           </span>
                           <span className="text-mono-light shrink-0 mr-3">
                             {new Date(tx.date).toLocaleDateString("en-US", {
@@ -374,7 +387,7 @@ export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTran
                             </button>
                           </span>
                         </div>
-                      ))}
+                      );})}
                       {remainingCount > 0 && (
                         <button
                           type="button"

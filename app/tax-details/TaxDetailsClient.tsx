@@ -58,6 +58,7 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
   const [loading, setLoading] = useState(true);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<PartialTransaction | null>(null);
+  const [netProfitExpanded, setNetProfitExpanded] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -88,26 +89,6 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
   function handleSelectTransaction(id: string) {
     const tx = deductibleTxs.find((t: PartialTransaction) => t.id === id);
     if (tx) setSelectedTransaction(tx as PartialTransaction);
-  }
-
-  async function handleMoveCategory(id: string, targetCategory: string) {
-    const res = await fetch("/api/transactions/update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, category: targetCategory }),
-    });
-    if (!res.ok) throw new Error("Failed to move");
-    await fetchData();
-  }
-
-  async function handleMoveScheduleLine(id: string, targetScheduleLine: string) {
-    const res = await fetch("/api/transactions/update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, schedule_c_line: targetScheduleLine }),
-    });
-    if (!res.ok) throw new Error("Failed to move");
-    await fetchData();
   }
 
   async function handleSaveTransaction(id: string, update: TransactionDetailUpdate) {
@@ -154,19 +135,22 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
         )}
       </div>
 
-      {/* Export callout — compact */}
-      <div className="rounded-lg border border-accent-sage/40 bg-accent-sage/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <p className="text-sm font-medium text-mono-dark">
-          Export tax-ready documents for your preparer
-        </p>
-        <button
-          type="button"
-          onClick={() => setPdfModalOpen(true)}
-          className="btn-primary shrink-0"
-        >
-          Export Tax Documents
-        </button>
-      </div>
+      {/* Export callout — compact, full-row button */}
+      <button
+        type="button"
+        onClick={() => setPdfModalOpen(true)}
+        className="w-full rounded-lg bg-accent-sage px-4 py-2.5 flex items-center justify-between gap-3 text-left text-white hover:bg-accent-sage/90 transition-colors shadow-sm"
+      >
+        <span className="text-xs sm:text-sm font-medium">
+          Export a tax-ready PDF package for your preparer
+        </span>
+        <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-semibold">
+          Export tax documents
+          <span className="material-symbols-rounded text-[9px] sm:text-[10px] align-middle">
+            arrow_outward
+          </span>
+        </span>
+      </button>
 
       {data?.pendingCount > 0 && (
         <div className="rounded-lg border border-accent-sage/40 bg-accent-sage/10 px-4 py-3 flex flex-wrap items-center gap-2">
@@ -256,12 +240,28 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
                     {formatCurrency(data.netProfit)}
                   </span>
                 </div>
-                <p className="text-[11px] text-mono-light mt-2 max-w-md">
-                  Total expenses here include both card-sorted business expenses and any additional
-                  deductions you have entered (like QBI, home office, and retirement). That means this
-                  total may be higher than the Schedule C card alone, which only shows expenses that
-                  live directly on Schedule C.
-                </p>
+                <div className="mt-2 text-[11px] text-mono-light max-w-md">
+                  <p>
+                    Total expenses here combine your card-sorted business expenses with any additional
+                    deductions you&apos;ve entered.
+                  </p>
+                  {netProfitExpanded && (
+                    <p className="mt-1">
+                      That means this total can be higher than the Schedule C card alone, which only
+                      reflects expenses that live directly on Schedule C.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setNetProfitExpanded((v) => !v)}
+                    className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-mono-medium hover:text-mono-dark"
+                  >
+                    {netProfitExpanded ? "Show less detail" : "Show how this connects to Schedule C"}
+                    <span className="material-symbols-rounded text-[14px]">
+                      {netProfitExpanded ? "expand_less" : "expand_more"}
+                    </span>
+                  </button>
+                </div>
               </div>
               {isScheduleCFiler && se && (
                 <div className="space-y-2">
@@ -296,7 +296,6 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
               lineBreakdown={data.lineBreakdown ?? {}}
               transactions={data.deductibleTransactions ?? data.transactions ?? []}
               onSelectTransaction={handleSelectTransaction}
-              onMoveTransaction={handleMoveScheduleLine}
             />
           )}
 
@@ -340,7 +339,6 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
             categoryBreakdown={data.categoryBreakdown}
             transactions={data.deductibleTransactions ?? data.transactions ?? []}
             onSelectTransaction={handleSelectTransaction}
-            onMoveTransaction={handleMoveCategory}
           />
 
           {/* IRS Resources */}

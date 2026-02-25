@@ -33,7 +33,7 @@ export default async function OtherDeductionsPage() {
           {DEDUCTION_TYPE_CARDS.map((item) => {
             const isSet = additionalDeductions?.some((d: { type: string }) => d.type === item.typeKey);
             return (
-              <li key={item.href}>
+              <li key={item.typeKey}>
                 <Link
                   href={item.href}
                   className="flex items-center gap-4 py-6 first:pt-0 last:pb-0 -mx-3 px-3 rounded-lg hover:bg-bg-tertiary/40 transition-all duration-300 ease-in-out group"
