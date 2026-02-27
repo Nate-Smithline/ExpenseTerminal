@@ -310,6 +310,29 @@ export interface Database {
         };
         Update: Partial<Database["public"]["Tables"]["subscriptions"]["Insert"]>;
       };
+      activity_view_settings: {
+        Row: {
+          id: string;
+          user_id: string;
+          sort_column: string | null;
+          sort_asc: boolean | null;
+          visible_columns: Json | null;
+          filters: Json | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          sort_column?: string | null;
+          sort_asc?: boolean | null;
+          visible_columns?: Json | null;
+          filters?: Json | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["activity_view_settings"]["Insert"]>;
+      };
     };
   };
 }

@@ -117,3 +117,49 @@ export const deductionDeleteSchema = z.object({
   type: z.string().min(1, "Type is required").max(200),
   tax_year: taxYearSchema,
 });
+
+/** Allowed sort columns for activity table */
+export const ACTIVITY_SORT_COLUMNS = [
+  "date",
+  "amount",
+  "vendor",
+  "status",
+  "transaction_type",
+  "category",
+  "created_at",
+] as const;
+export type ActivitySortColumn = (typeof ACTIVITY_SORT_COLUMNS)[number];
+
+/** Allowed visible column keys for activity table */
+export const ACTIVITY_VISIBLE_COLUMNS = [
+  "date",
+  "vendor",
+  "description",
+  "amount",
+  "transaction_type",
+  "status",
+  "category",
+  "schedule_c_line",
+  "ai_confidence",
+  "business_purpose",
+  "quick_label",
+  "notes",
+  "created_at",
+] as const;
+export type ActivityVisibleColumn = (typeof ACTIVITY_VISIBLE_COLUMNS)[number];
+
+/** Filters stored in activity_view_settings.filters */
+export const activityViewFiltersSchema = z.object({
+  status: z.enum(["pending", "completed", "auto_sorted", "personal"]).nullable().optional(),
+  transaction_type: z.enum(["expense", "income"]).nullable().optional(),
+  search: z.string().max(500).optional(),
+  date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+export const activityViewSettingsPatchSchema = z.object({
+  sort_column: z.enum(ACTIVITY_SORT_COLUMNS).optional(),
+  sort_asc: z.boolean().optional(),
+  visible_columns: z.array(z.enum(ACTIVITY_VISIBLE_COLUMNS)).optional(),
+  filters: activityViewFiltersSchema.optional(),
+});
