@@ -18,5 +18,15 @@ export function getResendClient(): Resend {
 }
 
 export function getFromAddress(): string {
-  return process.env.EMAIL_FROM_ADDRESS || "ExpenseTerminal <noreply@expenseteterminal.com>";
+  const rawAddress =
+    process.env.EMAIL_FROM_ADDRESS || "hello@expenseterminal.com";
+  const displayName =
+    process.env.EMAIL_FROM_NAME || "Nate from ExpenseTerminal";
+
+  // If the env var already includes a display name, trust it as-is.
+  if (rawAddress.includes("<") && rawAddress.includes(">")) {
+    return rawAddress;
+  }
+
+  return `${displayName} <${rawAddress}>`;
 }

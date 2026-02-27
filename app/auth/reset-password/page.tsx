@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { createSupabaseClient } from "@/lib/supabase/client";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { validatePassword } from "@/lib/validation/password";
 import { AuthLayout } from "@/components/AuthLayout";
 import Link from "next/link";
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token") ?? "";
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,19 +17,21 @@ export default function ResetPasswordPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const supabase = createSupabaseClient();
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setReady(true);
-      } else {
-        setError("Invalid or expired reset link. Please request a new one.");
-      }
-    });
-  }, []);
+    if (!token) {
+      setError("Invalid or expired reset link. Please request a new one.");
+      setReady(false);
+      return;
+    }
+    setReady(true);
+  }, [token]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!token) {
+      setError("Invalid or expired reset link. Please request a new one.");
+      return;
+    }
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
@@ -40,10 +43,14 @@ export default function ResetPasswordPage() {
     }
     setLoading(true);
     try {
-      const supabase = createSupabaseClient();
-      const { error: updateError } = await supabase.auth.updateUser({ password });
-      if (updateError) {
-        setError(updateError.message);
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Could not update password. Please try again.");
         setLoading(false);
         return;
       }
@@ -72,6 +79,8 @@ export default function ResetPasswordPage() {
       <form onSubmit={handleSubmit} className="space-y-3.5">
         <input
           type="password"
+          name="new-password"
+          autoComplete="new-password"
           required
           minLength={8}
           placeholder="New password"
@@ -81,6 +90,8 @@ export default function ResetPasswordPage() {
         />
         <input
           type="password"
+          name="new-password-confirmation"
+          autoComplete="new-password"
           required
           minLength={8}
           placeholder="Confirm new password"
@@ -110,5 +121,19 @@ export default function ResetPasswordPage() {
         </Link>
       </p>
     </AuthLayout>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <AuthLayout>
+          <p className="text-center text-sm text-mono-medium">Checking link...</p>
+        </AuthLayout>
+      }
+    >
+      <ResetPasswordContent />
+    </Suspense>
   );
 }

@@ -68,9 +68,33 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
+      const emailValue = email.trim();
+
+      // Check if an account already exists for this email before attempting sign up.
+      try {
+        const res = await fetch("/api/auth/check-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: emailValue, intent: "signup" as const }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data.error ?? "Could not check this email. Please try again.");
+          setLoading(false);
+          return;
+        }
+        if (data.exists) {
+          setError("An account with this email already exists. Try signing in.");
+          setLoading(false);
+          return;
+        }
+      } catch {
+        // If the check fails, fall back to Supabase's own validation below.
+      }
+
       const supabase = createSupabaseClient();
       const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: emailValue,
         password,
         options: {
           emailRedirectTo:
@@ -98,13 +122,13 @@ export default function SignupPage() {
         await fetch("/api/email/send-verification", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email.trim(), userId: data.user?.id }),
+          body: JSON.stringify({ email: emailValue, userId: data.user?.id }),
         });
       } catch {
         // Verification email is best-effort
       }
 
-      router.push("/auth/verify-pending?email=" + encodeURIComponent(email.trim()));
+      router.push("/auth/verify-pending?email=" + encodeURIComponent(emailValue));
     } catch (err) {
       const message =
         err instanceof Error

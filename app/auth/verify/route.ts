@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { hashToken } from "@/lib/verification-tokens";
+import { sendWelcomeEmailForUser } from "@/lib/email/send-welcome";
 
 /**
  * GET /auth/verify?token=ark-the-olive-dove
@@ -47,6 +48,13 @@ export async function GET(request: Request) {
   await (supabase as any).auth.admin.updateUserById(verification.user_id, {
     email_confirm: true,
   });
+
+  // Best-effort welcome email with product + pricing.
+  try {
+    await sendWelcomeEmailForUser(verification.user_id as string);
+  } catch (err) {
+    console.error("Failed to send welcome email after verification:", err);
+  }
 
   return NextResponse.redirect(new URL("/login?verified=true", origin));
 }
