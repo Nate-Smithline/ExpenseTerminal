@@ -97,7 +97,18 @@ export async function POST(req: Request) {
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
-    line_items: [{ price_data: { currency: "usd", product: productId, unit_amount: plan === "starter" ? 12000 : 30000, recurring: { interval: "year" } }, quantity: 1 }],
+    line_items: [
+      {
+        price_data: {
+          currency: "usd",
+          product: productId,
+          unit_amount: plan === "starter" ? 12000 : 30000,
+          recurring: { interval: "year" },
+        },
+        quantity: 1,
+      },
+    ],
+    allow_promotion_codes: true,
     success_url: successUrl,
     cancel_url: cancelUrl,
     client_reference_id: auth.userId,
