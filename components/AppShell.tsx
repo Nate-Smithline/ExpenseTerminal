@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Sidebar } from "./Sidebar";
 
 const AUTH_ROUTES = ["/login", "/signup", "/auth", "/terms", "/privacy", "/cookies"];
-const FULL_WIDTH_ROUTES = ["/"];
+const FULL_WIDTH_ROUTES = ["/", "/pricing"];
 
 const mobileFooterNav = [
   { href: "/dashboard", label: "Home", icon: "home" },

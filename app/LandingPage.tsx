@@ -264,7 +264,7 @@ export function LandingPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-10">
             {FEATURES.map((feature) => (
               <div key={feature.title} className="border-t border-bg-tertiary/60 pt-6">
                 <div className="flex items-center gap-3 mb-3">
@@ -276,6 +276,59 @@ export function LandingPage() {
                 <p className="text-sm text-mono-medium leading-relaxed">{feature.description}</p>
               </div>
             ))}
+          </div>
+
+          {/* Pricing snapshot panel */}
+          <div className="rounded-2xl bg-accent-sage text-white p-6 md:p-7 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 shadow-md">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-white/70 mb-2">
+                Pricing snapshot
+              </p>
+              <h3 className="font-display text-xl md:text-2xl text-white mb-2">
+                Start free. Grow into Starter.
+              </h3>
+              <p className="text-sm text-white/80 max-w-md">
+                Upload CSVs, get AI-reviewed transactions, and stay Schedule C–ready. The free plan
+                includes AI on your first 250 CSV transactions; Starter unlocks a full year of
+                unlimited AI-reviewed CSV uploads.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 w-full md:w-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="rounded-xl bg-white/6 border border-white/10 px-4 py-3 text-sm">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-medium text-white/90">Starter</span>
+                    <span className="text-xs text-white/70">Current</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white">
+                    $120<span className="text-xs font-normal text-white/70">/year</span>
+                  </p>
+                  <p className="text-xs text-white/75 mt-1.5">
+                    Unlimited AI-reviewed CSV transactions.
+                  </p>
+                </div>
+                <div className="rounded-xl bg-white/4 border border-white/10 px-4 py-3 text-sm relative">
+                  <span className="absolute -top-2 right-3 rounded-full bg-white text-[10px] font-semibold text-accent-sage px-2 py-0.5 shadow-sm">
+                    Coming soon
+                  </span>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-medium text-white/90">Plus</span>
+                  </div>
+                  <p className="text-sm font-semibold text-white">
+                    $300<span className="text-xs font-normal text-white/70">/year</span>
+                  </p>
+                  <p className="text-xs text-white/75 mt-1.5">
+                    Planned bank connections and deeper automation for heavy users.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/pricing"
+                className="inline-flex items-center justify-center rounded-full bg-white text-accent-sage px-6 py-2.5 text-sm font-medium hover:bg-white/95 transition-colors w-full md:w-auto"
+              >
+                View full pricing
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -313,6 +366,7 @@ export function LandingPage() {
           <div className="flex items-center gap-6 text-sm text-white/40">
             <Link href="/login" className="hover:text-white/70 transition-colors">Login</Link>
             <Link href="/signup" className="hover:text-white/70 transition-colors">Sign Up</Link>
+            <Link href="/pricing" className="hover:text-white/70 transition-colors">Pricing</Link>
             <Link href="/terms" className="hover:text-white/70 transition-colors">Terms</Link>
             <Link href="/privacy" className="hover:text-white/70 transition-colors">Privacy</Link>
             <a href="mailto:expenseterminal@outlook.com" className="hover:text-white/70 transition-colors">Contact</a>

@@ -172,7 +172,7 @@ async function fetchTransactionsInChunks(
   const all: TransactionRow[] = [];
   for (let i = 0; i < ids.length; i += DB_FETCH_CHUNK) {
     const chunk = ids.slice(i, i + DB_FETCH_CHUNK);
-    const txCols = "id,vendor,amount,date,category,vendor_normalized,is_meal,is_travel";
+    const txCols = "id,vendor,amount,date,category,vendor_normalized,is_meal,is_travel,eligible_for_ai";
     const { data, error } = await (supabase as any)
       .from("transactions")
       .select(txCols)
@@ -280,7 +280,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { data: transactions, error: fetchError } = await fetchTransactionsInChunks(
+  const { data: fetchedTransactions, error: fetchError } = await fetchTransactionsInChunks(
     supabase as any, ids, userId,
   );
   if (fetchError) {
@@ -289,9 +289,19 @@ export async function POST(req: Request) {
       { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
+  const transactions = fetchedTransactions.filter(
+    (t) => (t as TransactionRow & { eligible_for_ai?: boolean }).eligible_for_ai !== false
+  );
+  const skippedCount = fetchedTransactions.length - transactions.length;
+  const overLimit = skippedCount > 0;
+
   if (transactions.length === 0) {
     return new Response(
-      JSON.stringify({ error: "No matching transactions found." }),
+      JSON.stringify({
+        error: overLimit
+          ? "None of the selected transactions are eligible for AI on your current plan. Upgrade to analyze more."
+          : "No matching transactions found.",
+      }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     );
   }
@@ -311,6 +321,16 @@ export async function POST(req: Request) {
     async start(controller) {
       function send(obj: Record<string, unknown>) {
         try { controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n")); } catch { /* closed */ }
+      }
+
+      if (overLimit && skippedCount > 0) {
+        send({
+          type: "status",
+          message: `${skippedCount} transaction(s) skipped (free-tier AI limit). Only the first 250 CSV transactions are eligible.`,
+          overLimit: true,
+          eligibleCount: total,
+          skippedCount,
+        });
       }
 
       const needsAI: TransactionRow[] = [];
@@ -555,7 +575,18 @@ export async function POST(req: Request) {
         }
       }
 
-      send({ type: "done", successful, failed, total, totalInputTokens, totalOutputTokens, cachedCount });
+      send({
+        type: "done",
+        successful,
+        failed,
+        total,
+        totalInputTokens,
+        totalOutputTokens,
+        cachedCount,
+        overLimit: overLimit || undefined,
+        eligibleCount: total,
+        skippedCount: overLimit ? skippedCount : undefined,
+      });
       controller.close();
     },
   });

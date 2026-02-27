@@ -138,6 +138,15 @@ export function InboxPageClient({
   const [aiProgress, setAiProgress] = useState<{ completed: number; total: number; current: string } | null>(null);
   const [aiStalled, setAiStalled] = useState(false);
 
+  const [billingUsage, setBillingUsage] = useState<{
+    plan: string;
+    overLimit: boolean;
+    maxCsvTransactionsForAi: number | null;
+    csvTransactions: { totalCsvUploaded: number; eligibleForAi: number };
+  } | null>(null);
+  const [showUpgradePanel, setShowUpgradePanel] = useState(false);
+  const [pendingBulkAnalyze, setPendingBulkAnalyze] = useState(false);
+
   const cardRefs = useRef<Map<string, TransactionCardRef>>(new Map());
 
   useEffect(() => {
@@ -368,12 +377,15 @@ export function InboxPageClient({
                   setAiProgress(null);
                   const s = (event.successful as number) ?? 0;
                   const c = (event.cachedCount as number) ?? 0;
-                  if (c > 0) {
+                  const skipped = (event.skippedCount as number) ?? 0;
+                  if (skipped > 0) {
+                    setToast(`${s} categorized. ${skipped} skipped (free-tier limit). Upgrade to analyze all.`);
+                  } else if (c > 0) {
                     setToast(`${s} categorized (${c} from cache)`);
                   } else if (s > 0) {
                     setToast(`${s} categorized by AI`);
                   }
-                  setTimeout(() => setToast(null), 4000);
+                  setTimeout(() => setToast(null), 5000);
                   await reloadInbox();
                 } else if (event.type === "error") {
                   setToast((event.message as string) ?? "AI analysis error");
@@ -400,7 +412,14 @@ export function InboxPageClient({
     })();
   }
 
-  async function runBulkAnalyze() {
+  async function runBulkAnalyze(forceContinue?: boolean) {
+    if (billingUsage?.overLimit && billingUsage.plan === "free" && !forceContinue) {
+      setPendingBulkAnalyze(true);
+      setShowUpgradePanel(true);
+      return;
+    }
+    setShowUpgradePanel(false);
+    setPendingBulkAnalyze(false);
     setBulkAnalyzing(true);
     try {
       const allIds = await fetchUnanalyzedIds({
@@ -470,6 +489,22 @@ export function InboxPageClient({
     setLoading(true);
     reloadInbox().finally(() => setLoading(false));
   }, [reloadInbox]);
+
+  useEffect(() => {
+    fetch("/api/billing/usage")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && typeof data.plan === "string") {
+          setBillingUsage({
+            plan: data.plan,
+            overLimit: !!data.overLimit,
+            maxCsvTransactionsForAi: data.maxCsvTransactionsForAi ?? null,
+            csvTransactions: data.csvTransactions ?? { totalCsvUploaded: 0, eligibleForAi: 0 },
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   function notifyInboxCountChanged() {
     if (typeof window !== "undefined") {
@@ -832,8 +867,43 @@ export function InboxPageClient({
         </div>
       )}
 
+      {/* Upgrade panel: free tier over limit */}
+      {showUpgradePanel && billingUsage?.overLimit && (
+        <div className="rounded-xl border border-accent-warm/40 bg-white p-6 space-y-4">
+          <h3 className="text-sm font-semibold text-mono-dark">
+            Free AI limit reached
+          </h3>
+          <p className="text-sm text-mono-medium">
+            Only the first {billingUsage.maxCsvTransactionsForAi ?? 250} CSV transactions are eligible for AI on the free plan.
+            You have {billingUsage.csvTransactions.totalCsvUploaded} CSV transactions; we&apos;ll analyze up to {billingUsage.maxCsvTransactionsForAi ?? 250}. Upgrade to Starter to analyze everything.
+          </p>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => runBulkAnalyze(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-sage/90 transition"
+            >
+              Continue (analyze first {billingUsage.maxCsvTransactionsForAi ?? 250})
+            </button>
+            <a
+              href="/pricing"
+              className="inline-flex items-center gap-2 rounded-lg border border-bg-tertiary px-4 py-2.5 text-sm font-medium text-mono-dark hover:bg-bg-secondary transition"
+            >
+              Upgrade to Starter
+            </a>
+            <button
+              type="button"
+              onClick={() => { setShowUpgradePanel(false); setPendingBulkAnalyze(false); }}
+              className="text-sm text-mono-light hover:text-mono-medium"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Unanalyzed: need AI before they appear in inbox */}
-      {!loading && unanalyzedCount > 0 && !aiProgress && (
+      {!loading && unanalyzedCount > 0 && !aiProgress && !showUpgradePanel && (
         <div className="rounded-xl border border-bg-tertiary/40 bg-white p-6 space-y-5">
           <div>
             <h3 className="text-sm font-semibold text-mono-dark mb-1">
@@ -846,7 +916,7 @@ export function InboxPageClient({
           <div className="pt-1">
             <button
               type="button"
-              onClick={runBulkAnalyze}
+              onClick={() => runBulkAnalyze()}
               disabled={bulkAnalyzing}
               className="inline-flex items-center gap-2 rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-40"
             >

@@ -16,6 +16,10 @@ const ACCOUNT_TYPES = [
 type UploadResult = {
   imported?: number;
   transactionIds?: string[];
+  overLimit?: boolean;
+  eligibleImported?: number;
+  ineligibleImported?: number;
+  maxCsvTransactionsForAi?: number | null;
   aiProcessed?: number;
   aiFailed?: number;
   aiError?: string;
@@ -177,10 +181,16 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
   const [error, setError] = useState<string | null>(null);
   const [rowCount, setRowCount] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [overLimitBanner, setOverLimitBanner] = useState<{
+    eligibleImported: number;
+    ineligibleImported: number;
+    maxCsvTransactionsForAi: number | null;
+  } | null>(null);
 
   async function setFileAndParse(f: File) {
     setFile(f);
     setError(null);
+    setOverLimitBanner(null);
     const ext = f.name.toLowerCase().split(".").pop();
     if (ext === "csv") {
       parseCsv(await f.text());
@@ -313,6 +323,10 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
       const body = (await res.json().catch(() => ({}))) as {
         imported?: number;
         transactionIds?: string[];
+        overLimit?: boolean;
+        eligibleImported?: number;
+        ineligibleImported?: number;
+        maxCsvTransactionsForAi?: number | null;
         error?: string;
       };
 
@@ -322,11 +336,24 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
       }
 
       setStage("done");
+      if (body.overLimit && (body.ineligibleImported ?? 0) > 0) {
+        setOverLimitBanner({
+          eligibleImported: body.eligibleImported ?? 0,
+          ineligibleImported: body.ineligibleImported ?? 0,
+          maxCsvTransactionsForAi: body.maxCsvTransactionsForAi ?? 250,
+        });
+      } else {
+        setOverLimitBanner(null);
+      }
 
-      // Return IDs so the parent can kick off background AI
+      // Return IDs and limit info so the parent can show upgrade messaging
       await onCompleted({
         imported: body.imported ?? 0,
         transactionIds: body.transactionIds ?? [],
+        overLimit: body.overLimit,
+        eligibleImported: body.eligibleImported,
+        ineligibleImported: body.ineligibleImported,
+        maxCsvTransactionsForAi: body.maxCsvTransactionsForAi,
       });
     } catch (e: unknown) {
       setStage("error");
@@ -548,8 +575,21 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
           )}
 
           {stage === "done" && !loading && (
-            <div className="rounded-md bg-accent-sage/10 px-3 py-2 text-xs text-accent-sage font-medium">
-              {rowCount} transactions imported. AI categorization is running in the background.
+            <div className="space-y-3">
+              {overLimitBanner && (
+                <div className="rounded-md border border-accent-warm/40 bg-accent-warm/5 px-3 py-2.5 text-xs text-mono-dark">
+                  <p className="font-medium text-mono-dark mb-1">You&apos;ve reached the free AI analysis limit.</p>
+                  <p className="text-mono-medium mb-2">
+                    We&apos;ll still upload your data, but only the first {overLimitBanner.maxCsvTransactionsForAi ?? 250} CSV transactions are eligible for AI. {overLimitBanner.ineligibleImported} from this upload won&apos;t be analyzed on the free plan.
+                  </p>
+                  <a href="/pricing" className="font-medium text-accent-sage hover:underline">
+                    Upgrade to analyze everything
+                  </a>
+                </div>
+              )}
+              <div className="rounded-md bg-accent-sage/10 px-3 py-2 text-xs text-accent-sage font-medium">
+                {rowCount} transactions imported. AI categorization is running in the background.
+              </div>
             </div>
           )}
 

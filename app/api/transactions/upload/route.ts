@@ -5,6 +5,8 @@ import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limi
 import { transactionUploadBodySchema } from "@/lib/validation/schemas";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { safeErrorMessage } from "@/lib/api/safe-error";
+import { getPlanLimitsForUser } from "@/lib/billing/get-user-plan";
+import { computeCsvAiEligibility } from "@/lib/billing/limits";
 
 type IncomingRow = {
   date: string;
@@ -50,12 +52,29 @@ export async function POST(req: Request) {
 
   const dataSourceIdVal = dataSourceId ?? null;
 
-  const inserts = rows.map((row) => {
+  const limits = await getPlanLimitsForUser(supabase, userId);
+  const maxCsv = limits.maxCsvTransactionsForAi === Number.POSITIVE_INFINITY
+    ? Number.POSITIVE_INFINITY
+    : limits.maxCsvTransactionsForAi;
+
+  const { count: currentEligibleCount } = await supabase
+    .from("transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("source", "csv_upload")
+    .eq("eligible_for_ai", true);
+
+  const currentEligible = currentEligibleCount ?? 0;
+  const { eligibleCount: eligibleImported, ineligibleCount: ineligibleImported, overLimit } =
+    computeCsvAiEligibility(currentEligible, rows.length, maxCsv);
+
+  const inserts = rows.map((row, index) => {
     const txType =
       row.transaction_type === "income" ? "income" : "expense";
     const dateStr = new Date(row.date).toISOString().slice(0, 10);
     const rowYear = new Date(row.date).getFullYear();
     const taxYear = Number.isNaN(rowYear) ? fallbackYear : rowYear;
+    const eligibleForAi = index < eligibleImported;
     return {
       user_id: userId,
       date: dateStr,
@@ -69,6 +88,7 @@ export async function POST(req: Request) {
       source: "csv_upload",
       vendor_normalized: normalizeVendor(row.vendor),
       transaction_type: txType,
+      eligible_for_ai: eligibleForAi,
       ...(dataSourceIdVal ? { data_source_id: dataSourceIdVal } : {}),
     };
   });
@@ -104,6 +124,10 @@ export async function POST(req: Request) {
     imported: inserted.length,
     transactionIds: insertedIds,
     needsReview: inserted.length,
+    overLimit,
+    eligibleImported,
+    ineligibleImported,
+    maxCsvTransactionsForAi: maxCsv === Number.POSITIVE_INFINITY ? null : maxCsv,
   });
 }
 

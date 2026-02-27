@@ -88,6 +88,7 @@ export interface Database {
           tax_year: number;
           source: string | null;
           transaction_type: "expense" | "income" | null;
+          eligible_for_ai: boolean;
           data_source_id: string | null;
           created_at: string;
           updated_at: string;
@@ -116,6 +117,7 @@ export interface Database {
           tax_year: number;
           source?: string | null;
           transaction_type?: "expense" | "income" | null;
+          eligible_for_ai?: boolean;
           data_source_id?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -257,6 +259,37 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["tax_year_settings"]["Insert"]>;
+      };
+      subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          stripe_customer_id: string | null;
+          stripe_subscription_id: string | null;
+          stripe_product_id: string | null;
+          stripe_price_id: string | null;
+          plan: "starter" | "plus" | null;
+          status: string | null;
+          current_period_end: string | null;
+          cancel_at_period_end: boolean | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          stripe_customer_id?: string | null;
+          stripe_subscription_id?: string | null;
+          stripe_product_id?: string | null;
+          stripe_price_id?: string | null;
+          plan?: "starter" | "plus" | null;
+          status?: string | null;
+          current_period_end?: string | null;
+          cancel_at_period_end?: boolean | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["subscriptions"]["Insert"]>;
       };
     };
   };

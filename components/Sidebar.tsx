@@ -149,6 +149,14 @@ export function Sidebar() {
               <span className="material-symbols-rounded text-[18px]">business</span>
               Org Profile
             </Link>
+            <Link
+              href="/settings/billing"
+              onClick={() => setProfileOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-mono-medium hover:bg-bg-secondary/60 hover:text-mono-dark transition-colors"
+            >
+              <span className="material-symbols-rounded text-[18px]">credit_card</span>
+              Billing
+            </Link>
             <div className="border-t border-bg-tertiary/30 my-1" />
             <button
               onClick={handleLogout}
