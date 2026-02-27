@@ -270,11 +270,10 @@ export function BillingClient({
             </button>
             <button
               type="button"
-              onClick={() => startCheckout("plus")}
-              disabled={!!checkoutLoading}
-              className="px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-50"
+              disabled
+              className="px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm font-medium text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/40 cursor-not-allowed"
             >
-              {checkoutLoading === "plus" ? "Redirecting…" : "Upgrade to Plus"}
+              Plus (coming soon)
             </button>
           </div>
         )}

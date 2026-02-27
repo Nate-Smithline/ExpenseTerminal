@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { Database } from "@/lib/types/database";
 import { normalizeVendor } from "@/lib/vendor-matching";
+import { getPlanDefinition } from "@/lib/billing/plans";
 import { TaxYearSelector } from "@/components/TaxYearSelector";
 import { UploadModal } from "@/components/UploadModal";
 import { TransactionCard } from "@/components/TransactionCard";
@@ -11,6 +12,9 @@ import { TransactionDetailPanel } from "@/components/TransactionDetailPanel";
 import { SimilarTransactionsPopup } from "@/components/SimilarTransactionsPopup";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
+
+const STARTER_PLAN = getPlanDefinition("starter");
+const PLUS_PLAN = getPlanDefinition("plus");
 
 interface InboxPageClientProps {
   initialYear: number;
@@ -146,6 +150,7 @@ export function InboxPageClient({
   } | null>(null);
   const [showUpgradePanel, setShowUpgradePanel] = useState(false);
   const [pendingBulkAnalyze, setPendingBulkAnalyze] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   const cardRefs = useRef<Map<string, TransactionCardRef>>(new Map());
 
@@ -410,6 +415,30 @@ export function InboxPageClient({
         return { ok: false, error: msg };
       }
     })();
+  }
+
+  async function startStarterCheckout() {
+    setCheckoutLoading(true);
+    try {
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: "starter" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        window.location.href = data.url as string;
+        return;
+      }
+      const message = (data.error as string) ?? "Checkout failed";
+      setToast(message);
+      setTimeout(() => setToast(null), 5000);
+    } catch {
+      setToast("Checkout failed");
+      setTimeout(() => setToast(null), 5000);
+    } finally {
+      setCheckoutLoading(false);
+    }
   }
 
   async function runBulkAnalyze(forceContinue?: boolean) {
@@ -869,14 +898,50 @@ export function InboxPageClient({
 
       {/* Upgrade panel: free tier over limit */}
       {showUpgradePanel && billingUsage?.overLimit && (
-        <div className="rounded-xl border border-accent-warm/40 bg-white p-6 space-y-4">
+        <div className="rounded-xl border border-accent-warm/40 bg-white p-6 space-y-5">
           <h3 className="text-sm font-semibold text-mono-dark">
             Free AI limit reached
           </h3>
           <p className="text-sm text-mono-medium">
             Only the first {billingUsage.maxCsvTransactionsForAi ?? 250} CSV transactions are eligible for AI on the free plan.
-            You have {billingUsage.csvTransactions.totalCsvUploaded} CSV transactions; we&apos;ll analyze up to {billingUsage.maxCsvTransactionsForAi ?? 250}. Upgrade to Starter to analyze everything.
+            You have {billingUsage.csvTransactions.totalCsvUploaded} CSV transactions; we&apos;ll analyze up to {billingUsage.maxCsvTransactionsForAi ?? 250}. Upgrade to analyze everything.
           </p>
+          <div className="rounded-lg border border-bg-tertiary/60 bg-bg-secondary/40 px-4 py-3 text-xs sm:text-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
+              <div>
+                <p className="font-medium text-mono-dark">
+                  {STARTER_PLAN.name}
+                  <span className="ml-1 text-mono-medium">
+                    · {STARTER_PLAN.priceHuman}
+                    {STARTER_PLAN.priceInterval === "year" && "/year"}
+                  </span>
+                </p>
+                <p className="text-mono-medium">
+                  Unlimited AI-reviewed CSV transactions for your workspace.
+                </p>
+              </div>
+              <span className="text-xs font-medium text-accent-sage">
+                Recommended
+              </span>
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2 opacity-80">
+              <div>
+                <p className="font-medium text-mono-dark">
+                  {PLUS_PLAN.name}
+                  <span className="ml-1 text-mono-medium">
+                    · {PLUS_PLAN.priceHuman}
+                    {PLUS_PLAN.priceInterval === "year" && "/year"}
+                  </span>
+                </p>
+                <p className="text-mono-medium">
+                  {PLUS_PLAN.description} (coming soon).
+                </p>
+              </div>
+              <span className="text-[11px] font-medium text-mono-light uppercase tracking-wide">
+                Coming soon
+              </span>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-3 pt-2">
             <button
               type="button"
@@ -885,12 +950,14 @@ export function InboxPageClient({
             >
               Continue (analyze first {billingUsage.maxCsvTransactionsForAi ?? 250})
             </button>
-            <a
-              href="/pricing"
-              className="inline-flex items-center gap-2 rounded-lg border border-bg-tertiary px-4 py-2.5 text-sm font-medium text-mono-dark hover:bg-bg-secondary transition"
+            <button
+              type="button"
+              onClick={() => startStarterCheckout()}
+              disabled={checkoutLoading}
+              className="inline-flex items-center gap-2 rounded-lg border border-bg-tertiary px-4 py-2.5 text-sm font-medium text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
             >
-              Upgrade to Starter
-            </a>
+              {checkoutLoading ? "Opening Stripe…" : "Upgrade to Starter"}
+            </button>
             <button
               type="button"
               onClick={() => { setShowUpgradePanel(false); setPendingBulkAnalyze(false); }}
