@@ -102,9 +102,13 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
       throw new Error(body.error ?? "Failed to update");
     }
     await fetchData();
-    setSelectedTransaction((prev) =>
-      prev && prev.id === id ? { ...prev, ...update } : prev,
-    );
+    setSelectedTransaction((prev) => {
+      if (!prev || prev.id !== id) return prev;
+      const next = { ...prev, ...update };
+      const amount: string =
+        typeof next.amount === "number" ? String(next.amount) : (next.amount ?? "");
+      return { ...next, amount };
+    });
   }
 
   return (

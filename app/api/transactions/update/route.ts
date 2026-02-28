@@ -3,6 +3,7 @@ import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { transactionUpdateBodySchema } from "@/lib/validation/schemas";
+import { normalizeVendor } from "@/lib/vendor-matching";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 
 export async function POST(req: Request) {
@@ -31,20 +32,30 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  const { id, quick_label, business_purpose, notes, status, deduction_percent, category, schedule_c_line } = parsed.data;
+  const { id, quick_label, business_purpose, notes, status, deduction_percent, category, schedule_c_line, date, vendor, amount, description, transaction_type } = parsed.data;
+
+  const updatePayload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (quick_label !== undefined) updatePayload.quick_label = quick_label;
+  if (business_purpose !== undefined) updatePayload.business_purpose = business_purpose;
+  if (notes !== undefined) updatePayload.notes = notes;
+  if (status !== undefined) updatePayload.status = status;
+  if (deduction_percent !== undefined) updatePayload.deduction_percent = deduction_percent;
+  if (category !== undefined) updatePayload.category = category;
+  if (schedule_c_line !== undefined) updatePayload.schedule_c_line = schedule_c_line;
+  if (date !== undefined) updatePayload.date = new Date(date).toISOString().slice(0, 10);
+  if (vendor !== undefined) {
+    updatePayload.vendor = vendor;
+    updatePayload.vendor_normalized = vendor.trim() ? normalizeVendor(vendor) : null;
+  }
+  if (amount !== undefined) updatePayload.amount = amount;
+  if (description !== undefined) updatePayload.description = description;
+  if (transaction_type !== undefined) updatePayload.transaction_type = transaction_type;
 
   const { error } = await (supabase as any)
     .from("transactions")
-    .update({
-      ...(quick_label !== undefined && { quick_label }),
-      ...(business_purpose !== undefined && { business_purpose }),
-      ...(notes !== undefined && { notes }),
-      ...(status !== undefined && { status }),
-      ...(deduction_percent !== undefined && { deduction_percent }),
-      ...(category !== undefined && { category }),
-      ...(schedule_c_line !== undefined && { schedule_c_line }),
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq("id", id)
     .eq("user_id", userId);
 

@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
-import { parseQueryLimit, parseQueryOffset, parseQueryTaxYear, uuidSchema, transactionPostBodySchema, ACTIVITY_SORT_COLUMNS } from "@/lib/validation/schemas";
+import { parseQueryLimit, parseQueryOffset, parseQueryTaxYear, uuidSchema, transactionPostBodySchema, transactionDraftBodySchema, ACTIVITY_SORT_COLUMNS } from "@/lib/validation/schemas";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 
@@ -162,39 +162,72 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
-  const parsed = transactionPostBodySchema.safeParse(body);
-  if (!parsed.success) {
-    const msg = parsed.error.flatten().formErrors[0] ?? "Invalid request body";
-    return NextResponse.json({ error: msg }, { status: 400 });
+
+  const fullParsed = transactionPostBodySchema.safeParse(body);
+  if (fullParsed.success) {
+    const { date, vendor, amount, description, transaction_type = "income" } = fullParsed.data;
+    const taxYear = new Date(date).getFullYear();
+    const insertCols = "id,user_id,date,vendor,description,amount,status,tax_year,source,transaction_type,vendor_normalized,created_at";
+    const { data, error } = await (supabase as any)
+      .from("transactions")
+      .insert({
+        user_id: userId,
+        date: new Date(date).toISOString().slice(0, 10),
+        vendor,
+        description: description ?? null,
+        amount,
+        status: "completed",
+        tax_year: taxYear,
+        source: "manual",
+        transaction_type,
+        vendor_normalized: normalizeVendor(String(vendor)),
+      })
+      .select(insertCols)
+      .single();
+
+    if (error) {
+      return NextResponse.json(
+        { error: safeErrorMessage(error.message, "Failed to save transaction") },
+        { status: 500 }
+      );
+    }
+    revalidatePath("/dashboard");
+    return NextResponse.json(data);
   }
-  const { date, vendor, amount, description, transaction_type = "income" } = parsed.data;
 
-  const taxYear = new Date(date).getFullYear();
-  const insertCols = "id,user_id,date,vendor,description,amount,status,tax_year,source,transaction_type,vendor_normalized,created_at";
-  const { data, error } = await (supabase as any)
-    .from("transactions")
-    .insert({
-      user_id: userId,
-      date: new Date(date).toISOString().slice(0, 10),
-      vendor,
-      description: description ?? null,
-      amount,
-      status: "completed",
-      tax_year: taxYear,
-      source: "manual",
-      transaction_type,
-      vendor_normalized: normalizeVendor(String(vendor)),
-    })
-    .select(insertCols)
-    .single();
+  const draftParsed = transactionDraftBodySchema.safeParse(body);
+  if (draftParsed.success) {
+    const { status: draftStatus, transaction_type: draftType } = draftParsed.data;
+    const today = new Date().toISOString().slice(0, 10);
+    const taxYear = new Date().getFullYear();
+    const insertCols = "id,user_id,date,vendor,description,amount,status,tax_year,source,transaction_type,vendor_normalized,created_at,updated_at";
+    const { data: draftData, error: draftError } = await (supabase as any)
+      .from("transactions")
+      .insert({
+        user_id: userId,
+        date: today,
+        vendor: "",
+        description: null,
+        amount: 0,
+        status: draftStatus ?? "pending",
+        tax_year: taxYear,
+        source: "manual",
+        transaction_type: draftType ?? "expense",
+        vendor_normalized: null,
+      })
+      .select(insertCols)
+      .single();
 
-  if (error) {
-    return NextResponse.json(
-      { error: safeErrorMessage(error.message, "Failed to save transaction") },
-      { status: 500 }
-    );
+    if (draftError) {
+      return NextResponse.json(
+        { error: safeErrorMessage(draftError.message, "Failed to create draft") },
+        { status: 500 }
+      );
+    }
+    revalidatePath("/activity");
+    return NextResponse.json(draftData);
   }
 
-  revalidatePath("/dashboard");
-  return NextResponse.json(data);
+  const msg = fullParsed.error?.flatten().formErrors[0] ?? "Invalid request body";
+  return NextResponse.json({ error: msg }, { status: 400 });
 }

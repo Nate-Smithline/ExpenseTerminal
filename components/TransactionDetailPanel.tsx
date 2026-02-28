@@ -24,6 +24,11 @@ export type TransactionDetailUpdate = {
   deduction_percent?: number | null;
   business_purpose?: string | null;
   notes?: string | null;
+  vendor?: string;
+  date?: string;
+  amount?: number;
+  transaction_type?: "expense" | "income";
+  status?: "pending" | "completed" | "auto_sorted" | "personal";
 };
 
 interface TransactionDetailPanelProps {
@@ -83,6 +88,15 @@ export function TransactionDetailPanel({
   const [editDeductionPct, setEditDeductionPct] = useState(transaction.deduction_percent ?? 100);
   const [editBusinessPurpose, setEditBusinessPurpose] = useState(transaction.business_purpose ?? "");
   const [editNotes, setEditNotes] = useState(transaction.notes ?? "");
+  const [editVendor, setEditVendor] = useState(transaction.vendor ?? "");
+  const [editDate, setEditDate] = useState(transaction.date ? transaction.date.slice(0, 10) : new Date().toISOString().slice(0, 10));
+  const [editAmount, setEditAmount] = useState(String(Math.abs(Number(transaction.amount))));
+  const [editTransactionType, setEditTransactionType] = useState<"expense" | "income">(
+    (transaction.transaction_type === "income" ? "income" : "expense") as "expense" | "income"
+  );
+  const [editStatus, setEditStatus] = useState<"pending" | "completed" | "auto_sorted" | "personal">(
+    (transaction.status as "pending" | "completed" | "auto_sorted" | "personal") ?? "pending"
+  );
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -110,6 +124,15 @@ export function TransactionDetailPanel({
       if (editDeductionPct !== (transaction.deduction_percent ?? 100)) update.deduction_percent = editDeductionPct;
       if (editBusinessPurpose !== (transaction.business_purpose ?? "")) update.business_purpose = editBusinessPurpose || null;
       if (editNotes !== (transaction.notes ?? "")) update.notes = editNotes || null;
+      if (editVendor !== (transaction.vendor ?? "")) update.vendor = editVendor.trim();
+      const numAmount = parseFloat(editAmount);
+      if (!Number.isNaN(numAmount)) {
+        const currentAmount = Math.abs(Number(transaction.amount));
+        if (Math.abs(numAmount - currentAmount) > 1e-6) update.amount = numAmount;
+      }
+      if (editDate !== (transaction.date ?? "").slice(0, 10)) update.date = editDate;
+      if (editTransactionType !== (transaction.transaction_type === "income" ? "income" : "expense")) update.transaction_type = editTransactionType;
+      if (editStatus !== (transaction.status ?? "pending")) update.status = editStatus;
       if (Object.keys(update).length === 0) return;
       await onSave(transaction.id, update);
     } catch (e) {
@@ -125,7 +148,12 @@ export function TransactionDetailPanel({
     setEditDeductionPct(transaction.deduction_percent ?? 100);
     setEditBusinessPurpose(transaction.business_purpose ?? "");
     setEditNotes(transaction.notes ?? "");
-  }, [transaction.id, transaction.category, transaction.schedule_c_line, transaction.deduction_percent, transaction.business_purpose, transaction.notes]);
+    setEditVendor(transaction.vendor ?? "");
+    setEditDate(transaction.date ? transaction.date.slice(0, 10) : new Date().toISOString().slice(0, 10));
+    setEditAmount(String(Math.abs(Number(transaction.amount))));
+    setEditTransactionType((transaction.transaction_type === "income" ? "income" : "expense") as "expense" | "income");
+    setEditStatus((transaction.status as "pending" | "completed" | "auto_sorted" | "personal") ?? "pending");
+  }, [transaction.id, transaction.category, transaction.schedule_c_line, transaction.deduction_percent, transaction.business_purpose, transaction.notes, transaction.vendor, transaction.date, transaction.amount, transaction.transaction_type, transaction.status]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -157,7 +185,7 @@ export function TransactionDetailPanel({
       >
         {/* Panel header */}
         <div className="sticky top-0 z-10 bg-white border-b border-bg-tertiary/20 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-mono-dark truncate">{transaction.vendor}</h2>
+          <h2 className="text-base font-semibold text-mono-dark truncate">{transaction.vendor || "New transaction"}</h2>
           <button
             onClick={onClose}
             className="h-7 w-7 rounded-md hover:bg-bg-secondary flex items-center justify-center transition"
@@ -169,25 +197,80 @@ export function TransactionDetailPanel({
         {/* Properties */}
         <div className="px-6 py-4">
           <PropertyRow label="Vendor">
-            <span className="font-medium">{transaction.vendor}</span>
+            {editable && onSave ? (
+              <input
+                type="text"
+                value={editVendor}
+                onChange={(e) => setEditVendor(e.target.value)}
+                placeholder="Transaction name / vendor"
+                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+              />
+            ) : (
+              <span className="font-medium">{transaction.vendor || "—"}</span>
+            )}
           </PropertyRow>
 
           <PropertyRow label="Date">
-            {formatDate(transaction.date)}
+            {editable && onSave ? (
+              <input
+                type="date"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+              />
+            ) : (
+              formatDate(transaction.date)
+            )}
           </PropertyRow>
 
           <PropertyRow label="Amount">
-            <span className="font-semibold tabular-nums">${amount.toFixed(2)}</span>
+            {editable && onSave ? (
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white tabular-nums"
+              />
+            ) : (
+              <span className="font-semibold tabular-nums">${amount.toFixed(2)}</span>
+            )}
           </PropertyRow>
 
           <PropertyRow label="Type">
-            <Tag>{transaction.transaction_type === "income" ? "Income" : "Expense"}</Tag>
+            {editable && onSave ? (
+              <select
+                value={editTransactionType}
+                onChange={(e) => setEditTransactionType(e.target.value as "expense" | "income")}
+                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+              >
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+              </select>
+            ) : (
+              <Tag>{transaction.transaction_type === "income" ? "Income" : "Expense"}</Tag>
+            )}
           </PropertyRow>
 
           <PropertyRow label="Status">
-            <Tag variant={statusVariant(transaction.status)}>
-              {transaction.status === "auto_sorted" ? "Auto-sorted" : (transaction.status ?? "Pending")}
-            </Tag>
+            {editable && onSave ? (
+              <select
+                value={editStatus}
+                onChange={(e) => setEditStatus(e.target.value as "pending" | "completed" | "auto_sorted" | "personal")}
+                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+              >
+                <option value="pending">Pending</option>
+                <option value="completed">Completed</option>
+                <option value="auto_sorted">Auto-sorted</option>
+                <option value="personal">Personal</option>
+              </select>
+            ) : (
+              <Tag variant={statusVariant(transaction.status)}>
+                {transaction.status === "auto_sorted" ? "Auto-sorted" : (transaction.status ?? "Pending")}
+              </Tag>
+            )}
           </PropertyRow>
 
           <PropertyRow label="Category">

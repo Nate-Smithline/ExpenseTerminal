@@ -69,6 +69,11 @@ export const transactionUpdateBodySchema = z.object({
   deduction_percent: deductionPercentSchema.optional(),
   category: maxString(200).nullable().optional(),
   schedule_c_line: maxString(50).nullable().optional(),
+  date: z.string().max(50).optional(),
+  vendor: vendorSchema.optional(),
+  amount: amountSchema.optional(),
+  description: descriptionSchema.nullable().optional(),
+  transaction_type: z.enum(["income", "expense"]).optional(),
 });
 
 export const transactionDeleteBodySchema = z.object({
@@ -81,6 +86,13 @@ export const transactionPostBodySchema = z.object({
   vendor: vendorSchema,
   amount: amountSchema,
   description: descriptionSchema.optional(),
+  transaction_type: z.enum(["income", "expense"]).optional(),
+});
+
+/** Create a blank draft transaction; optional status and transaction_type from current table filters. */
+export const transactionDraftBodySchema = z.object({
+  draft: z.literal(true),
+  status: z.enum(["pending", "completed", "auto_sorted", "personal"]).optional(),
   transaction_type: z.enum(["income", "expense"]).optional(),
 });
 

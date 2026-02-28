@@ -5,7 +5,6 @@ import type { Database } from "@/lib/types/database";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { ActivityToolbar, type ActivityViewState } from "./ActivityToolbar";
 import { ActivityTable } from "./ActivityTable";
-import { CreateTransactionModal } from "./CreateTransactionModal";
 import { TransactionDetailPanel, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
 import type { TransactionUpdate } from "@/components/TransactionCard";
 
@@ -65,7 +64,6 @@ export function ActivityPageClient({
   const [reanalyzing, setReanalyzing] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [sidebarTransaction, setSidebarTransaction] = useState<Transaction | null>(null);
-  const [createModalOpen, setCreateModalOpen] = useState(false);
   const patchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadTransactions = useCallback(async () => {
@@ -258,11 +256,15 @@ export function ActivityPageClient({
   }
 
   async function handleSave(id: string, data: TransactionDetailUpdate & { status?: string }) {
-    await fetch("/api/transactions/update", {
+    const res = await fetch("/api/transactions/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, ...data }),
     });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body as { error?: string }).error ?? "Failed to save");
+    }
     await loadTransactions();
   }
 
@@ -307,10 +309,63 @@ export function ActivityPageClient({
     [viewState.filters.date_from, loadTransactions]
   );
 
-  /** New transaction: create then open sidebar; also bound to shortcut "n" */
-  const openNewTransaction = useCallback(() => {
-    setCreateModalOpen(true);
-  }, []);
+  /** New transaction: create draft in DB with current filters (status, type) applied, open in sidebar. Shortcut "n". */
+  const openNewTransaction = useCallback(async () => {
+    try {
+      const body: { draft: true; status?: string; transaction_type?: string } = { draft: true };
+      if (viewState.filters.status) body.status = viewState.filters.status;
+      if (viewState.filters.transaction_type) body.transaction_type = viewState.filters.transaction_type;
+
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast((data as { error?: string }).error ?? "Failed to create transaction");
+        setTimeout(() => setToast(null), 5000);
+        return;
+      }
+      const row = data as Record<string, unknown>;
+      const normalized: Transaction = {
+        id: String(row.id),
+        user_id: String(row.user_id),
+        date: String(row.date),
+        vendor: row.vendor != null ? String(row.vendor) : "",
+        description: row.description != null ? String(row.description) : null,
+        amount: typeof row.amount === "number" ? String(row.amount) : String(row.amount ?? "0"),
+        status: (row.status as Transaction["status"]) ?? "pending",
+        tax_year: typeof row.tax_year === "number" ? row.tax_year : new Date(String(row.date)).getFullYear(),
+        source: row.source != null ? String(row.source) : null,
+        transaction_type: (row.transaction_type as Transaction["transaction_type"]) ?? "expense",
+        vendor_normalized: row.vendor_normalized != null ? String(row.vendor_normalized) : null,
+        created_at: String(row.created_at ?? new Date().toISOString()),
+        updated_at: String(row.updated_at ?? row.created_at ?? new Date().toISOString()),
+        eligible_for_ai: Boolean(row.eligible_for_ai),
+        category: null,
+        schedule_c_line: null,
+        ai_confidence: null,
+        ai_reasoning: null,
+        ai_suggestions: null,
+        business_purpose: null,
+        quick_label: null,
+        notes: null,
+        auto_sort_rule_id: null,
+        deduction_percent: null,
+        is_meal: null,
+        is_travel: null,
+        data_source_id: null,
+      };
+      setSidebarTransaction(normalized);
+      const txs = await loadTransactions();
+      const full = txs.find((t) => t.id === normalized.id);
+      if (full) setSidebarTransaction(full);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Failed to create transaction");
+      setTimeout(() => setToast(null), 5000);
+    }
+  }, [viewState.filters.status, viewState.filters.transaction_type, loadTransactions]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -334,6 +389,7 @@ export function ActivityPageClient({
         reanalyzing={reanalyzing === "all"}
         onNewTransaction={openNewTransaction}
         totalCount={totalCount}
+        loading={loading}
       />
 
       {toast && (
@@ -373,52 +429,17 @@ export function ActivityPageClient({
           editable
           onSave={async (id, update) => {
             await handleSave(id, update);
+            setSidebarTransaction((prev) => {
+              if (!prev || prev.id !== id) return prev;
+              const next = { ...prev, ...update };
+              const amount: string =
+                typeof next.amount === "number" ? String(next.amount) : (next.amount ?? "");
+              return { ...next, amount };
+            });
           }}
           taxRate={0.24}
         />
       )}
-
-      <CreateTransactionModal
-        open={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        onSuccess={async (created) => {
-          const row = created as Record<string, unknown>;
-          const normalized: Transaction = {
-            id: String(row.id),
-            user_id: String(row.user_id),
-            date: String(row.date),
-            vendor: row.vendor != null ? String(row.vendor) : "",
-            description: row.description != null ? String(row.description) : null,
-            amount: typeof row.amount === "number" ? String(row.amount) : String(row.amount ?? "0"),
-            status: (row.status as Transaction["status"]) ?? "completed",
-            tax_year: typeof row.tax_year === "number" ? row.tax_year : new Date(String(row.date)).getFullYear(),
-            source: row.source != null ? String(row.source) : null,
-            transaction_type: (row.transaction_type as Transaction["transaction_type"]) ?? "expense",
-            vendor_normalized: row.vendor_normalized != null ? String(row.vendor_normalized) : null,
-            created_at: String(row.created_at ?? new Date().toISOString()),
-            updated_at: String(row.updated_at ?? row.created_at ?? new Date().toISOString()),
-            eligible_for_ai: Boolean(row.eligible_for_ai),
-            category: null,
-            schedule_c_line: null,
-            ai_confidence: null,
-            ai_reasoning: null,
-            ai_suggestions: null,
-            business_purpose: null,
-            quick_label: null,
-            notes: null,
-            auto_sort_rule_id: null,
-            deduction_percent: null,
-            is_meal: null,
-            is_travel: null,
-            data_source_id: null,
-          };
-          setCreateModalOpen(false);
-          setSidebarTransaction(normalized);
-          const txs = await loadTransactions();
-          const full = txs.find((t) => t.id === normalized.id);
-          if (full) setSidebarTransaction(full);
-        }}
-      />
     </div>
   );
 }
