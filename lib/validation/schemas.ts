@@ -43,8 +43,8 @@ export const businessPurposeSchema = maxString(2000);
 export const transactionRowSchema = z.object({
   date: z.string().max(50),
   vendor: vendorSchema,
-  description: z.string().max(2000).optional(),
-  amount: z.number().finite(),
+  description: maxString(2000).optional(),
+  amount: z.union([z.number().finite(), z.string()]).transform((v) => (typeof v === "string" ? parseFloat(v) : v)).pipe(z.number().finite()),
   category: z.string().max(200).optional(),
   notes: notesSchema.optional(),
   transaction_type: z.enum(["income", "expense"]).optional(),

@@ -43,8 +43,17 @@ export async function POST(req: Request) {
 
   const parsed = transactionUploadBodySchema.safeParse(body);
   if (!parsed.success) {
-    const msg = parsed.error.flatten().formErrors[0] ?? "Invalid request body";
-    return NextResponse.json({ error: msg }, { status: 400 });
+    const flat = parsed.error.flatten();
+    const firstField = flat.fieldErrors?.rows?.[0] ?? flat.formErrors[0];
+    const msg = typeof firstField === "string"
+      ? firstField
+      : Array.isArray(firstField)
+        ? firstField[0]
+        : "Invalid request body. Check that each row has date, vendor, and a valid amount.";
+    return NextResponse.json(
+      { error: msg || "Invalid request body. Expected JSON with rows (date, vendor, amount) and optional taxYear, dataSourceId." },
+      { status: 400 }
+    );
   }
 
   const { rows, taxYear: bodyTaxYear, dataSourceId } = parsed.data;

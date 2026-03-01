@@ -55,29 +55,6 @@ export async function POST(req: Request) {
 
   const { token, tokenHash, expiresAt } = createVerificationToken();
 
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "ec417b",
-    },
-    body: JSON.stringify({
-      sessionId: "ec417b",
-      runId: "reset-debug-1",
-      hypothesisId: "H1",
-      location: "app/api/auth/forgot-password/route.ts:afterCreateToken",
-      message: "Created password reset token",
-      data: {
-        hasProfile: !!profile?.id,
-        userIdPresent: Boolean(userId),
-        expiresAt: expiresAt.toISOString(),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion agent log
-
   // Invalidate previous unused tokens for this user.
   await (supabase as any)
     .from("password_reset_tokens")
@@ -90,28 +67,6 @@ export async function POST(req: Request) {
     token_hash: tokenHash,
     expires_at: expiresAt.toISOString(),
   });
-
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "ec417b",
-    },
-    body: JSON.stringify({
-      sessionId: "ec417b",
-      runId: "reset-debug-1",
-      hypothesisId: "H2",
-      location: "app/api/auth/forgot-password/route.ts:afterInsert",
-      message: "Inserted password reset token row",
-      data: {
-        userIdPresent: Boolean(userId),
-        expiresAt: expiresAt.toISOString(),
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion agent log
 
   const resend = getResendClient();
   const sendPromise = resend.emails.send({

@@ -30,21 +30,6 @@ async function fetchTransactions(params: Record<string, string>): Promise<Transa
   const url = `/api/transactions?${qs}`;
   const res = await fetch(url);
   const body = await res.json().catch(() => ({}));
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c912a5" },
-    body: JSON.stringify({
-      sessionId: "c912a5",
-      runId: "pre-fix",
-      hypothesisId: "H3",
-      location: "InboxPageClient:fetchTransactions",
-      message: "client_fetch_transactions_result",
-      data: { ok: res.ok, status: res.status, dataLength: (body.data ?? []).length },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   if (!res.ok) return [];
   return body.data ?? [];
 }
@@ -54,21 +39,6 @@ async function fetchCount(params: Record<string, string>): Promise<number> {
   const url = `/api/transactions?${qs}`;
   const res = await fetch(url);
   const body = await res.json().catch(() => ({}));
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c912a5" },
-    body: JSON.stringify({
-      sessionId: "c912a5",
-      runId: "pre-fix",
-      hypothesisId: "H3",
-      location: "InboxPageClient:fetchCount",
-      message: "client_fetch_count_result",
-      data: { ok: res.ok, status: res.status, count: body.count ?? 0 },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   if (!res.ok) return 0;
   return body.count ?? 0;
 }
@@ -160,28 +130,6 @@ export function InboxPageClient({
       return;
     }
 
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "4318a3",
-      },
-      body: JSON.stringify({
-        sessionId: "4318a3",
-        runId: "pre-fix",
-        hypothesisId: "H1",
-        location: "InboxPageClient:undoEffect",
-        message: "undo_effect_start",
-        data: {
-          hasUndoState: !!undoState,
-          expiresAt: undoState.expiresAt,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     const expiresAt = undoState.expiresAt;
 
     function tick() {
@@ -225,21 +173,6 @@ export function InboxPageClient({
   );
 
   const reloadInbox = useCallback(async () => {
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c912a5" },
-      body: JSON.stringify({
-        sessionId: "c912a5",
-        runId: "pre-fix",
-        hypothesisId: "H4",
-        location: "InboxPageClient:reloadInbox_start",
-        message: "reload_inbox_start",
-        data: { selectedYear },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     const [txs, count, unanalyzed] = await Promise.all([
       fetchTransactions({
         tax_year: String(selectedYear),
@@ -257,21 +190,6 @@ export function InboxPageClient({
         analyzed_only: "false",
       }),
     ]);
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c912a5" },
-      body: JSON.stringify({
-        sessionId: "c912a5",
-        runId: "pre-fix",
-        hypothesisId: "H4",
-        location: "InboxPageClient:reloadInbox_done",
-        message: "reload_inbox_done",
-        data: { txsLength: txs.length, count, unanalyzed },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     setTransactions(txs);
     setPendingCount(count);
     setUnanalyzedCount(unanalyzed);

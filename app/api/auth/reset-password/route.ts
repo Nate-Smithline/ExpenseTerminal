@@ -50,27 +50,6 @@ export async function POST(req: Request) {
 
   const supabase = createSupabaseServiceClient();
 
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "ec417b",
-    },
-    body: JSON.stringify({
-      sessionId: "ec417b",
-      runId: "reset-debug-1",
-      hypothesisId: "H3",
-      location: "app/api/auth/reset-password/route.ts:beforeSelect",
-      message: "Handling reset-password request",
-      data: {
-        tokenLength: token.length,
-      },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion agent log
-
   const { data: resetRow, error } = await (supabase as any)
     .from("password_reset_tokens")
     .select("*")
@@ -79,29 +58,6 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (error || !resetRow) {
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "ec417b",
-      },
-      body: JSON.stringify({
-        sessionId: "ec417b",
-        runId: "reset-debug-1",
-        hypothesisId: "H4",
-        location: "app/api/auth/reset-password/route.ts:selectResult",
-        message: "Reset token lookup result",
-        data: {
-          hasError: Boolean(error),
-          errorMessage: error?.message ?? null,
-          rowFound: Boolean(resetRow),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion agent log
-
     return NextResponse.json(
       { error: "Invalid or expired reset code. Please request a new one." },
       { status: 400 }

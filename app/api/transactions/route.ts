@@ -18,52 +18,8 @@ export async function GET(req: Request) {
     return NextResponse.json(auth.body, { status: auth.status });
   }
   const userId = auth.userId;
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "c912a5",
-    },
-    body: JSON.stringify({
-      sessionId: "c912a5",
-      runId: "pre-fix",
-      hypothesisId: "H1",
-      location: "app/api/transactions/route.ts:GET:pre",
-      message: "transactions_get_called",
-      data: { url: req.url },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-
   const rl = await rateLimitForRequest(req, userId, generalApiLimit);
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Debug-Session-Id": "c912a5",
-    },
-    body: JSON.stringify({
-      sessionId: "c912a5",
-      runId: "pre-fix",
-      hypothesisId: "H1",
-      location: "app/api/transactions/route.ts:GET:rate_limit",
-      message: "transactions_rate_limit_result",
-      data: { rlOk: rl.success, remaining: rl.remaining, limit: rl.limit },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
   if (!rl.success) {
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c912a5" },
-      body: JSON.stringify({ sessionId: "c912a5", runId: "pre-fix", hypothesisId: "H1", location: "app/api/transactions/route.ts:GET:429", message: "transactions_return_429", data: { url: req.url }, timestamp: Date.now() }),
-    }).catch(() => {});
-    // #endregion
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
   const supabase = authClient;
@@ -117,25 +73,11 @@ export async function GET(req: Request) {
   if (countOnly) {
     const { count, error } = await query;
     if (error) return NextResponse.json({ error: safeErrorMessage(error.message, "Failed to count") }, { status: 500 });
-    // #region agent log
-    fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c912a5" },
-      body: JSON.stringify({ sessionId: "c912a5", runId: "pre-fix", hypothesisId: "H2", location: "app/api/transactions/route.ts:GET:200_count", message: "transactions_return_count", data: { count: count ?? 0 }, timestamp: Date.now() }),
-    }).catch(() => {});
-    // #endregion
     return NextResponse.json({ count: count ?? 0 });
   }
 
   const { data, error, count } = await query;
   if (error) return NextResponse.json({ error: safeErrorMessage(error.message, "Failed to load transactions") }, { status: 500 });
-  // #region agent log
-  fetch("http://127.0.0.1:7865/ingest/9d58918a-6794-4604-b799-6ec1d4d0bcb4", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "c912a5" },
-    body: JSON.stringify({ sessionId: "c912a5", runId: "pre-fix", hypothesisId: "H2", location: "app/api/transactions/route.ts:GET:200_data", message: "transactions_return_data", data: { dataLength: (data ?? []).length, count }, timestamp: Date.now() }),
-  }).catch(() => {});
-  // #endregion
   return NextResponse.json({ data: data ?? [], count });
 }
 
