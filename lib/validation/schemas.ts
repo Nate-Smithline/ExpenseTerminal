@@ -40,8 +40,11 @@ export const descriptionSchema = maxString(2000);
 export const notesSchema = maxString(2000);
 export const businessPurposeSchema = maxString(2000);
 
+/** Date input from CSV/Excel can be long (e.g. "Monday, January 15, 2024"); normalized to YYYY-MM-DD before insert. */
+const dateInputSchema = z.string().max(500);
+
 export const transactionRowSchema = z.object({
-  date: z.string().max(50),
+  date: dateInputSchema,
   vendor: vendorSchema,
   description: maxString(2000).optional(),
   amount: z.union([z.number().finite(), z.string()]).transform((v) => (typeof v === "string" ? parseFloat(v) : v)).pipe(z.number().finite()),
@@ -69,7 +72,7 @@ export const transactionUpdateBodySchema = z.object({
   deduction_percent: deductionPercentSchema.optional(),
   category: maxString(200).nullable().optional(),
   schedule_c_line: maxString(50).nullable().optional(),
-  date: z.string().max(50).optional(),
+  date: dateInputSchema.optional(),
   vendor: vendorSchema.optional(),
   amount: amountSchema.optional(),
   description: descriptionSchema.nullable().optional(),
@@ -82,7 +85,7 @@ export const transactionDeleteBodySchema = z.object({
 
 /** Single transaction for POST /api/transactions (manual log) */
 export const transactionPostBodySchema = z.object({
-  date: z.string().max(50),
+  date: dateInputSchema,
   vendor: vendorSchema,
   amount: amountSchema,
   description: descriptionSchema.optional(),

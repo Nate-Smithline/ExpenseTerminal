@@ -5,7 +5,16 @@ import Papa from "papaparse";
 import { getStickyTaxYearClient } from "@/lib/tax-year-cookie";
 import ExcelJS from "exceljs";
 
+const BATCH_SIZE = 500;
+
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 type DataSource = { id: string; name: string; account_type: string; institution?: string | null };
+
 const ACCOUNT_TYPES = [
   { value: "checking", label: "Business Checking" },
   { value: "credit", label: "Business Credit Card" },
@@ -178,6 +187,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
 
   const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState<"idle" | "parsing" | "uploading" | "done" | "error">("idle");
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rowCount, setRowCount] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -314,28 +324,61 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
       setRowCount(rows.length);
       setStage("uploading");
 
-      const res = await fetch("/api/transactions/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows, taxYear, ...(effectiveDataSourceId ? { dataSourceId: effectiveDataSourceId } : {}) }),
-      });
+      const batches = chunk(rows, BATCH_SIZE);
+      let totalImported = 0;
+      const allTransactionIds: string[] = [];
+      let overLimit = false;
+      let eligibleImported = 0;
+      let ineligibleImported = 0;
+      let maxCsvTransactionsForAi: number | null = null;
 
-      const body = (await res.json().catch(() => ({}))) as {
-        imported?: number;
-        transactionIds?: string[];
-        overLimit?: boolean;
-        eligibleImported?: number;
-        ineligibleImported?: number;
-        maxCsvTransactionsForAi?: number | null;
-        error?: string;
-      };
+      for (let i = 0; i < batches.length; i++) {
+        setUploadProgress({ current: i + 1, total: batches.length });
+        const res = await fetch("/api/transactions/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rows: batches[i],
+            taxYear,
+            ...(effectiveDataSourceId ? { dataSourceId: effectiveDataSourceId } : {}),
+          }),
+        });
 
-      if (!res.ok) {
-        setStage("error");
-        throw new Error(body.error || "Failed to import");
+        const batchBody = (await res.json().catch(() => ({}))) as {
+          imported?: number;
+          transactionIds?: string[];
+          overLimit?: boolean;
+          eligibleImported?: number;
+          ineligibleImported?: number;
+          maxCsvTransactionsForAi?: number | null;
+          error?: string;
+        };
+
+        if (!res.ok) {
+          setStage("error");
+          throw new Error(batchBody.error || "Failed to import");
+        }
+
+        totalImported += batchBody.imported ?? 0;
+        allTransactionIds.push(...(batchBody.transactionIds ?? []));
+        if (batchBody.overLimit) overLimit = true;
+        eligibleImported += batchBody.eligibleImported ?? 0;
+        ineligibleImported += batchBody.ineligibleImported ?? 0;
+        if (batchBody.maxCsvTransactionsForAi != null) maxCsvTransactionsForAi = batchBody.maxCsvTransactionsForAi;
       }
 
+      setUploadProgress(null);
       setStage("done");
+
+      const body = {
+        imported: totalImported,
+        transactionIds: allTransactionIds,
+        overLimit,
+        eligibleImported,
+        ineligibleImported,
+        maxCsvTransactionsForAi,
+      };
+
       if (body.overLimit && (body.ineligibleImported ?? 0) > 0) {
         setOverLimitBanner({
           eligibleImported: body.eligibleImported ?? 0,
@@ -346,7 +389,6 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
         setOverLimitBanner(null);
       }
 
-      // Return IDs and limit info so the parent can show upgrade messaging
       await onCompleted({
         imported: body.imported ?? 0,
         transactionIds: body.transactionIds ?? [],
@@ -357,6 +399,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
       });
     } catch (e: unknown) {
       setStage("error");
+      setUploadProgress(null);
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setLoading(false);
@@ -566,7 +609,15 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
           {loading && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-xs">
-                <span>{stage === "parsing" ? "Parsing file..." : stage === "uploading" ? `Uploading ${rowCount} rows...` : "Processing..."}</span>
+                <span>
+                  {stage === "parsing"
+                    ? "Parsing file..."
+                    : stage === "uploading"
+                      ? uploadProgress
+                        ? `Uploading batch ${uploadProgress.current} of ${uploadProgress.total}...`
+                        : `Uploading ${rowCount} rows...`
+                      : "Processing..."}
+                </span>
               </div>
               <div className="h-1.5 w-full bg-bg-tertiary rounded-full overflow-hidden">
                 <div className="h-full bg-accent-sage animate-pulse" style={{ width: stage === "uploading" ? "70%" : "40%" }} />
