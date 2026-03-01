@@ -8,7 +8,7 @@ export function passwordResetEmailHtml(token: string): string {
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
   <title>Reset your password</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f9f7f5;font-family:'Work Sans',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+<body style="margin:0;padding:0;background-color:#f9f7f5;font-family:'Satoshi',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9f7f5;padding:48px 20px;">
     <tr>
       <td align="center">

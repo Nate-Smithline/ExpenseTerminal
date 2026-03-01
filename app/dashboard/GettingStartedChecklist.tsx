@@ -50,7 +50,13 @@ const STEPS = [
   },
 ];
 
-export function GettingStartedChecklist() {
+export function GettingStartedChecklist({ setupStatus }: { setupStatus?: {
+  data_source: boolean;
+  upload_csv: boolean;
+  review_inbox: boolean;
+  setup_deductions: boolean;
+  org_profile: boolean;
+} }) {
   const [progress, setProgress] = useState<OnboardingProgress>({});
   const [loading, setLoading] = useState(true);
   const [dismissed, setDismissed] = useState(false);
@@ -86,16 +92,16 @@ export function GettingStartedChecklist() {
     updateProgress(next);
   }
 
-  function skipAll() {
-    const next: OnboardingProgress = { skipped_all: true };
-    for (const s of STEPS) next[s.id] = true;
-    updateProgress(next);
-    setDismissed(true);
+  /** Step is complete if user marked it or it's actually set up */
+  function isStepDone(id: keyof OnboardingProgress): boolean {
+    if (progress[id]) return true;
+    if (setupStatus && id !== "skipped_all") return !!setupStatus[id as keyof typeof setupStatus];
+    return false;
   }
 
   if (loading || dismissed) return null;
 
-  const completedCount = STEPS.filter((s) => progress[s.id]).length;
+  const completedCount = STEPS.filter((s) => isStepDone(s.id)).length;
   const allDone = completedCount === STEPS.length;
 
   if (allDone) return null;
@@ -109,12 +115,6 @@ export function GettingStartedChecklist() {
             {completedCount} of {STEPS.length} complete
           </p>
         </div>
-        <button
-          onClick={skipAll}
-          className="text-xs text-mono-light hover:text-mono-medium transition-colors"
-        >
-          Skip all
-        </button>
       </div>
 
       {/* Progress bar */}
@@ -127,7 +127,7 @@ export function GettingStartedChecklist() {
 
       <div className="space-y-2">
         {STEPS.map((step) => {
-          const done = !!progress[step.id];
+          const done = isStepDone(step.id);
           return (
             <div
               key={step.id}
@@ -144,7 +144,7 @@ export function GettingStartedChecklist() {
                 }`}
               >
                 {done && (
-                  <span className="material-symbols-rounded text-white text-[14px]">check</span>
+                  <span className="material-symbols-rounded text-white text-[10px]">check</span>
                 )}
               </button>
 

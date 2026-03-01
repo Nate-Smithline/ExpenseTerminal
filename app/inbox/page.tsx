@@ -21,14 +21,13 @@ export default async function InboxPage() {
   const taxYear = getEffectiveTaxYear(cookieStore, profile);
   const db = supabase;
 
-  // Inbox shows all pending expenses (analyzed and unanalyzed) so transactions always load
+  // Inbox shows all pending transactions (expense and income) so users can mark income from positive amounts
   const { data: transactions } = await (db as any)
     .from("transactions")
     .select("*")
     .eq("user_id", userId)
     .eq("tax_year", taxYear)
     .eq("status", "pending")
-    .eq("transaction_type", "expense")
     .order("date", { ascending: false })
     .limit(20);
 
@@ -37,8 +36,7 @@ export default async function InboxPage() {
     .select("*", { count: "exact", head: true })
     .eq("user_id", userId)
     .eq("tax_year", taxYear)
-    .eq("status", "pending")
-    .eq("transaction_type", "expense");
+    .eq("status", "pending");
 
   const { count: unanalyzedCount } = await (db as any)
     .from("transactions")

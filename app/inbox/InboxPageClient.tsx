@@ -8,7 +8,7 @@ import { TaxYearSelector } from "@/components/TaxYearSelector";
 import { UploadModal } from "@/components/UploadModal";
 import { TransactionCard } from "@/components/TransactionCard";
 import type { TransactionUpdate, TransactionCardRef } from "@/components/TransactionCard";
-import { TransactionDetailPanel } from "@/components/TransactionDetailPanel";
+import { TransactionDetailPanel, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
 import { SimilarTransactionsPopup } from "@/components/SimilarTransactionsPopup";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
@@ -244,13 +244,11 @@ export function InboxPageClient({
       fetchTransactions({
         tax_year: String(selectedYear),
         status: "pending",
-        transaction_type: "expense",
         limit: "50",
       }),
       fetchCount({
         tax_year: String(selectedYear),
         status: "pending",
-        transaction_type: "expense",
       }),
       fetchCount({
         tax_year: String(selectedYear),
@@ -547,10 +545,15 @@ export function InboxPageClient({
       quick_label?: string;
       business_purpose?: string;
       notes?: string;
-      status?: "completed" | "personal";
+      status?: "completed" | "auto_sorted" | "personal";
       deduction_percent?: number;
       category?: string | null;
       schedule_c_line?: string | null;
+      transaction_type?: "income" | "expense";
+      vendor?: string;
+      date?: string;
+      amount?: number;
+      description?: string | null;
     },
     opts?: { applyToSimilar?: boolean },
   ) {
@@ -610,6 +613,19 @@ export function InboxPageClient({
 
   async function handleMarkPersonal(id: string) {
     handleSave(id, { status: "personal", deduction_percent: 0 });
+  }
+
+  async function saveTransactionUpdate(txId: string, update: TransactionDetailUpdate): Promise<void> {
+    const res = await fetch("/api/transactions/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: txId, ...update }),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? "Failed to save");
+    }
+    notifyInboxCountChanged();
   }
 
   function handleDelete(id: string) {
@@ -1182,10 +1198,16 @@ export function InboxPageClient({
         <TransactionDetailPanel
           transaction={manageTx}
           onClose={() => setManageTx(null)}
-          onReanalyze={handleReanalyze}
+          onReanalyze={manageTx.transaction_type === "expense" ? handleReanalyze : undefined}
           onMarkPersonal={async () => {
             await handleMarkPersonal(manageTx.id);
             setManageTx(null);
+          }}
+          editable
+          onSave={async (txId, update) => {
+            await saveTransactionUpdate(txId, update);
+            setManageTx(null);
+            await reloadInbox();
           }}
           taxRate={taxRate}
         />

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CurrencyInput } from "@/components/CurrencyInput";
 
-export function LogIncomeForm({ currentYear }: { currentYear: number }) {
+export function LogIncomeForm({ currentYear, onSuccess }: { currentYear: number; onSuccess?: () => void }) {
   const router = useRouter();
   const [date, setDate] = useState(
     new Date().toISOString().slice(0, 10)
@@ -35,7 +35,7 @@ export function LogIncomeForm({ currentYear }: { currentYear: number }) {
         body: JSON.stringify({
           date,
           vendor: vendor.trim(),
-          amount,
+          amount: Number(amount),
           description: description.trim() || undefined,
           transaction_type: "income",
         }),
@@ -50,6 +50,7 @@ export function LogIncomeForm({ currentYear }: { currentYear: number }) {
       setAmount(0);
       setDescription("");
       setTimeout(() => setSuccess(null), 5000);
+      if (onSuccess) onSuccess();
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");

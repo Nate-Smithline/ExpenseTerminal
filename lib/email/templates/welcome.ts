@@ -10,7 +10,7 @@ export function welcomeEmailHtml(firstName: string): string {
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
   <title>Welcome to ExpenseTerminal</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f9f7f5;font-family:'Work Sans',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+<body style="margin:0;padding:0;background-color:#f9f7f5;font-family:'Satoshi',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9f7f5;padding:48px 20px;">
     <tr>
       <td align="center">
@@ -101,7 +101,7 @@ export function welcomeEmailHtml(firstName: string): string {
           </tr>
           <tr>
             <td style="padding:0 48px 48px;text-align:center;">
-              <a href="${appUrl}/inbox" style="display:inline-block;background:#3f5147;color:#ffffff;text-decoration:none;font-size:15px;font-weight:500;padding:14px 48px;border-radius:999px;font-family:'Work Sans',Helvetica,Arial,sans-serif;">
+              <a href="${appUrl}/inbox" style="display:inline-block;background:#3f5147;color:#ffffff;text-decoration:none;font-size:15px;font-weight:500;padding:14px 48px;border-radius:999px;font-family:'Satoshi',Helvetica,Arial,sans-serif;">
                 Go to Your Inbox
               </a>
             </td>

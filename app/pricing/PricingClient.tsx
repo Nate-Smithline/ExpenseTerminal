@@ -238,7 +238,8 @@ export function PricingClient({
         <Link href="/settings/billing" className="underline hover:no-underline">
           Manage billing
         </Link>{" "}
-        · <Link href="/" className="underline hover:no-underline">Home</Link>
+        · <Link href="/" className="underline hover:no-underline">Home</Link>{" "}
+        · <Link href="/request-demo" className="underline hover:no-underline">Request Demo</Link>
       </p>
     </div>
   );

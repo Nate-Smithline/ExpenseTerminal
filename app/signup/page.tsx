@@ -141,13 +141,13 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="relative w-full">
+    <div className="relative w-full min-w-0 max-w-full">
       <AuthLayout>
         <p className="text-center text-sm text-mono-medium mb-8">
           Track and maximize your business deductions.
         </p>
 
-      <form onSubmit={handleSubmit} className="space-y-3.5">
+      <form onSubmit={handleSubmit} className="space-y-3.5 w-full min-w-0">
         {/* Name row */}
         <div className="flex gap-3">
           <input
@@ -203,8 +203,8 @@ export default function SignupPage() {
             </button>
           </div>
           {password && (
-            <div className="mt-2 p-3 rounded-lg border border-bg-tertiary bg-bg-secondary">
-              <div className="space-y-1.5 text-xs">
+            <div className="mt-2 p-3 rounded-lg border border-bg-tertiary bg-bg-secondary min-w-0">
+              <div className="space-y-1.5 text-xs break-words">
                 <div className={`flex items-center gap-2 ${password.length >= 12 || (password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) ? "text-green-600" : "text-mono-medium"}`}>
                   <span className="material-symbols-rounded text-[16px]">
                     {password.length >= 12 || (password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) ? "check_circle" : "radio_button_unchecked"}
@@ -327,14 +327,14 @@ export default function SignupPage() {
 
 
         {/* Terms agreement */}
-        <label className="flex items-start gap-2 pt-1 cursor-pointer">
+        <label className="flex items-start gap-2 pt-1 cursor-pointer min-w-0">
           <input
             type="checkbox"
             checked={agreedToTerms}
             onChange={(e) => setAgreedToTerms(e.target.checked)}
-            className="w-4 h-4 mt-0.5 rounded border-bg-tertiary accent-accent-sage"
+            className="w-4 h-4 mt-0.5 shrink-0 rounded border-bg-tertiary accent-accent-sage"
           />
-          <span className="text-sm text-mono-medium">
+          <span className="text-sm text-mono-medium break-words">
             I agree to the{" "}
             <Link href="/terms" className="text-accent-navy underline">
               Terms & Conditions
@@ -363,7 +363,7 @@ export default function SignupPage() {
         </button>
         </form>
 
-        <p className="mt-6 text-sm text-mono-medium text-center">
+        <p className="mt-6 text-sm text-mono-medium text-center break-words">
           Already have an account?{" "}
           <Link href="/login" className="flex items-center gap-2 text-accent-navy font-medium inline-flex">
             <span className="kbd-hint">L</span>
@@ -371,23 +371,6 @@ export default function SignupPage() {
           </Link>
         </p>
       </AuthLayout>
-      
-      <div className="fixed bottom-6 right-6 text-right z-10">
-        <p className="text-xs text-mono-light">
-          By using this app, you agree to our{" "}
-          <Link href="/terms" className="underline hover:text-mono-medium transition-colors">
-            terms
-          </Link>
-          {", "}
-          <Link href="/privacy" className="underline hover:text-mono-medium transition-colors">
-            privacy policy
-          </Link>
-          {", and "}
-          <Link href="/cookies" className="underline hover:text-mono-medium transition-colors">
-            cookie policy
-          </Link>
-        </p>
-      </div>
     </div>
   );
 }

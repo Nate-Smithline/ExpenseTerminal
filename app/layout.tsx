@@ -1,11 +1,22 @@
 import type { Metadata } from "next";
-import { Work_Sans, Marcellus } from "next/font/google";
+import localFont from "next/font/local";
+import { Marcellus } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "../components/AppShell";
 
-const workSans = Work_Sans({
-  subsets: ["latin"],
+const satoshi = localFont({
+  src: [
+    {
+      path: "../satoshi/Fonts/WEB/fonts/Satoshi-Variable.woff2",
+      style: "normal",
+    },
+    {
+      path: "../satoshi/Fonts/WEB/fonts/Satoshi-VariableItalic.woff2",
+      style: "italic",
+    },
+  ],
   variable: "--font-sans",
+  display: "swap",
 });
 
 const marcellus = Marcellus({
@@ -39,7 +50,7 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
         />
       </head>
-      <body className={`${workSans.variable} ${marcellus.variable} antialiased bg-bg-secondary text-mono-dark`}>
+      <body className={`${satoshi.variable} ${marcellus.variable} antialiased bg-bg-secondary text-mono-dark font-sans`}>
         <AppShell>{children}</AppShell>
       </body>
     </html>

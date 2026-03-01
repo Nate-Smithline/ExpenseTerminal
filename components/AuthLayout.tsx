@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
+import Link from "next/link";
 
 interface AuthLayoutProps {
   children: React.ReactNode;
@@ -39,8 +39,8 @@ export function AuthLayout({ children, isLoading = false }: AuthLayoutProps) {
       </div>
 
       {/* Right half — form area */}
-      <div className="flex-1 flex flex-col bg-bg-secondary min-h-screen overflow-y-auto lg:ml-[50%]">
-        <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-12 py-12">
+      <div className="flex-1 flex flex-col bg-bg-secondary min-h-screen overflow-y-auto lg:ml-[50%] min-w-0">
+        <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-12 py-12 pb-28">
           {/* Logo / loader spinner */}
           {isLoading && (
             <div className="mb-8">
@@ -75,15 +75,20 @@ export function AuthLayout({ children, isLoading = false }: AuthLayoutProps) {
             </div>
           )}
 
-          {/* App name — link to landing */}
-          <h1 className="font-display text-2xl text-mono-dark mb-1 tracking-tight">
-            <Link href="/" className="hover:opacity-80 transition-opacity">
-              ExpenseTerminal
-            </Link>
-          </h1>
+          {/* XT logo — link to home (2x size for visibility) */}
+          <Link href="/" className="mb-6 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-accent-sage/50 rounded">
+            <Image
+              src="/xt-logo.png"
+              alt="XT"
+              width={120}
+              height={48}
+              className="h-12 w-auto object-contain"
+              priority
+            />
+          </Link>
 
-          {/* Form content */}
-          <div className="w-full max-w-[420px] mt-6">{children}</div>
+          {/* Form content — no header on login/signup */}
+          <div className="w-full max-w-[420px] min-w-0 mt-6">{children}</div>
         </div>
       </div>
     </div>

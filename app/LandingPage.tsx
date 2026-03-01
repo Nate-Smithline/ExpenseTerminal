@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
+import { LandingHeader } from "@/components/LandingHeader";
 
 const STEPS = [
   {
@@ -156,22 +157,7 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-bg-secondary">
       {/* Navbar */}
-      <nav className="flex items-center justify-between px-4 md:px-16 py-5">
-        <span className="font-display text-xl text-mono-dark tracking-tight">
-          ExpenseTerminal
-        </span>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Link
-            href="/login"
-            className="text-sm text-mono-medium hover:text-mono-dark transition-colors px-4 py-2"
-          >
-            Login
-          </Link>
-          <Link href="/signup" className="btn-primary text-sm">
-            Get Started
-          </Link>
-        </div>
-      </nav>
+      <LandingHeader />
 
       {/* Hero */}
       <section className="relative overflow-hidden">
@@ -194,10 +180,10 @@ export function LandingPage() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <Link
-              href="/signup"
+              href="/request-demo"
               className="inline-flex items-center justify-center rounded-full bg-white px-8 py-3.5 text-sm font-medium text-accent-sage transition-all hover:shadow-lg hover:scale-[1.02]"
             >
-              Get Started
+              Request Demo
             </Link>
             <Link
               href="/login"
@@ -359,19 +345,19 @@ export function LandingPage() {
       {/* Made in America */}
       <MadeInAmericaSection />
 
-      {/* Footer */}
-      <footer className="px-8 md:px-16 py-12 bg-mono-dark">
+      {/* Footer — green with white XT logo */}
+      <footer className="px-8 md:px-16 py-12 bg-accent-sage">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <span className="font-display text-lg text-white/80">ExpenseTerminal</span>
-          <div className="flex items-center gap-6 text-sm text-white/40">
-            <Link href="/login" className="hover:text-white/70 transition-colors">Login</Link>
-            <Link href="/signup" className="hover:text-white/70 transition-colors">Sign Up</Link>
-            <Link href="/pricing" className="hover:text-white/70 transition-colors">Pricing</Link>
-            <Link href="/terms" className="hover:text-white/70 transition-colors">Terms</Link>
-            <Link href="/privacy" className="hover:text-white/70 transition-colors">Privacy</Link>
-            <a href="mailto:expenseterminal@outlook.com" className="hover:text-white/70 transition-colors">Contact</a>
+          <Link href="/" className="flex items-center hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-white/50 rounded">
+            <Image src="/xt-logo-white.png" alt="XT" width={56} height={24} className="h-6 w-auto object-contain" />
+          </Link>
+          <div className="flex items-center gap-6 text-sm text-white/70">
+            <Link href="/login" className="hover:text-white transition-colors">Login</Link>
+            <Link href="/signup" className="hover:text-white transition-colors">Sign Up</Link>
+            <Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link>
+            <Link href="/request-demo" className="hover:text-white transition-colors">Request Demo</Link>
           </div>
-          <p className="text-xs text-white/30">
+          <p className="text-xs text-white/60">
             &copy; {new Date().getFullYear()} ExpenseTerminal
           </p>
         </div>

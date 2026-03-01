@@ -18,6 +18,8 @@ interface TaxYearSelectorProps {
   label?: string;
   /** Compact style for inline use */
   compact?: boolean;
+  /** Match button style (rounded-full, same padding as btn-secondary) */
+  pill?: boolean;
 }
 
 export function TaxYearSelector({
@@ -25,6 +27,7 @@ export function TaxYearSelector({
   onChange,
   label = "Tax year",
   compact = false,
+  pill = false,
 }: TaxYearSelectorProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -56,11 +59,12 @@ export function TaxYearSelector({
         aria-expanded={open}
         aria-label={`${label}: ${value}. Click to change.`}
         className={`
-          inline-flex items-center gap-2 rounded-xl border bg-white transition-all
+          inline-flex items-center gap-2 border bg-white transition-all
           hover:border-accent-sage/40 hover:shadow-sm
           focus:outline-none focus:ring-2 focus:ring-accent-sage/30 focus:ring-offset-1
+          ${pill ? "rounded-full px-6 py-3 text-sm font-medium" : "rounded-xl"}
+          ${!pill && (compact ? "px-4 py-1.5 text-xs" : "px-4 py-2.5 text-base font-medium")}
           ${open ? "border-accent-sage/50 shadow-md ring-2 ring-accent-sage/20" : "border-bg-tertiary/60"}
-          ${compact ? "px-4 py-1.5 text-xs" : "px-4 py-2.5 text-base font-medium"}
         `}
       >
         <span className="text-mono-dark tabular-nums">{value}</span>

@@ -5,9 +5,10 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
 import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
 import { getProfileOnboarding } from "@/lib/profile";
-import { LogIncomeForm } from "./LogIncomeForm";
 import { GettingStartedChecklist } from "./GettingStartedChecklist";
 import { DashboardHeader } from "./DashboardHeader";
+import { WhatCanIDeduct } from "./WhatCanIDeduct";
+import { DashboardStats } from "./DashboardStats";
 import { DEDUCTION_TYPE_CARDS, OTHER_DEDUCTIONS_CARD } from "@/lib/deduction-types";
 
 function deductibleAmount(t: { amount: string; deduction_percent?: number | null; is_meal?: boolean; is_travel?: boolean }): number {
@@ -75,6 +76,38 @@ export default async function DashboardPage() {
     .eq("status", "pending")
     .eq("transaction_type", "expense");
 
+  // Setup status for Getting Started checklist
+  const { count: dataSourcesCount } = await (supabase as any)
+    .from("data_sources")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+
+  const { count: transactionsCount } = await (supabase as any)
+    .from("transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("tax_year", taxYear);
+
+  const { data: orgSettings } = await (supabase as any)
+    .from("org_settings")
+    .select("id")
+    .eq("user_id", userId)
+    .single();
+
+  const { data: profileRow } = await (supabase as any)
+    .from("profiles")
+    .select("first_name, last_name, name_prefix")
+    .eq("id", userId)
+    .single();
+
+  const setupStatus = {
+    data_source: (dataSourcesCount ?? 0) > 0,
+    upload_csv: (transactionsCount ?? 0) > 0,
+    review_inbox: (completedTx?.length ?? 0) > 0 || (pendingCount ?? 0) === 0,
+    setup_deductions: (additionalDeductions?.length ?? 0) > 0,
+    org_profile: !!orgSettings,
+  };
+
   const pendingDeductionPotential =
     pendingTx?.reduce((sum: number, t: { amount: string; deduction_percent?: number | null; is_meal?: boolean }) => {
       const amt = Math.abs(Number(t.amount));
@@ -111,45 +144,76 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-10">
-      <DashboardHeader taxYear={taxYear} pendingCount={pendingCount ?? 0} />
+      <DashboardHeader
+        taxYear={taxYear}
+        pendingCount={pendingCount ?? 0}
+        userName={profileRow ? [profileRow.name_prefix, profileRow.first_name, profileRow.last_name].filter(Boolean).join(" ").trim() || null : null}
+      />
+
+      {/* What can I deduct? — at top */}
+      <WhatCanIDeduct />
 
       {/* Getting Started */}
-      <GettingStartedChecklist />
+      <GettingStartedChecklist setupStatus={setupStatus} />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-        <div className="card p-6">
-          <p className="text-xs text-mono-light mb-1 uppercase tracking-wide">Revenue</p>
-          <p className="text-2xl font-bold text-mono-dark tabular-nums">
-            ${revenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-          </p>
-        </div>
-        <div className="card p-6">
-          <p className="text-xs text-mono-light mb-1 uppercase tracking-wide">Deductions</p>
-          <p className="text-2xl font-bold text-mono-dark tabular-nums">
-            ${fromTransactions.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs text-mono-light mt-1">From transactions</p>
-        </div>
-        <div className="card p-6">
-          <p className="text-xs text-mono-light mb-1 uppercase tracking-wide">Additional</p>
-          <p className="text-2xl font-bold text-mono-dark tabular-nums">
-            ${additionalTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs text-mono-light mt-1">
-            From deduction calculators like home office, QBI, and mileage
-          </p>
-        </div>
-        <div className="card p-6">
-          <p className="text-xs text-mono-light mb-1 uppercase tracking-wide">Est. Savings</p>
-          <p className="text-2xl font-bold text-accent-sage tabular-nums">
-            ${totalSavings.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs text-mono-light mt-1">
-            At {(taxRate * 100).toFixed(0)}% rate
-            <Link href="/org-profile" className="text-accent-sage ml-1 hover:underline">Edit</Link>
-          </p>
-        </div>
+      <DashboardStats
+        revenue={revenue}
+        fromTransactions={fromTransactions}
+        additionalTotal={additionalTotal}
+        totalSavings={totalSavings}
+        taxRate={taxRate}
+        taxYear={taxYear}
+      />
+
+      {/* Additional deductions — list first */}
+      <div className="card px-6 pt-6 pb-4">
+        <h2 className="text-lg font-semibold text-mono-dark mb-1">Additional deductions</h2>
+        <p className="text-sm text-mono-medium mb-3">
+          Set up deduction calculators like home office, QBI, and mileage
+        </p>
+        <ul className="divide-y divide-bg-tertiary/40">
+          {DEDUCTION_TYPE_CARDS.map((item) => {
+            const isSet = additionalDeductions?.some((d: { type: string }) => d.type === item.typeKey);
+            return (
+              <li key={item.typeKey}>
+                <Link
+                  href={item.href}
+                  className="flex items-center gap-4 py-6 first:pt-0 last:pb-0 -mx-3 px-3 rounded-lg hover:bg-bg-tertiary/40 transition-all duration-300 ease-in-out group"
+                >
+                  <span className="material-symbols-rounded text-[22px] text-accent-sage shrink-0 group-hover:text-mono-dark transition-colors duration-300 ease-in-out">
+                    {item.icon}
+                  </span>
+                  <div className="min-w-0 flex-1 py-3">
+                    <span className="font-medium text-mono-dark block">{item.label}</span>
+                    <span className="text-sm text-mono-medium">{item.description}</span>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium tabular-nums">
+                    {isSet ? (
+                      <span className="text-accent-sage">Set</span>
+                    ) : (
+                      <span className="text-mono-light">Not set</span>
+                    )}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+          <li>
+            <Link
+              href={OTHER_DEDUCTIONS_CARD.href}
+              className="flex items-center gap-4 py-6 first:pt-0 last:pb-0 -mx-3 px-3 rounded-lg hover:bg-bg-tertiary/40 transition-all duration-300 ease-in-out group"
+            >
+              <span className="material-symbols-rounded text-[22px] text-accent-sage shrink-0 group-hover:text-mono-dark transition-colors duration-300 ease-in-out">
+                {OTHER_DEDUCTIONS_CARD.icon}
+              </span>
+              <div className="min-w-0 flex-1 py-3">
+                <span className="font-medium text-mono-dark block">{OTHER_DEDUCTIONS_CARD.label}</span>
+                <span className="text-sm text-mono-medium">{OTHER_DEDUCTIONS_CARD.description}</span>
+              </div>
+            </Link>
+          </li>
+        </ul>
       </div>
 
       {/* Deduction Breakdown */}
@@ -205,94 +269,12 @@ export default async function DashboardPage() {
               ))}
               {(!additionalDeductions || additionalDeductions.length === 0) && (
                 <li className="text-mono-light">
-                  None yet. Add deductions from the categories below.
+                  None yet. Add deductions from the section above.
                 </li>
               )}
             </ul>
           </div>
         </div>
-      </div>
-
-      {/* Deduction categories — list view in one container */}
-      <div className="card px-6 pt-6 pb-4">
-        <h2 className="text-lg font-semibold text-mono-dark mb-1">Additional deductions</h2>
-        <p className="text-sm text-mono-medium mb-3">
-          Set up deduction calculators like home office, QBI, and mileage
-        </p>
-        <ul className="divide-y divide-bg-tertiary/40">
-          {DEDUCTION_TYPE_CARDS.map((item) => {
-            const isSet = additionalDeductions?.some((d: { type: string }) => d.type === item.typeKey);
-            return (
-              <li key={item.typeKey}>
-                <Link
-                  href={item.href}
-                  className="flex items-center gap-4 py-6 first:pt-0 last:pb-0 -mx-3 px-3 rounded-lg hover:bg-bg-tertiary/40 transition-all duration-300 ease-in-out group"
-                >
-                  <span className="material-symbols-rounded text-[22px] text-accent-sage shrink-0 group-hover:text-mono-dark transition-colors duration-300 ease-in-out">
-                    {item.icon}
-                  </span>
-                  <div className="min-w-0 flex-1 py-3">
-                    <span className="font-medium text-mono-dark block">{item.label}</span>
-                    <span className="text-sm text-mono-medium">{item.description}</span>
-                  </div>
-                  <span className="shrink-0 text-xs font-medium tabular-nums">
-                    {isSet ? (
-                      <span className="text-accent-sage">Set</span>
-                    ) : (
-                      <span className="text-mono-light">Not set</span>
-                    )}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-          <li>
-            <Link
-              href={OTHER_DEDUCTIONS_CARD.href}
-              className="flex items-center gap-4 py-6 first:pt-0 last:pb-0 -mx-3 px-3 rounded-lg hover:bg-bg-tertiary/40 transition-all duration-300 ease-in-out group"
-            >
-              <span className="material-symbols-rounded text-[22px] text-accent-sage shrink-0 group-hover:text-mono-dark transition-colors duration-300 ease-in-out">
-                {OTHER_DEDUCTIONS_CARD.icon}
-              </span>
-              <div className="min-w-0 flex-1 py-3">
-                <span className="font-medium text-mono-dark block">{OTHER_DEDUCTIONS_CARD.label}</span>
-                <span className="text-sm text-mono-medium">{OTHER_DEDUCTIONS_CARD.description}</span>
-              </div>
-            </Link>
-          </li>
-        </ul>
-      </div>
-
-      {/* Guidance on other deductible expenses */}
-      <div className="card p-6">
-        <h2 className="text-lg font-semibold text-mono-dark mb-2">
-          Other common deductible expenses
-        </h2>
-        <p className="text-sm text-mono-medium mb-3">
-          Beyond these calculators, many everyday costs can be deductible when they are ordinary
-          and necessary for your business.
-        </p>
-        <ul className="list-disc pl-5 space-y-1 text-sm text-mono-medium">
-          <li>Business portion of your phone and internet bills</li>
-          <li>Continuing education and training directly related to your work</li>
-          <li>Vehicle costs when you drive for business (fuel, maintenance, insurance, etc.)</li>
-          <li>Professional tools, subscriptions, and software used to serve clients</li>
-        </ul>
-        <p className="text-xs text-mono-light mt-3">
-          Actual deductions depend on your specific situation. This information is for general
-          education and is not tax or legal advice.
-        </p>
-      </div>
-
-      {/* Log Income */}
-      <div className="card p-6">
-        <h2 className="text-lg font-semibold text-mono-dark mb-4">
-          Log Income
-        </h2>
-        <p className="text-sm text-mono-medium mb-4">
-          Record income for this tax year (revenue, client payments, etc.).
-        </p>
-        <LogIncomeForm currentYear={taxYear} />
       </div>
     </div>
   );

@@ -21,8 +21,8 @@
   --color-warning: #635a43;
   --color-danger: #c44;
 
-  /* Typography */
-  --font-sans: "Work Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Typography — Satoshi (sans, set by layout variable), Marcellus (display) */
+  --font-sans: "Satoshi", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-display: "Marcellus", Georgia, "Times New Roman", serif;
 
   --text-xs: 0.75rem;

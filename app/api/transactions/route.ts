@@ -192,6 +192,7 @@ export async function POST(req: Request) {
       );
     }
     revalidatePath("/dashboard");
+    revalidatePath("/");
     return NextResponse.json(data);
   }
 
