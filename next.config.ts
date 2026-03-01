@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Allow large CSV upload batches (client sends in chunks; each chunk can have long vendor/description)
+    proxyClientMaxBodySize: "50mb",
+  },
   images: {
     remotePatterns: [
       {
