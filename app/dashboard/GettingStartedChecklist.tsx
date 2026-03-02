@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface OnboardingProgress {
   data_source?: boolean;
@@ -69,6 +70,7 @@ export function GettingStartedChecklist({ setupStatus }: { setupStatus?: {
   const [progress, setProgress] = useState<OnboardingProgress>({});
   const [loading, setLoading] = useState(true);
   const [dismissed, setDismissed] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     fetch("/api/profile")
@@ -90,6 +92,21 @@ export function GettingStartedChecklist({ setupStatus }: { setupStatus?: {
       body: JSON.stringify({ onboarding_progress: next }),
     });
   }
+
+  // Mark "What can I deduct" as completed when the modal flow finishes
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = () => {
+      setProgress((prev) => {
+        if (prev.what_can_i_deduct) return prev;
+        const next = { ...prev, what_can_i_deduct: true };
+        void updateProgress(next);
+        return next;
+      });
+    };
+    window.addEventListener("what-can-i-deduct-completed", handler as EventListener);
+    return () => window.removeEventListener("what-can-i-deduct-completed", handler as EventListener);
+  }, []);
 
   function toggleStep(id: keyof OnboardingProgress) {
     const next = { ...progress, [id]: !progress[id] };
@@ -174,6 +191,18 @@ export function GettingStartedChecklist({ setupStatus }: { setupStatus?: {
                       onClick={() => {
                         if (typeof window === "undefined") return;
                         window.dispatchEvent(new CustomEvent("open-what-can-i-deduct"));
+                      }}
+                      className="text-xs text-accent-sage font-medium hover:underline"
+                    >
+                      Go
+                    </button>
+                  ) : step.id === "review_inbox" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next: OnboardingProgress = { ...progress, review_inbox: true };
+                        void updateProgress(next);
+                        router.push(step.href);
                       }}
                       className="text-xs text-accent-sage font-medium hover:underline"
                     >

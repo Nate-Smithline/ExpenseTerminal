@@ -64,6 +64,9 @@ export function WhatCanIDeduct() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ onboarding_progress: next }),
       });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("what-can-i-deduct-completed"));
+      }
     } catch {
       // best-effort only
     }

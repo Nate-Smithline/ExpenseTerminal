@@ -12,6 +12,7 @@ export interface TransactionUpdate {
   deduction_percent?: number;
   category?: string | null;
   schedule_c_line?: string | null;
+  transaction_type?: "income" | "expense";
 }
 
 interface TransactionCardProps {
@@ -88,6 +89,9 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     const [selectedScheduleLine, setSelectedScheduleLine] = useState<string | null>(transaction.schedule_c_line ?? null);
     const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
     const [categoryHighlightIdx, setCategoryHighlightIdx] = useState(0);
+    const [incomeTreatment, setIncomeTreatment] = useState<"business" | "personal" | null>(
+      transaction.transaction_type === "income" ? "business" : null,
+    );
 
     const businessRef = useRef<HTMLTextAreaElement>(null);
     const categoryListRef = useRef<HTMLDivElement>(null);
@@ -101,7 +105,9 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     const isTravel = transaction.is_travel ?? false;
     const confidence = transaction.ai_confidence != null ? Number(transaction.ai_confidence) : null;
     const confPct = confidence != null ? Math.round(confidence * 100) : null;
-    const amount = Math.abs(Number(transaction.amount));
+    const rawAmount = Number(transaction.amount);
+    const amount = Math.abs(rawAmount);
+    const isIncomeLike = transaction.transaction_type === "income" || rawAmount > 0;
     const deductibleAmount = (amount * deductionPct / 100);
 
     useEffect(() => {
@@ -173,7 +179,6 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     const maxQuickLabel = 500;
     const maxTextField = 2000;
     const normalizedDeduction = Math.min(100, Math.max(0, deductionPct));
-
     const saveData: TransactionUpdate = {
       quick_label: selectedLabel ? selectedLabel.slice(0, maxQuickLabel) : undefined,
       business_purpose:
@@ -187,6 +192,10 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
       category: selectedCategory,
       schedule_c_line: selectedScheduleLine,
     };
+
+    if (isIncomeLike && incomeTreatment === "business") {
+      saveData.transaction_type = "income";
+    }
 
     function handleNext() {
       if (step === 1) {
@@ -349,8 +358,12 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
               {displayCategoryName}
             </p>
           </div>
-          <span className="text-sm font-semibold text-mono-dark tabular-nums shrink-0">
-            -${amount.toFixed(2)}
+          <span
+            className={`text-sm font-semibold tabular-nums shrink-0 ${
+              isIncomeLike ? "text-emerald-700" : "text-mono-dark"
+            }`}
+          >
+            {isIncomeLike ? "+" : "-"}${amount.toFixed(2)}
           </span>
         </div>
 
@@ -371,145 +384,183 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
               </div>
             )}
 
-            {/* STEP 1: Deduction Amount */}
+            {/* STEP 1: Deduction Amount / Income classification */}
             {step === 1 && (
               <div className="space-y-3 animate-in">
-                {/* Category: one line */}
-                <div className="relative flex items-center gap-2 flex-wrap text-xs">
-                  <span className="text-mono-light shrink-0">Category:</span>
-                  <span className="text-mono-medium">
-                    {transaction.auto_sort_rule_id != null && (
-                      <span className="text-mono-medium">Past sort · </span>
-                    )}
-                    {transaction.auto_sort_rule_id == null && isAiCategorized && confPct != null && (
-                      <span className="text-accent-sage font-medium">AI {confPct}% · </span>
-                    )}
-                    {displayCategoryName}
-                  </span>
-                  {!isAiCategorized && transaction.auto_sort_rule_id == null && (
-                    <span className="text-amber-600 text-[11px]">Not yet categorized by AI</span>
-                  )}
-                  <button
-                    type="button"
-                    data-category-trigger
-                    onClick={() => {
-                      setCategoryPickerOpen((o) => !o);
-                      if (!categoryPickerOpen) {
-                        const idx = EXPENSE_CATEGORIES.findIndex((c) => c.line === (selectedScheduleLine ?? transaction.schedule_c_line ?? ""));
-                        setCategoryHighlightIdx(idx >= 0 ? idx : 0);
-                      }
-                    }}
-                    className="px-1 py-0.5 text-[11px] text-mono-medium hover:text-mono-dark transition flex items-center gap-1.5"
-                  >
-                    <kbd className="kbd-hint text-[10px] mr-1.5">c</kbd>
-                    {categoryPickerOpen ? "Close" : "Change"}
-                  </button>
-                  {categoryPickerOpen && (
-                    <div
-                      ref={categoryListRef}
-                      className="absolute left-0 top-full mt-1 z-10 w-full max-w-sm rounded-lg border border-bg-tertiary bg-white shadow-lg py-1 max-h-56 overflow-auto"
-                      role="listbox"
-                    >
-                      {EXPENSE_CATEGORIES.map((c, i) => (
-                        <button
-                          key={c.line}
-                          type="button"
-                          role="option"
-                          aria-selected={categoryHighlightIdx === i}
-                          onClick={() => {
-                            setSelectedScheduleLine(c.line);
-                            setSelectedCategory(c.name);
-                            setCategoryPickerOpen(false);
-                          }}
-                          className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition ${
-                            categoryHighlightIdx === i ? "bg-accent-sage/10 text-accent-sage font-medium" : "text-mono-medium hover:bg-bg-secondary"
-                          }`}
+                {!isIncomeLike && (
+                  <>
+                    {/* Category: one line */}
+                    <div className="relative flex items-center gap-2 flex-wrap text-xs">
+                      <span className="text-mono-light shrink-0">Category:</span>
+                      <span className="text-mono-medium">
+                        {transaction.auto_sort_rule_id != null && (
+                          <span className="text-mono-medium">Past sort · </span>
+                        )}
+                        {transaction.auto_sort_rule_id == null && isAiCategorized && confPct != null && (
+                          <span className="text-accent-sage font-medium">AI {confPct}% · </span>
+                        )}
+                        {displayCategoryName}
+                      </span>
+                      {!isAiCategorized && transaction.auto_sort_rule_id == null && (
+                        <span className="text-amber-600 text-[11px]">Not yet categorized by AI</span>
+                      )}
+                      <button
+                        type="button"
+                        data-category-trigger
+                        onClick={() => {
+                          setCategoryPickerOpen((o) => !o);
+                          if (!categoryPickerOpen) {
+                            const idx = EXPENSE_CATEGORIES.findIndex((c) => c.line === (selectedScheduleLine ?? transaction.schedule_c_line ?? ""));
+                            setCategoryHighlightIdx(idx >= 0 ? idx : 0);
+                          }
+                        }}
+                        className="px-1 py-0.5 text-[11px] text-mono-medium hover:text-mono-dark transition flex items-center gap-1.5"
+                      >
+                        <kbd className="kbd-hint text-[10px] mr-1.5">c</kbd>
+                        {categoryPickerOpen ? "Close" : "Change"}
+                      </button>
+                      {categoryPickerOpen && (
+                        <div
+                          ref={categoryListRef}
+                          className="absolute left-0 top-full mt-1 z-10 w-full max-w-sm rounded-lg border border-bg-tertiary bg-white shadow-lg py-1 max-h-56 overflow-auto"
+                          role="listbox"
                         >
-                          <span className="text-mono-light w-8">{c.line}</span>
-                          {c.name}
-                        </button>
-                      ))}
+                          {EXPENSE_CATEGORIES.map((c, i) => (
+                            <button
+                              key={c.line}
+                              type="button"
+                              role="option"
+                              aria-selected={categoryHighlightIdx === i}
+                              onClick={() => {
+                                setSelectedScheduleLine(c.line);
+                                setSelectedCategory(c.name);
+                                setCategoryPickerOpen(false);
+                              }}
+                              className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition ${
+                                categoryHighlightIdx === i ? "bg-accent-sage/10 text-accent-sage font-medium" : "text-mono-medium hover:bg-bg-secondary"
+                              }`}
+                            >
+                              <span className="text-mono-light w-8">{c.line}</span>
+                              {c.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                <div className="w-full">
-                  <p className="text-xs font-medium text-mono-medium mb-1.5">What percent for business?</p>
-                  <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      {SNAP_POINTS.map((pt) => (
-                        <button
-                          key={pt}
-                          type="button"
-                          onClick={() => setDeductionPct(pt)}
-                          className={`py-1 text-xs font-medium transition flex items-center gap-2.5 ${
-                            pt === 0 ? "pl-0 pr-2" : "px-2"
-                          } ${
-                            deductionPct === pt
-                              ? "text-accent-sage font-semibold"
-                              : "text-mono-medium hover:text-mono-dark"
-                          }`}
-                        >
-                          {pt === 0 && <kbd className="kbd-hint">0</kbd>}
-                          {pt === 25 && <kbd className="kbd-hint">2</kbd>}
-                          {pt === 50 && <kbd className="kbd-hint">5</kbd>}
-                          {pt === 75 && <kbd className="kbd-hint">7</kbd>}
-                          {pt === 100 && <kbd className="kbd-hint">1</kbd>}
-                          {pt}%
-                        </button>
-                      ))}
+                    <div className="w-full">
+                      <p className="text-xs font-medium text-mono-medium mb-1.5">What percent for business?</p>
+                      <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          {SNAP_POINTS.map((pt) => (
+                            <button
+                              key={pt}
+                              type="button"
+                              onClick={() => setDeductionPct(pt)}
+                              className={`py-1 text-xs font-medium transition flex items-center gap-2.5 ${
+                                pt === 0 ? "pl-0 pr-2" : "px-2"
+                              } ${
+                                deductionPct === pt
+                                  ? "text-accent-sage font-semibold"
+                                  : "text-mono-medium hover:text-mono-dark"
+                              }`}
+                            >
+                              {pt === 0 && <kbd className="kbd-hint">0</kbd>}
+                              {pt === 25 && <kbd className="kbd-hint">2</kbd>}
+                              {pt === 50 && <kbd className="kbd-hint">5</kbd>}
+                              {pt === 75 && <kbd className="kbd-hint">7</kbd>}
+                              {pt === 100 && <kbd className="kbd-hint">1</kbd>}
+                              {pt}%
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-mono-light tabular-nums shrink-0">
+                          ${deductibleAmount.toFixed(2)} deductible (saves ~${(deductibleAmount * taxRate).toFixed(2)})
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 w-full">
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={deductionPct}
+                          onChange={(e) => setDeductionPct(Number(e.target.value))}
+                          className="flex-1 min-w-0 h-1.5 accent-accent-sage cursor-pointer"
+                        />
+                        <span className="text-sm font-semibold text-mono-dark tabular-nums w-12 text-right shrink-0">
+                          {deductionPct}%
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-mono-light tabular-nums shrink-0">
-                      ${deductibleAmount.toFixed(2)} deductible (saves ~${(deductibleAmount * taxRate).toFixed(2)})
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 w-full">
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={deductionPct}
-                      onChange={(e) => setDeductionPct(Number(e.target.value))}
-                      className="flex-1 min-w-0 h-1.5 accent-accent-sage cursor-pointer"
-                    />
-                    <span className="text-sm font-semibold text-mono-dark tabular-nums w-12 text-right shrink-0">
-                      {deductionPct}%
-                    </span>
-                  </div>
-                </div>
 
-                {/* Auto-sort checkbox */}
-                {similarTransactions.length > 0 && (
-                  <label className="flex items-center gap-2.5 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={autoSort}
-                      onChange={(e) => setAutoSort(e.target.checked)}
-                      className="h-4 w-4 rounded border-bg-tertiary text-accent-sage focus:ring-accent-sage/30"
-                    />
-                    <span className="text-xs text-mono-medium group-hover:text-mono-dark transition">
-                      <kbd className="kbd-hint mr-1">a</kbd>
-                      Also apply to {similarTransactions.length} other{similarTransactions.length === 1 ? "" : "s"} from {transaction.vendor}
-                    </span>
-                  </label>
+                    {/* Auto-sort checkbox */}
+                    {similarTransactions.length > 0 && (
+                      <label className="flex items-center gap-2.5 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={autoSort}
+                          onChange={(e) => setAutoSort(e.target.checked)}
+                          className="h-4 w-4 rounded border-bg-tertiary text-accent-sage focus:ring-accent-sage/30"
+                        />
+                        <span className="text-xs text-mono-medium group-hover:text-mono-dark transition">
+                          <kbd className="kbd-hint mr-1">a</kbd>
+                          Also apply to {similarTransactions.length} other{similarTransactions.length === 1 ? "" : "s"} from {transaction.vendor}
+                        </span>
+                      </label>
+                    )}
+                  </>
+                )}
+
+                {isIncomeLike && (
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-mono-medium">How should we treat this?</p>
+                      <p className="text-xs text-mono-light">
+                        This is money coming into your account. Mark business income to include it in your tax totals, or personal/transfer to ignore it.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIncomeTreatment("business")}
+                        className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-xs font-medium transition ${
+                          incomeTreatment === "business"
+                            ? "bg-emerald-600 border-emerald-600 text-white"
+                            : "bg-white border-bg-tertiary text-mono-medium hover:bg-bg-secondary"
+                        }`}
+                      >
+                        Business income
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleMarkPersonalClick}
+                        className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition"
+                      >
+                        Personal / transfer
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {/* Action row: Personal, Next, View details, Delete */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => onMarkPersonal()}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition"
-                    title="Mark as personal (removes from inbox)"
-                  >
-                    <kbd className="kbd-hint">p</kbd>
-                    Personal
-                  </button>
+                  {!isIncomeLike && (
+                    <button
+                      type="button"
+                      onClick={() => onMarkPersonal()}
+                      className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition"
+                      title="Mark as personal (removes from inbox)"
+                    >
+                      <kbd className="kbd-hint">p</kbd>
+                      Personal
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={handleNext}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 transition border border-[var(--color-accent-terracotta-dark)]/80 bg-[var(--color-accent-terracotta-dark)]"
+                    disabled={isIncomeLike && incomeTreatment !== "business"}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 transition border border-[var(--color-accent-terracotta-dark)]/80 bg-[var(--color-accent-terracotta-dark)] disabled:opacity-40"
                   >
                     Next
                     <kbd className="kbd-hint ml-1 !text-white !bg-white/20 !border-white/30">s</kbd>
@@ -545,7 +596,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                 {suggestions.length > 0 && (
                   <div>
                     <p className="text-xs font-medium text-mono-medium mb-2">
-                      Select a reason
+                      {isIncomeLike ? "Where is this income coming from?" : "Select a reason"}
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {suggestions.map((s, i) => (
@@ -583,7 +634,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                       ref={businessRef}
                       value={businessPurpose}
                       onChange={(e) => setBusinessPurpose(e.target.value)}
-                      placeholder="Write your business purpose..."
+                      placeholder={isIncomeLike ? "Who paid you, and what for?" : "Write your business purpose..."}
                       className="w-full border border-bg-tertiary rounded-lg p-3 text-xs bg-white focus:ring-1 focus:ring-accent-sage/30 focus:border-accent-sage/40 outline-none resize-none"
                       rows={2}
                     />
