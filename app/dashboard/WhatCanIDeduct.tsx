@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 
 const TIP_SLIDES = [
@@ -50,19 +50,45 @@ export function WhatCanIDeduct() {
   const [open, setOpen] = useState(false);
   const [index, setIndex] = useState(0);
 
+  const markCompleted = useCallback(async () => {
+    try {
+      const res = await fetch("/api/profile");
+      if (!res.ok) return;
+      const body = await res.json().catch(() => null);
+      const current = (body?.data?.onboarding_progress && typeof body.data.onboarding_progress === "object")
+        ? body.data.onboarding_progress
+        : {};
+      const next = { ...(current ?? {}), what_can_i_deduct: true };
+      await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ onboarding_progress: next }),
+      });
+    } catch {
+      // best-effort only
+    }
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        return;
+      }
       if (e.key === "ArrowRight") {
-        if (index >= TIP_SLIDES.length - 1) setOpen(false);
-        else setIndex((i) => i + 1);
+        if (index >= TIP_SLIDES.length - 1) {
+          void markCompleted();
+          setOpen(false);
+        } else {
+          setIndex((i) => i + 1);
+        }
       }
       if (e.key === "ArrowLeft") setIndex((i) => Math.max(i - 1, 0));
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, index, markCompleted]);
 
   useEffect(() => {
     if (open) document.body.style.overflow = "hidden";
@@ -71,54 +97,89 @@ export function WhatCanIDeduct() {
     };
   }, [open]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handler = () => {
+      setIndex(0);
+      setOpen(true);
+    };
+    window.addEventListener("open-what-can-i-deduct", handler as EventListener);
+    return () => window.removeEventListener("open-what-can-i-deduct", handler as EventListener);
+  }, []);
+
   const slide = TIP_SLIDES[index];
 
   return (
     <>
-      <div className="border-t border-bg-tertiary/50 pt-6">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="group flex items-center gap-2 text-mono-medium hover:text-mono-dark transition-colors"
-        >
-          <span className="font-display text-[15px] tracking-tight">What can I deduct?</span>
-          <span className="material-symbols-rounded text-[18px] text-mono-light group-hover:text-mono-medium transition-colors">
-            arrow_forward
-          </span>
-        </button>
-        <p className="text-xs text-mono-light mt-1 max-w-md">
-          Quick guidance on expenses, meals, travel, and what the IRS allows.
-        </p>
+      <div className="pt-2 -mb-4">
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] sm:text-xs">
+          <Link
+            href="/inbox"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#435763] px-3 py-1.5 font-medium text-xs text-white hover:bg-[#3a4b57] transition-colors"
+          >
+            <span className="material-symbols-rounded text-white" style={{ fontSize: "15px" }}>
+              visibility
+            </span>
+            Deduct more expenses
+          </Link>
+          <Link
+            href="/activity"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#435763] px-3 py-1.5 font-medium text-xs text-white hover:bg-[#3a4b57] transition-colors"
+          >
+            <span className="material-symbols-rounded text-white" style={{ fontSize: "15px" }}>
+              history
+            </span>
+            View filtered activity
+          </Link>
+          <Link
+            href="/tax-details"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#435763] px-3 py-1.5 font-medium text-xs text-white hover:bg-[#3a4b57] transition-colors"
+          >
+            <span className="material-symbols-rounded text-white" style={{ fontSize: "15px" }}>
+              receipt_long
+            </span>
+            Tax details
+          </Link>
+          <Link
+            href="/other-deductions"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[#435763] px-3 py-1.5 font-medium text-xs text-white hover:bg-[#3a4b57] transition-colors"
+          >
+            <span className="material-symbols-rounded text-white" style={{ fontSize: "15px" }}>
+              calculate
+            </span>
+            Other deductions
+          </Link>
+        </div>
       </div>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px] p-4">
           <div
-            className="fixed inset-0 bg-mono-dark/30 min-h-full min-w-full"
-            aria-hidden
-            onClick={() => setOpen(false)}
-          />
-          <div
-            className="relative z-10 bg-white rounded-xl shadow-lg border border-bg-tertiary/60 w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col my-auto"
+            className="rounded-xl bg-white shadow-[0_8px_30px_-6px_rgba(0,0,0,0.14)] max-w-[520px] w-full mx-4 overflow-hidden flex flex-col"
             role="dialog"
             aria-modal="true"
             aria-labelledby="what-can-i-deduct-title"
           >
-            <div className="sticky top-0 bg-white border-b border-bg-tertiary/60 px-5 py-4 flex items-center justify-between shrink-0">
-              <h2 id="what-can-i-deduct-title" className="text-lg font-semibold text-mono-dark">
-                What can I deduct?
-              </h2>
+            <div className="rounded-t-xl bg-[#2d3748] px-6 pt-6 pb-4 flex items-center justify-between gap-4">
+              <div>
+                <h2 id="what-can-i-deduct-title" className="text-xl font-bold text-white tracking-tight">
+                  What can I deduct?
+                </h2>
+                <p className="text-sm text-white/80 mt-1.5">
+                  Short guidance on common deductions, meals, travel, and documentation.
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="p-2 rounded-lg text-mono-medium hover:bg-bg-secondary transition-colors"
+                className="h-8 w-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition shrink-0"
                 aria-label="Close"
               >
-                <span className="material-symbols-rounded text-xl">close</span>
+                <span className="material-symbols-rounded text-[18px]">close</span>
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5">
+            <div className="flex-1 overflow-y-auto px-6 py-5">
               <h3 className="font-display text-lg text-mono-dark mb-3">{slide.title}</h3>
               <p className="text-sm text-mono-medium leading-relaxed">{slide.detail}</p>
               {slide.href && (
@@ -132,12 +193,12 @@ export function WhatCanIDeduct() {
               )}
             </div>
 
-            <div className="shrink-0 border-t border-bg-tertiary/60 px-5 py-4 flex items-center justify-between gap-4">
+            <div className="shrink-0 border-t border-bg-tertiary/60 px-6 py-4 flex items-center justify-between gap-4">
               <button
                 type="button"
                 onClick={() => setIndex((i) => Math.max(i - 1, 0))}
                 disabled={index === 0}
-                className="flex items-center gap-1.5 text-sm font-medium text-mono-dark disabled:opacity-40 disabled:cursor-not-allowed hover:underline"
+                className="flex items-center gap-1.5 text-sm font-medium text-mono-dark disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <span className="material-symbols-rounded text-[20px]">chevron_left</span>
                 Previous
@@ -148,8 +209,11 @@ export function WhatCanIDeduct() {
               {index >= TIP_SLIDES.length - 1 ? (
                 <button
                   type="button"
-                  onClick={() => setOpen(false)}
-                  className="flex items-center gap-1.5 text-sm font-medium text-mono-dark hover:underline"
+                  onClick={() => {
+                    void markCompleted();
+                    setOpen(false);
+                  }}
+                  className="flex items-center gap-1.5 text-sm font-medium text-mono-dark"
                 >
                   Finish
                   <span className="material-symbols-rounded text-[20px]">check</span>
@@ -158,7 +222,7 @@ export function WhatCanIDeduct() {
                 <button
                   type="button"
                   onClick={() => setIndex((i) => i + 1)}
-                  className="flex items-center gap-1.5 text-sm font-medium text-mono-dark hover:underline"
+                  className="flex items-center gap-1.5 text-sm font-medium text-mono-dark"
                 >
                   Next
                   <span className="material-symbols-rounded text-[20px]">chevron_right</span>

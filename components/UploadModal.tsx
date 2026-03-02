@@ -5,7 +5,7 @@ import Papa from "papaparse";
 import { getStickyTaxYearClient } from "@/lib/tax-year-cookie";
 import ExcelJS from "exceljs";
 
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 500;
 
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];

@@ -309,7 +309,7 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
               <h3 className="text-lg font-semibold text-mono-dark mb-4">
                 Schedule SE — Self-Employment Tax
               </h3>
-              <div className="space-y-2 text-sm max-w-md">
+              <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-mono-medium">Net earnings from self-employment</span>
                   <span className="font-medium text-mono-dark tabular-nums">

@@ -9,6 +9,7 @@ interface OnboardingProgress {
   review_inbox?: boolean;
   setup_deductions?: boolean;
   org_profile?: boolean;
+  what_can_i_deduct?: boolean;
   skipped_all?: boolean;
 }
 
@@ -42,6 +43,13 @@ const STEPS = [
     icon: "savings",
   },
   {
+    id: "what_can_i_deduct" as const,
+    label: "Learn what you can deduct",
+    description: "Walk through common deductions and IRS rules",
+    href: "#what-can-i-deduct",
+    icon: "school",
+  },
+  {
     id: "org_profile" as const,
     label: "Configure org profile",
     description: "Add your business name, address, and filing type",
@@ -56,6 +64,7 @@ export function GettingStartedChecklist({ setupStatus }: { setupStatus?: {
   review_inbox: boolean;
   setup_deductions: boolean;
   org_profile: boolean;
+  what_can_i_deduct: boolean;
 } }) {
   const [progress, setProgress] = useState<OnboardingProgress>({});
   const [loading, setLoading] = useState(true);
@@ -110,7 +119,7 @@ export function GettingStartedChecklist({ setupStatus }: { setupStatus?: {
     <div className="card p-6 space-y-5">
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-mono-dark">Getting Started</h2>
+          <h2 className="text-lg text-mono-dark">Getting Started</h2>
           <p className="text-xs text-mono-light mt-0.5">
             {completedCount} of {STEPS.length} complete
           </p>
@@ -159,12 +168,25 @@ export function GettingStartedChecklist({ setupStatus }: { setupStatus?: {
 
               {!done && (
                 <div className="flex items-center gap-2 shrink-0">
-                  <Link
-                    href={step.href}
-                    className="text-xs text-accent-sage font-medium hover:underline"
-                  >
-                    Go
-                  </Link>
+                  {step.id === "what_can_i_deduct" ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (typeof window === "undefined") return;
+                        window.dispatchEvent(new CustomEvent("open-what-can-i-deduct"));
+                      }}
+                      className="text-xs text-accent-sage font-medium hover:underline"
+                    >
+                      Go
+                    </button>
+                  ) : (
+                    <Link
+                      href={step.href}
+                      className="text-xs text-accent-sage font-medium hover:underline"
+                    >
+                      Go
+                    </Link>
+                  )}
                   <button
                     onClick={() => skipStep(step.id)}
                     className="text-xs text-mono-light hover:text-mono-medium transition-colors"
