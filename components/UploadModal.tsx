@@ -145,6 +145,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
   const [file, setFile] = useState<File | null>(null);
   const [previewRows, setPreviewRows] = useState<ParsedRow[]>([]);
   const [taxYear, setTaxYear] = useState(new Date().getFullYear());
+  const [suppressDuplicates, setSuppressDuplicates] = useState(false);
 
   const needsDataSourceStep = dataSourceIdProp == null;
   const [step, setStep] = useState<"choose_source" | "upload">(needsDataSourceStep ? "choose_source" : "upload");
@@ -340,6 +341,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
           body: JSON.stringify({
             rows: batches[i],
             taxYear,
+            suppressDuplicates,
             ...(effectiveDataSourceId ? { dataSourceId: effectiveDataSourceId } : {}),
           }),
         });
@@ -562,6 +564,31 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
             <span className="material-symbols-rounded text-3xl text-mono-light">upload_file</span>
             <p className="text-sm font-medium text-mono-dark">Drop file here or browse</p>
             <p className="text-xs text-mono-light">CSV or Excel</p>
+          </div>
+
+          {/* Suppress duplicates */}
+          <div className="mt-3 space-y-1.5">
+            <label className="flex items-start gap-2 text-sm text-mono-dark cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-bg-tertiary text-mono-dark focus:ring-mono-dark"
+                checked={suppressDuplicates}
+                onChange={(e) => setSuppressDuplicates(e.target.checked)}
+              />
+              <span className="flex items-center gap-1">
+                Suppress duplicates
+                <span
+                  className="material-symbols-rounded text-[16px] text-mono-medium"
+                  aria-label="Suppress duplicate transactions info"
+                  title="If enabled, we skip transactions that already exist for this account with the same date and name."
+                >
+                  info
+                </span>
+              </span>
+            </label>
+            <p className="text-xs text-mono-medium">
+              When checked, uploads won&apos;t add any transactions that already exist for this account with the same date and name.
+            </p>
           </div>
 
           {/* Preview */}

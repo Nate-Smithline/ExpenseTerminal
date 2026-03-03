@@ -56,10 +56,65 @@ export async function POST(req: Request) {
     );
   }
 
-  const { rows, taxYear: bodyTaxYear, dataSourceId } = parsed.data;
+  const { rows, taxYear: bodyTaxYear, dataSourceId, suppressDuplicates } = parsed.data;
   const fallbackYear = bodyTaxYear ?? new Date().getFullYear();
 
   const dataSourceIdVal = dataSourceId ?? null;
+
+  // Normalize rows for duplicate detection (date + vendor)
+  const normalizedRows = rows.map((row) => {
+    const dateStr = new Date(row.date).toISOString().slice(0, 10);
+    const normalizedVendor = normalizeVendor(row.vendor);
+    return { row, dateStr, normalizedVendor };
+  });
+
+  let rowsToInsert = normalizedRows;
+
+  if (suppressDuplicates) {
+    const dateValues = Array.from(new Set(normalizedRows.map((r) => r.dateStr)));
+    const vendorValues = Array.from(new Set(normalizedRows.map((r) => r.normalizedVendor)));
+
+    if (dateValues.length > 0 && vendorValues.length > 0) {
+      let existingQuery = supabase
+        .from("transactions")
+        .select("date,vendor_normalized,data_source_id")
+        .eq("user_id", userId)
+        .in("date", dateValues)
+        .in("vendor_normalized", vendorValues);
+
+      if (dataSourceIdVal) {
+        existingQuery = existingQuery.eq("data_source_id", dataSourceIdVal);
+      } else {
+        existingQuery = existingQuery.is("data_source_id", null);
+      }
+
+      const { data: existing, error: existingError } = await existingQuery;
+      if (existingError) {
+        return NextResponse.json(
+          { error: safeErrorMessage(existingError.message, "Failed to check for duplicate transactions") },
+          { status: 500 }
+        );
+      }
+
+      const existingPairs = new Set(
+        (existing ?? []).map(
+          (t: { date: string; vendor_normalized: string; data_source_id: string | null }) =>
+            `${t.date}|${t.vendor_normalized}|${t.data_source_id ?? ""}`
+        )
+      );
+
+      const seenNewPairs = new Set<string>();
+      rowsToInsert = normalizedRows.filter(({ dateStr, normalizedVendor }) => {
+        const key = `${dateStr}|${normalizedVendor}|${dataSourceIdVal ?? ""}`;
+        if (existingPairs.has(key)) return false;
+        if (seenNewPairs.has(key)) return false;
+        seenNewPairs.add(key);
+        return true;
+      });
+    } else {
+      rowsToInsert = [];
+    }
+  }
 
   const limits = await getPlanLimitsForUser(supabase, userId);
   const maxCsv = limits.maxCsvTransactionsForAi === Number.POSITIVE_INFINITY
@@ -75,12 +130,23 @@ export async function POST(req: Request) {
 
   const currentEligible = currentEligibleCount ?? 0;
   const { eligibleCount: eligibleImported, ineligibleCount: ineligibleImported, overLimit } =
-    computeCsvAiEligibility(currentEligible, rows.length, maxCsv);
+    computeCsvAiEligibility(currentEligible, rowsToInsert.length, maxCsv);
 
-  const inserts = rows.map((row, index) => {
+  if (rowsToInsert.length === 0) {
+    return NextResponse.json({
+      imported: 0,
+      transactionIds: [],
+      needsReview: 0,
+      overLimit: false,
+      eligibleImported: 0,
+      ineligibleImported: 0,
+      maxCsvTransactionsForAi: maxCsv === Number.POSITIVE_INFINITY ? null : maxCsv,
+    });
+  }
+
+  const inserts = rowsToInsert.map(({ row, dateStr, normalizedVendor }, index) => {
     const txType =
       row.transaction_type === "income" ? "income" : "expense";
-    const dateStr = new Date(row.date).toISOString().slice(0, 10);
     const rowYear = new Date(row.date).getFullYear();
     const taxYear = Number.isNaN(rowYear) ? fallbackYear : rowYear;
     const eligibleForAi = index < eligibleImported;
@@ -95,7 +161,7 @@ export async function POST(req: Request) {
       status: "pending" as const,
       tax_year: taxYear,
       source: "csv_upload",
-      vendor_normalized: normalizeVendor(row.vendor),
+      vendor_normalized: normalizedVendor,
       transaction_type: txType,
       eligible_for_ai: eligibleForAi,
       ...(dataSourceIdVal ? { data_source_id: dataSourceIdVal } : {}),

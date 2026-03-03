@@ -57,6 +57,7 @@ export const transactionUploadBodySchema = z.object({
   rows: z.array(transactionRowSchema).min(1).max(5000),
   taxYear: z.coerce.number().int().min(2000).max(2100).optional(),
   dataSourceId: uuidSchema.nullable().optional(),
+  suppressDuplicates: z.boolean().optional(),
 });
 
 export const transactionIdsBodySchema = z.object({

@@ -74,7 +74,6 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     { transaction, onSave, onMarkPersonal, onDelete, onCheckSimilar, onApplyToAllSimilar, onOpenManage, isActive, onFocus, taxRate = 0.24 },
     ref,
   ) {
-    const [step, setStep] = useState<1 | 2>(1);
     const [selectedLabel, setSelectedLabel] = useState(transaction.quick_label ?? "");
     const [businessPurpose, setBusinessPurpose] = useState(transaction.business_purpose ?? "");
     const [notes, setNotes] = useState(transaction.notes ?? "");
@@ -85,6 +84,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     const [showWriteIn, setShowWriteIn] = useState(false);
     const [similarTransactions, setSimilarTransactions] = useState<Transaction[]>([]);
     const [autoSort, setAutoSort] = useState(false);
+    const [showDeductionControls, setShowDeductionControls] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(transaction.category ?? null);
     const [selectedScheduleLine, setSelectedScheduleLine] = useState<string | null>(transaction.schedule_c_line ?? null);
     const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
@@ -103,12 +103,11 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
 
     const isMeal = transaction.is_meal || (transaction.category?.toLowerCase().includes("meal") ?? false);
     const isTravel = transaction.is_travel ?? false;
-    const confidence = transaction.ai_confidence != null ? Number(transaction.ai_confidence) : null;
-    const confPct = confidence != null ? Math.round(confidence * 100) : null;
     const rawAmount = Number(transaction.amount);
     const amount = Math.abs(rawAmount);
     const isIncomeLike = transaction.transaction_type === "income" || rawAmount > 0;
     const deductibleAmount = (amount * deductionPct / 100);
+    const recommendedPct = transaction.deduction_percent ?? (isMeal && !isTravel ? 50 : 100);
 
     useEffect(() => {
       onCheckSimilar(transaction.vendor, transaction.id).then((list) => {
@@ -125,24 +124,20 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
 
     useImperativeHandle(ref, () => ({
       selectLabel(index: number) {
-        if (step === 2) {
-          const allLabels = [...suggestions.filter((s) => s !== "Personal"), "Personal"];
-          if (index < allLabels.length) {
-            handleQuickAction(allLabels[index]);
-          }
+        const allLabels = [...suggestions.filter((s) => s !== "Personal"), "Personal"];
+        if (index < allLabels.length) {
+          handleQuickAction(allLabels[index]);
         }
       },
       markPersonal() {
-        if (step === 1) onMarkPersonal();
-        else handleQuickAction("Personal");
+        onMarkPersonal();
       },
       focusBusiness() {
-        if (step === 1) setStep(2);
         setShowWriteIn(true);
         setTimeout(() => businessRef.current?.focus(), 50);
       },
-      save() { handleNext(); },
-      nextStep() { handleNext(); },
+      save() { handleApprove(); },
+      nextStep() { handleApprove(); },
       cycleDeduction() {
         setDeductionPct((prev) => {
           const idx = SNAP_POINTS.indexOf(prev);
@@ -176,6 +171,13 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
       [businessPurpose],
     );
 
+    useEffect(() => {
+      if (!isActive) return;
+      if (selectedLabel) return;
+      if (!suggestions.length) return;
+      handleQuickAction(suggestions[0]);
+    }, [isActive, selectedLabel, suggestions, handleQuickAction]);
+
     const maxQuickLabel = 500;
     const maxTextField = 2000;
     const normalizedDeduction = Math.min(100, Math.max(0, deductionPct));
@@ -195,17 +197,6 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
 
     if (isIncomeLike && incomeTreatment === "business") {
       saveData.transaction_type = "income";
-    }
-
-    function handleNext() {
-      if (step === 1) {
-        if (!selectedLabel && suggestions.length > 0) {
-          handleQuickAction(suggestions[0]);
-        }
-        setStep(2);
-        return;
-      }
-      handleApprove();
     }
 
     function handleApprove() {
@@ -287,21 +278,11 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
 
     // Step 1 keyboard shortcuts: 0,1,2,5,7 = %, a = apply to similar, c = category, Backspace/Delete = delete
     useEffect(() => {
-      if (!isActive || step !== 1 || categoryPickerOpen) return;
+      if (!isActive || categoryPickerOpen) return;
       function handleKey(e: KeyboardEvent) {
         const tag = (e.target as HTMLElement)?.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         const key = e.key;
-        if (key === "0" || key === "1" || key === "2" || key === "5" || key === "7") {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          if (key === "0") setDeductionPct(0);
-          else if (key === "1") setDeductionPct(100);
-          else if (key === "2") setDeductionPct(25);
-          else if (key === "5") setDeductionPct(50);
-          else if (key === "7") setDeductionPct(75);
-          return;
-        }
         if (key === "c" || key === "C") {
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -315,6 +296,22 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
           setAutoSort((prev) => !prev);
           return;
         }
+        if (key === "q" || key === "Q" || key === "e" || key === "E" || key === "t" || key === "T" || key === "y" || key === "Y" || key === "u" || key === "U") {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          if (key === "q" || key === "Q") setDeductionPct(0);
+          else if (key === "e" || key === "E") setDeductionPct(25);
+          else if (key === "t" || key === "T") setDeductionPct(50);
+          else if (key === "y" || key === "Y") setDeductionPct(75);
+          else if (key === "u" || key === "U") setDeductionPct(100);
+          return;
+        }
+        if (key === "b" || key === "B") {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          setShowDeductionControls(true);
+          return;
+        }
         if (key === "Backspace" || key === "Delete") {
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -323,7 +320,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
       }
       window.addEventListener("keydown", handleKey, true);
       return () => window.removeEventListener("keydown", handleKey, true);
-    }, [isActive, step, categoryPickerOpen, onDelete, selectedScheduleLine, transaction.schedule_c_line]);
+    }, [isActive, categoryPickerOpen, onDelete, selectedScheduleLine, transaction.schedule_c_line]);
 
     const isAiCategorized = transaction.schedule_c_line != null || transaction.ai_confidence != null;
     const displayCategory = selectedCategory ?? transaction.category ?? null;
@@ -341,22 +338,13 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
             : "opacity-50 hover:opacity-75 px-6 py-4 cursor-pointer"
         }`}
       >
-        {/* Header: vendor name + category + amount */}
-        <div className="flex items-center gap-3 mb-1">
+        {/* Header: vendor name + date + amount */}
+        <div className="flex items-center gap-3 mb-0.5">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <p className="font-semibold text-sm text-mono-dark">{transaction.vendor}</p>
               <span className="text-[11px] text-mono-light">{formatDate(transaction.date)}</span>
             </div>
-            <p className="text-xs text-mono-light mt-0.5">
-              {transaction.auto_sort_rule_id != null && (
-                <span className="text-mono-medium">Past sort · </span>
-              )}
-              {transaction.auto_sort_rule_id == null && confPct != null && (
-                <span className="text-accent-sage font-medium">AI {confPct}% · </span>
-              )}
-              {displayCategoryName}
-            </p>
           </div>
           <span
             className={`text-sm font-semibold tabular-nums shrink-0 ${
@@ -375,108 +363,125 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
         )}
 
         {isActive && (
-          <div className="mt-3">
-            {/* Meal cap warning */}
-            {isMeal && !isTravel && (
-              <div className="flex items-center gap-2 rounded-lg bg-sky-50 border border-sky-200/60 px-2.5 py-1.5 mb-3">
-                <span className="material-symbols-rounded text-sky-600 text-base">info</span>
-                <p className="text-[11px] text-sky-800">Meals outside travel typically 50%.</p>
-              </div>
-            )}
-
-            {/* STEP 1: Deduction Amount / Income classification */}
-            {step === 1 && (
+          <div className="mt-1.5 space-y-4">
+            {/* Expense details: category + business percent */}
+            {!isIncomeLike && (
               <div className="space-y-3 animate-in">
-                {!isIncomeLike && (
-                  <>
-                    {/* Category: one line */}
-                    <div className="relative flex items-center gap-2 flex-wrap text-xs">
-                      <span className="text-mono-light shrink-0">Category:</span>
-                      <span className="text-mono-medium">
-                        {transaction.auto_sort_rule_id != null && (
-                          <span className="text-mono-medium">Past sort · </span>
-                        )}
-                        {transaction.auto_sort_rule_id == null && isAiCategorized && confPct != null && (
-                          <span className="text-accent-sage font-medium">AI {confPct}% · </span>
-                        )}
-                        {displayCategoryName}
-                      </span>
-                      {!isAiCategorized && transaction.auto_sort_rule_id == null && (
-                        <span className="text-amber-600 text-[11px]">Not yet categorized by AI</span>
-                      )}
+                {/* Category */}
+                <div className="w-full">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-xs font-medium text-mono-medium">Category</p>
+                    <button
+                      type="button"
+                      data-category-trigger
+                      onClick={() => {
+                        setCategoryPickerOpen((o) => !o);
+                        if (!categoryPickerOpen) {
+                          const idx = EXPENSE_CATEGORIES.findIndex((c) => c.line === (selectedScheduleLine ?? transaction.schedule_c_line ?? ""));
+                          setCategoryHighlightIdx(idx >= 0 ? idx : 0);
+                        }
+                      }}
+                      className="flex items-center gap-1 text-[11px] text-mono-medium hover:text-mono-dark"
+                    >
+                      <kbd className="kbd-hint mr-1.5 text-[10px]">c</kbd>
+                      {categoryPickerOpen ? "Close" : "Change"}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-mono-medium mb-0.5">
+                    {transaction.auto_sort_rule_id != null && "Past sort · "}
+                    {displayCategoryName}
+                  </p>
+                  {!isAiCategorized && transaction.auto_sort_rule_id == null && (
+                    <p className="text-[11px] text-amber-600">Not yet categorized by AI</p>
+                  )}
+                  {categoryPickerOpen && (
+                    <div
+                      ref={categoryListRef}
+                      className="mt-1 z-10 w-full max-w-sm rounded-lg border border-bg-tertiary bg-white shadow-lg py-1 max-h-56 overflow-auto"
+                      role="listbox"
+                    >
+                      {EXPENSE_CATEGORIES.map((c, i) => (
+                        <button
+                          key={c.line}
+                          type="button"
+                          role="option"
+                          aria-selected={categoryHighlightIdx === i}
+                          onClick={() => {
+                            setSelectedScheduleLine(c.line);
+                            setSelectedCategory(c.name);
+                            setCategoryPickerOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition ${
+                            categoryHighlightIdx === i ? "bg-accent-sage/10 text-accent-sage font-medium" : "text-mono-medium hover:bg-bg-secondary"
+                          }`}
+                        >
+                          <span className="text-mono-light w-8">{c.line}</span>
+                          {c.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Meal cap warning (after category line) */}
+                {isMeal && !isTravel && (
+                  <div className="flex items-center gap-2 rounded-lg bg-sky-50 border border-sky-200/60 px-2.5 py-1.5 mb-1">
+                    <span className="material-symbols-rounded text-sky-600 text-base">info</span>
+                    <p className="text-[11px] text-sky-800">Meals outside travel typically 50%.</p>
+                  </div>
+                )}
+
+                {/* Business percent */}
+                <div className="w-full">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="text-xs font-medium text-mono-medium">Business percent</p>
+                    {!showDeductionControls && (
                       <button
                         type="button"
-                        data-category-trigger
-                        onClick={() => {
-                          setCategoryPickerOpen((o) => !o);
-                          if (!categoryPickerOpen) {
-                            const idx = EXPENSE_CATEGORIES.findIndex((c) => c.line === (selectedScheduleLine ?? transaction.schedule_c_line ?? ""));
-                            setCategoryHighlightIdx(idx >= 0 ? idx : 0);
-                          }
-                        }}
-                        className="px-1 py-0.5 text-[11px] text-mono-medium hover:text-mono-dark transition flex items-center gap-1.5"
+                        onClick={() => setShowDeductionControls(true)}
+                        className="flex items-center gap-1 text-[11px] text-mono-medium hover:text-mono-dark"
                       >
-                        <kbd className="kbd-hint text-[10px] mr-1.5">c</kbd>
-                        {categoryPickerOpen ? "Close" : "Change"}
+                        <kbd className="kbd-hint mr-1">b</kbd>
+                        Adjust
                       </button>
-                      {categoryPickerOpen && (
-                        <div
-                          ref={categoryListRef}
-                          className="absolute left-0 top-full mt-1 z-10 w-full max-w-sm rounded-lg border border-bg-tertiary bg-white shadow-lg py-1 max-h-56 overflow-auto"
-                          role="listbox"
-                        >
-                          {EXPENSE_CATEGORIES.map((c, i) => (
-                            <button
-                              key={c.line}
-                              type="button"
-                              role="option"
-                              aria-selected={categoryHighlightIdx === i}
-                              onClick={() => {
-                                setSelectedScheduleLine(c.line);
-                                setSelectedCategory(c.name);
-                                setCategoryPickerOpen(false);
-                              }}
-                              className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition ${
-                                categoryHighlightIdx === i ? "bg-accent-sage/10 text-accent-sage font-medium" : "text-mono-medium hover:bg-bg-secondary"
-                              }`}
-                            >
-                              <span className="text-mono-light w-8">{c.line}</span>
-                              {c.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="w-full">
-                      <p className="text-xs font-medium text-mono-medium mb-1.5">What percent for business?</p>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-accent-sage font-medium mb-0.5">
+                    {deductionPct === recommendedPct ? `Recommended: ${recommendedPct}%` : `Selected: ${deductionPct}%`}
+                  </p>
+                  <p className="text-[11px] text-mono-light tabular-nums mb-2">
+                    Saves ~${(deductibleAmount * taxRate).toFixed(2)} at {deductionPct}% business
+                  </p>
+                  {showDeductionControls && (
+                    <>
                       <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                         <div className="flex items-center gap-2">
-                          {SNAP_POINTS.map((pt) => (
-                            <button
-                              key={pt}
-                              type="button"
-                              onClick={() => setDeductionPct(pt)}
-                              className={`py-1 text-xs font-medium transition flex items-center gap-2.5 ${
-                                pt === 0 ? "pl-0 pr-2" : "px-2"
-                              } ${
-                                deductionPct === pt
-                                  ? "text-accent-sage font-semibold"
-                                  : "text-mono-medium hover:text-mono-dark"
-                              }`}
-                            >
-                              {pt === 0 && <kbd className="kbd-hint">0</kbd>}
-                              {pt === 25 && <kbd className="kbd-hint">2</kbd>}
-                              {pt === 50 && <kbd className="kbd-hint">5</kbd>}
-                              {pt === 75 && <kbd className="kbd-hint">7</kbd>}
-                              {pt === 100 && <kbd className="kbd-hint">1</kbd>}
-                              {pt}%
-                            </button>
-                          ))}
+                          {SNAP_POINTS.map((pt) => {
+                            let shortcut: string | null = null;
+                            if (pt === 0) shortcut = "q";
+                            else if (pt === 25) shortcut = "e";
+                            else if (pt === 50) shortcut = "t";
+                            else if (pt === 75) shortcut = "y";
+                            else if (pt === 100) shortcut = "u";
+                            return (
+                              <button
+                                key={pt}
+                                type="button"
+                                onClick={() => setDeductionPct(pt)}
+                                className={`py-1 text-xs font-medium transition flex items-center gap-2.5 ${
+                                  pt === 0 ? "pl-0 pr-2" : "px-2"
+                                } ${
+                                  deductionPct === pt
+                                    ? "text-accent-sage font-semibold"
+                                    : "text-mono-medium hover:text-mono-dark"
+                                }`}
+                              >
+                                {shortcut && <kbd className="kbd-hint">{shortcut}</kbd>}
+                                {pt}%
+                              </button>
+                            );
+                          })}
                         </div>
-                        <p className="text-[11px] text-mono-light tabular-nums shrink-0">
-                          ${deductibleAmount.toFixed(2)} deductible (saves ~${(deductibleAmount * taxRate).toFixed(2)})
-                        </p>
                       </div>
                       <div className="flex items-center gap-3 w-full">
                         <input
@@ -492,106 +497,46 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                           {deductionPct}%
                         </span>
                       </div>
-                    </div>
-
-                    {/* Auto-sort checkbox */}
-                    {similarTransactions.length > 0 && (
-                      <label className="flex items-center gap-2.5 cursor-pointer group">
-                        <input
-                          type="checkbox"
-                          checked={autoSort}
-                          onChange={(e) => setAutoSort(e.target.checked)}
-                          className="h-4 w-4 rounded border-bg-tertiary text-accent-sage focus:ring-accent-sage/30"
-                        />
-                        <span className="text-xs text-mono-medium group-hover:text-mono-dark transition">
-                          <kbd className="kbd-hint mr-1">a</kbd>
-                          Also apply to {similarTransactions.length} other{similarTransactions.length === 1 ? "" : "s"} from {transaction.vendor}
-                        </span>
-                      </label>
-                    )}
-                  </>
-                )}
-
-                {isIncomeLike && (
-                  <div className="space-y-3">
-                    <div className="space-y-1.5">
-                      <p className="text-xs font-medium text-mono-medium">How should we treat this?</p>
-                      <p className="text-xs text-mono-light">
-                        This is money coming into your account. Mark business income to include it in your tax totals, or personal/transfer to ignore it.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setIncomeTreatment("business")}
-                        className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-xs font-medium transition ${
-                          incomeTreatment === "business"
-                            ? "bg-emerald-600 border-emerald-600 text-white"
-                            : "bg-white border-bg-tertiary text-mono-medium hover:bg-bg-secondary"
-                        }`}
-                      >
-                        Business income
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleMarkPersonalClick}
-                        className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition"
-                      >
-                        Personal / transfer
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Action row: Personal, Next, View details, Delete */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  {!isIncomeLike && (
-                    <button
-                      type="button"
-                      onClick={() => onMarkPersonal()}
-                      className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition"
-                      title="Mark as personal (removes from inbox)"
-                    >
-                      <kbd className="kbd-hint">p</kbd>
-                      Personal
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    disabled={isIncomeLike && incomeTreatment !== "business"}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 transition border border-[var(--color-accent-terracotta-dark)]/80 bg-[var(--color-accent-terracotta-dark)] disabled:opacity-40"
-                  >
-                    Next
-                    <kbd className="kbd-hint ml-1 !text-white !bg-white/20 !border-white/30">s</kbd>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onOpenManage?.(transaction)}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition"
-                    title="View details"
-                  >
-                    <span className="material-symbols-rounded text-[16px]">tune</span>
-                    <kbd className="kbd-hint">Enter</kbd>
-                  </button>
-                  {onDelete && (
-                    <button
-                      type="button"
-                      onClick={() => onDelete()}
-                      className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-red-200 px-3 py-2.5 text-xs font-medium text-red-600 hover:bg-red-50 transition"
-                      title="Delete transaction"
-                    >
-                      <span className="material-symbols-rounded text-[16px]">delete</span>
-                      <kbd className="kbd-hint">⌫</kbd>
-                    </button>
+                    </>
                   )}
                 </div>
               </div>
             )}
 
-            {/* STEP 2: Reason / Label */}
-            {step === 2 && (
-              <div className="space-y-4 animate-in">
+            {/* Income classification for income-like transactions */}
+            {isIncomeLike && (
+              <div className="space-y-3 animate-in">
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-mono-medium">How should we treat this?</p>
+                  <p className="text-xs text-mono-light">
+                    This is money coming into your account. Mark business income to include it in your tax totals, or personal/transfer to ignore it.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIncomeTreatment("business")}
+                    className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-xs font-medium transition ${
+                      incomeTreatment === "business"
+                        ? "bg-emerald-600 border-emerald-600 text-white"
+                        : "bg-white border-bg-tertiary text-mono-medium hover:bg-bg-secondary"
+                    }`}
+                  >
+                    Business income
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleMarkPersonalClick}
+                    className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition"
+                  >
+                    Personal / transfer
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Reason / label and actions (shared for both types) */}
+            <div className="space-y-4 animate-in">
                 {/* Quick label suggestions with keyboard hints */}
                 {suggestions.length > 0 && (
                   <div>
@@ -641,7 +586,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                   </div>
                 )}
 
-                {/* Auto-sort checkbox (carried forward) */}
+                {/* Auto-sort checkbox */}
                 {similarTransactions.length > 0 && (
                   <label className="flex items-center gap-2.5 cursor-pointer group">
                     <input
@@ -657,38 +602,53 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                 )}
 
                 {/* Action row */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {!isIncomeLike && (
+                    <button
+                      type="button"
+                      onClick={() => onMarkPersonal()}
+                      disabled={saving}
+                      className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
+                      title="Mark as personal (removes from inbox)"
+                    >
+                      <kbd className="kbd-hint">p</kbd>
+                      Personal
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => setStep(1)}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    disabled={saving || (!selectedLabel && !businessPurpose)}
+                    onClick={handleApprove}
+                    disabled={saving || (isIncomeLike && incomeTreatment !== "business") || (!selectedLabel && !businessPurpose)}
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-[var(--color-accent-terracotta-dark)] border border-[var(--color-accent-terracotta-dark)]/80 px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-40"
                   >
-                    Next
+                    Save
                     <kbd className="kbd-hint !bg-white/20 !text-white !border-white/30 ml-1">s</kbd>
                   </button>
+                  {/* Secondary personal button removed to avoid duplication */}
                   <button
                     type="button"
-                    onClick={handleMarkPersonalClick}
-                    disabled={saving}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition"
-                    title="Mark as personal"
+                    onClick={() => onOpenManage?.(transaction)}
+                    className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition"
+                    title="View details"
                   >
-                    <kbd className="kbd-hint">p</kbd>
-                    Personal
+                    <span className="material-symbols-rounded text-[16px]">tune</span>
+                    <kbd className="kbd-hint">Enter</kbd>
                   </button>
+                  {onDelete && (
+                    <button
+                      type="button"
+                      onClick={() => onDelete()}
+                      className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-red-200 px-3 py-2.5 text-xs font-medium text-red-600 hover:bg-red-50 transition"
+                      title="Delete transaction"
+                    >
+                      <span className="material-symbols-rounded text-[16px]">backspace</span>
+                      <kbd className="kbd-hint">⌫</kbd>
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
       </div>
     );
   },
