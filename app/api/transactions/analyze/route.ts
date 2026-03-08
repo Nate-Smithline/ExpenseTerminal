@@ -309,11 +309,14 @@ export async function POST(req: Request) {
       { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
-  const transactions = fetchedTransactions.filter(
-    (t) => (t as TransactionRow & { eligible_for_ai?: boolean }).eligible_for_ai !== false
-  );
+  const isFree = planIsFree(plan);
+  const transactions = isFree
+    ? fetchedTransactions.filter(
+        (t) => (t as TransactionRow & { eligible_for_ai?: boolean }).eligible_for_ai !== false
+      )
+    : fetchedTransactions;
   const skippedCount = fetchedTransactions.length - transactions.length;
-  const overLimit = skippedCount > 0;
+  const overLimit = isFree && skippedCount > 0;
 
   if (transactions.length === 0) {
     return new Response(
