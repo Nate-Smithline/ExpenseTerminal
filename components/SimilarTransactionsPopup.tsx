@@ -47,20 +47,25 @@ export function SimilarTransactionsPopup({
     function onKeyDown(e: KeyboardEvent) {
       const key = e.key.toLowerCase();
       if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
         onCancel();
         return;
       }
       if (key === "o") {
+        e.preventDefault();
+        e.stopPropagation();
         onJustThisOne();
         return;
       }
       if (key === "y" || e.key === "Enter") {
         e.preventDefault();
+        e.stopPropagation();
         if (!applying) onApplyToAll();
       }
     }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
   }, [onCancel, onJustThisOne, onApplyToAll, applying]);
 
   return (

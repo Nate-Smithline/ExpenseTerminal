@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StripeMode } from "@/lib/stripe";
 import { getStripeClient } from "@/lib/stripe";
+import { normalizeVendor } from "@/lib/vendor-matching";
 
 export type SyncResult = {
   success: boolean;
@@ -219,6 +220,7 @@ export async function runSyncForDataSource(
         const year = date.getFullYear();
         const amount = Number((-(tx.amount ?? 0) / 100).toFixed(2));
         const vendor = ((tx.description ?? "Unknown") as string).slice(0, 255);
+        const vendorNormalized = vendor.trim() ? normalizeVendor(vendor) : null;
         const { error: insErr } = await (supabase as any)
           .from("transactions")
           .upsert(
@@ -226,6 +228,7 @@ export async function runSyncForDataSource(
               user_id: userId,
               date: dateStr,
               vendor,
+              vendor_normalized: vendorNormalized,
               description: tx.description ?? null,
               amount,
               status: "pending",

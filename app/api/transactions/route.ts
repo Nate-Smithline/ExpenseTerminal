@@ -59,7 +59,9 @@ export async function GET(req: Request) {
   if (status) query = query.eq("status", status);
   if (txType) query = query.eq("transaction_type", txType);
   if (source) query = query.eq("source", source);
-  if (vendorNormalized) query = query.eq("vendor_normalized", vendorNormalized);
+  if (vendorNormalized) {
+    query = query.or(`vendor_normalized.eq.${vendorNormalized},vendor_normalized.is.null`);
+  }
   if (excludeId) query = query.neq("id", excludeId);
   if (analyzedOnly === true) query = query.not("ai_confidence", "eq", null);
   if (analyzedOnly === false) query = query.is("ai_confidence", null);
@@ -78,8 +80,16 @@ export async function GET(req: Request) {
     return NextResponse.json({ count: count ?? 0 });
   }
 
-  const { data, error, count } = await query;
+  let { data, error, count } = await query;
   if (error) return NextResponse.json({ error: safeErrorMessage(error.message, "Failed to load transactions") }, { status: 500 });
+  if (vendorNormalized && Array.isArray(data)) {
+    data = data.filter(
+      (row: { vendor?: string | null; vendor_normalized?: string | null }) =>
+        row.vendor_normalized === vendorNormalized ||
+        (row.vendor_normalized == null && row.vendor != null && normalizeVendor(String(row.vendor)) === vendorNormalized)
+    );
+    if (count != null) count = data.length;
+  }
   return NextResponse.json({ data: data ?? [], count });
 }
 

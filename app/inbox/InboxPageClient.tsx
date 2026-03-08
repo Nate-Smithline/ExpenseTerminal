@@ -632,6 +632,7 @@ export function InboxPageClient({
           quickLabel,
           businessPurpose: isPersonal ? "" : (data.business_purpose ?? ""),
           category: data.category ?? transaction.category ?? undefined,
+          schedule_c_line: data.schedule_c_line ?? transaction.schedule_c_line ?? undefined,
           taxYear: selectedYear,
         }),
       });

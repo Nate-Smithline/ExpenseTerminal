@@ -69,6 +69,18 @@ export async function POST(req: Request) {
   if (transaction_type !== undefined) updatePayload.transaction_type = transaction_type;
   if (source !== undefined) updatePayload.source = source;
 
+  if (updatePayload.vendor_normalized === undefined) {
+    const { data: row } = await (supabase as any)
+      .from("transactions")
+      .select("vendor, vendor_normalized")
+      .eq("id", id)
+      .eq("user_id", userId)
+      .single();
+    if (row?.vendor != null && row?.vendor_normalized == null && String(row.vendor).trim()) {
+      updatePayload.vendor_normalized = normalizeVendor(String(row.vendor));
+    }
+  }
+
   const { error } = await (supabase as any)
     .from("transactions")
     .update(updatePayload)

@@ -202,7 +202,11 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     }
 
     function handleApprove() {
-      if (!selectedLabel && !businessPurpose && deductionPct === 100) {
+      const categoryChanged =
+        selectedScheduleLine !== (transaction.schedule_c_line ?? null) ||
+        selectedCategory !== (transaction.category ?? null);
+      const hasLabelOrPurpose = !!(selectedLabel || businessPurpose);
+      if (!hasLabelOrPurpose && deductionPct === 100 && !categoryChanged) {
         return;
       }
       onSave(saveData, { applyToSimilar: autoSort && similarTransactions.length > 0 });
@@ -254,6 +258,23 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
           e.preventDefault();
           e.stopImmediatePropagation();
           setCategoryPickerOpen(false);
+        }
+        const digit = key.length === 1 && /^[0-9]$/.test(key) ? key : null;
+        if (digit !== null) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          const byLine = EXPENSE_CATEGORIES.find((c) => c.line === digit);
+          const idx = byLine
+            ? EXPENSE_CATEGORIES.indexOf(byLine)
+            : digit === "0"
+              ? 9
+              : parseInt(digit, 10) - 1;
+          if (idx >= 0 && idx < EXPENSE_CATEGORIES.length) {
+            const c = EXPENSE_CATEGORIES[idx];
+            setSelectedScheduleLine(c.line);
+            setSelectedCategory(c.name);
+            setCategoryPickerOpen(false);
+          }
         }
       }
       window.addEventListener("keydown", handleKey, true);
