@@ -38,6 +38,12 @@ export default async function InboxPage() {
     .eq("tax_year", taxYear)
     .eq("status", "pending");
 
+  const { count: totalPendingCount } = await (db as any)
+    .from("transactions")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("status", "pending");
+
   const { count: unanalyzedCount } = await (db as any)
     .from("transactions")
     .select("*", { count: "exact", head: true })
@@ -61,6 +67,7 @@ export default async function InboxPage() {
     <InboxPageClient
       initialYear={taxYear}
       initialPendingCount={pendingCount ?? 0}
+      initialTotalPendingCount={totalPendingCount ?? 0}
       initialUnanalyzedCount={unanalyzedCount ?? 0}
       initialTransactions={transactions ?? []}
       userId={userId}

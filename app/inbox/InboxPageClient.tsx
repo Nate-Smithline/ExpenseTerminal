@@ -20,6 +20,7 @@ const PLUS_PLAN = getPlanDefinition("plus");
 interface InboxPageClientProps {
   initialYear: number;
   initialPendingCount: number;
+  initialTotalPendingCount?: number;
   initialUnanalyzedCount?: number;
   initialTransactions: Transaction[];
   userId: string;
@@ -42,6 +43,10 @@ async function fetchCount(params: Record<string, string>): Promise<number> {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) return 0;
   return body.count ?? 0;
+}
+
+async function fetchTotalPendingCount(): Promise<number> {
+  return fetchCount({ status: "pending" });
 }
 
 async function fetchUnanalyzedIds(params: Record<string, string>): Promise<string[]> {
@@ -78,13 +83,14 @@ async function fetchUnanalyzedIds(params: Record<string, string>): Promise<strin
 export function InboxPageClient({
   initialYear,
   initialPendingCount,
+  initialTotalPendingCount,
   initialUnanalyzedCount = 0,
   initialTransactions,
   userId,
   taxRate = 0.24,
 }: InboxPageClientProps) {
   const [selectedYear, setSelectedYear] = useState(initialYear);
-  const [pendingCount, setPendingCount] = useState(initialPendingCount);
+  const [pendingCount, setPendingCount] = useState(initialTotalPendingCount ?? initialPendingCount);
   const [unanalyzedCount, setUnanalyzedCount] = useState(initialUnanalyzedCount);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const { openUpgradeModal } = useUpgradeModal();
@@ -175,7 +181,7 @@ export function InboxPageClient({
   );
 
   const reloadInbox = useCallback(async () => {
-    const [txs, count, unanalyzed] = await Promise.all([
+    const [txs, countForYear, totalPending, unanalyzed] = await Promise.all([
       fetchTransactions({
         tax_year: String(selectedYear),
         status: "pending",
@@ -185,6 +191,7 @@ export function InboxPageClient({
         tax_year: String(selectedYear),
         status: "pending",
       }),
+      fetchTotalPendingCount(),
       fetchCount({
         tax_year: String(selectedYear),
         status: "pending",
@@ -193,7 +200,7 @@ export function InboxPageClient({
       }),
     ]);
     setTransactions(txs);
-    setPendingCount(count);
+    setPendingCount(totalPending);
     setUnanalyzedCount(unanalyzed);
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("inbox-count-changed"));
@@ -778,6 +785,11 @@ export function InboxPageClient({
         <p className="text-sm text-mono-medium mt-1">
           {pendingCount} {pendingCount === 1 ? "item" : "items"} to review
         </p>
+        {pendingCount > 0 && transactions.length === 0 && (
+          <p className="text-xs text-mono-light mt-1">
+            No pending for {selectedYear}. Change the tax year above to see items from other years.
+          </p>
+        )}
       </div>
 
       {/* Controls */}

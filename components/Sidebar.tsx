@@ -4,7 +4,6 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createSupabaseClient } from "@/lib/supabase/client";
-import { getStickyTaxYearClient } from "@/lib/tax-year-cookie";
 
 const mainNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
@@ -72,8 +71,8 @@ export function Sidebar() {
   }, [loadProfile]);
 
   const loadInboxCount = useCallback(() => {
-    const year = getStickyTaxYearClient();
-    fetch(`/api/transactions?tax_year=${year}&status=pending&transaction_type=expense&count_only=true`)
+    // Count pending across all tax years so sync'd transactions show up regardless of date
+    fetch(`/api/transactions?status=pending&count_only=true`)
       .then((r) => r.json())
       .then((d) => setInboxCount(d.count ?? 0))
       .catch(() => {});
