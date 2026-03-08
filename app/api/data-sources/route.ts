@@ -154,7 +154,7 @@ export async function PATCH(req: Request) {
   }
   const supabase = authClient;
 
-  let body: { id: string; name?: string; account_type?: string; institution?: string };
+  let body: { id: string; name?: string; account_type?: string; institution?: string; stripe_sync_start_date?: string | null };
   try {
     body = await req.json();
   } catch {
@@ -174,6 +174,7 @@ export async function PATCH(req: Request) {
   if (body.name !== undefined) update.name = body.name;
   if (body.account_type !== undefined) update.account_type = body.account_type;
   if (body.institution !== undefined) update.institution = body.institution || null;
+  if (body.stripe_sync_start_date !== undefined) update.stripe_sync_start_date = body.stripe_sync_start_date;
   if (Object.keys(update).length === 0) {
     return new Response(JSON.stringify({ error: "No fields to update" }), {
       status: 400,

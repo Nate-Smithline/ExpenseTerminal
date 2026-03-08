@@ -109,7 +109,7 @@ export async function GET(req: Request) {
       if (existingById?.id) {
         const updatePayload: Record<string, unknown> = {
           connected_at: now,
-          last_successful_sync_at: now,
+          last_successful_sync_at: null,
           last_failed_sync_at: null,
           last_error_summary: null,
         };
@@ -223,12 +223,7 @@ export async function GET(req: Request) {
       return returnJson ? NextResponse.json({ success: false, error: errMsg }, { status: 500 }) : NextResponse.redirect(new URL("/data-sources?error=" + encodeURIComponent(errMsg), req.url));
     }
 
-    // Trigger initial transaction pull for all linked sources (new and re-linked).
-    const { runSyncForDataSource } = await import("@/lib/data-sources/sync-runner");
-    const stripeMode = (await import("@/lib/stripe")).getStripeMode(url.hostname);
-    for (const id of idsToSync) {
-      runSyncForDataSource(supabase, userId, id, "stripe", { stripeMode }).catch(() => {});
-    }
+    // Sync is not run here; user chooses date range and pulls from the post-connect modal.
 
     const stripeFc = onlyUpdates ? "already_linked" : "success";
     if (returnJson) {

@@ -111,6 +111,10 @@ export async function runSyncForDataSource(
       const pollIntervalMs = 5_000;
       const deadline = Date.now() + refreshTimeoutMs;
       let refreshedOnce = false;
+      let failedRetries = 0;
+      const maxFailedRetries = 1;
+      const failMessage = "Your bank didn’t provide transaction data. Try again in a few minutes, or reconnect the account (Repair connection on the account card).";
+
       while (Date.now() < deadline) {
         account = await fc.accounts.retrieve(fcAccountId);
         const tr = account?.transaction_refresh;
@@ -121,17 +125,27 @@ export async function runSyncForDataSource(
           continue;
         }
         if (status === "failed") {
+          if (failedRetries < maxFailedRetries) {
+            failedRetries += 1;
+            try {
+              await fc.accounts.refresh(fcAccountId, { features: ["transactions"] });
+            } catch {
+              // Continue to poll; refresh may have been accepted.
+            }
+            await new Promise((r) => setTimeout(r, 2000));
+            continue;
+          }
           await (supabase as any)
             .from("data_sources")
             .update({
               last_failed_sync_at: new Date().toISOString(),
-              last_error_summary: "Transaction refresh failed. Try again later or reconnect the account.",
+              last_error_summary: failMessage,
             })
             .eq("id", dataSourceId)
             .eq("user_id", userId);
           return {
             success: false,
-            error: "Transaction refresh failed. Try again later or reconnect the account.",
+            error: failMessage,
             status: 502,
           };
         }
