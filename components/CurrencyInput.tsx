@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from "react";
 function formatCurrency(n: number): string {
   if (Number.isNaN(n) || n === 0) return "";
   return n.toLocaleString("en-US", {
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 }

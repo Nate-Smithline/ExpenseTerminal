@@ -3,12 +3,10 @@ import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import {
   getStripeClient,
-  getStripeModeForHostname,
+  getStripeMode,
   getStripeProductIdForPlan,
   assertStripeProductEnv,
 } from "@/lib/stripe";
-
-type PlanBody = "starter" | "plus";
 
 function getBaseUrl(req: Request, hostname: string): string {
   const isLocal =
@@ -65,15 +63,18 @@ export async function POST(req: Request) {
   if (!plan) {
     return NextResponse.json({ error: "Missing plan" }, { status: 400 });
   }
-  if (plan !== "starter" && plan !== "plus") {
-    return NextResponse.json({ error: "Invalid plan. Use starter or plus." }, { status: 400 });
+  if (plan !== "plus") {
+    return NextResponse.json(
+      { error: "Invalid plan. Only Pro (plus) is available. Use plan: plus." },
+      { status: 400 }
+    );
   }
 
   const url = new URL(req.url);
-  const mode = getStripeModeForHostname(url.hostname);
+  const mode = getStripeMode(url.hostname);
 
   try {
-    assertStripeProductEnv(plan as PlanBody, mode);
+    assertStripeProductEnv("plus", mode);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Stripe product not configured";
     return NextResponse.json(
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
   }
 
   const stripe = getStripeClient(mode);
-  const productId = getStripeProductIdForPlan(plan as PlanBody, mode);
+  const productId = getStripeProductIdForPlan("plus", mode);
   if (!productId) {
     return NextResponse.json(
       { error: "Stripe product ID not set", code: "STRIPE_PRODUCT_MISSING" },
@@ -102,7 +103,7 @@ export async function POST(req: Request) {
         price_data: {
           currency: "usd",
           product: productId,
-          unit_amount: plan === "starter" ? 12000 : 30000,
+          unit_amount: 30000,
           recurring: { interval: "year" },
         },
         quantity: 1,

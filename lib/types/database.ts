@@ -109,6 +109,7 @@ export interface Database {
           transaction_type: "expense" | "income" | null;
           eligible_for_ai: boolean;
           data_source_id: string | null;
+          data_feed_external_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -138,6 +139,7 @@ export interface Database {
           transaction_type?: "expense" | "income" | null;
           eligible_for_ai?: boolean;
           data_source_id?: string | null;
+          data_feed_external_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -151,6 +153,10 @@ export interface Database {
           quick_label: string;
           business_purpose: string | null;
           category: string | null;
+          name: string | null;
+          enabled: boolean;
+          conditions: Json;
+          action: Json;
           created_at: string;
         };
         Insert: {
@@ -160,6 +166,10 @@ export interface Database {
           quick_label: string;
           business_purpose?: string | null;
           category?: string | null;
+          name?: string | null;
+          enabled?: boolean;
+          conditions?: Json;
+          action?: Json;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["auto_sort_rules"]["Insert"]>;
@@ -223,8 +233,16 @@ export interface Database {
           name: string;
           account_type: string;
           institution: string | null;
+          source_type: string;
+          stripe_account_id: string | null;
+          financial_connections_account_id: string | null;
+          connected_at: string | null;
+          last_successful_sync_at: string | null;
+          last_failed_sync_at: string | null;
+          last_error_summary: string | null;
           last_upload_at: string | null;
           transaction_count: number;
+          stripe_sync_start_date: string | null;
           created_at: string;
         };
         Insert: {
@@ -233,8 +251,16 @@ export interface Database {
           name: string;
           account_type: string;
           institution?: string | null;
+          source_type?: string;
+          stripe_account_id?: string | null;
+          financial_connections_account_id?: string | null;
+          connected_at?: string | null;
+          last_successful_sync_at?: string | null;
+          last_failed_sync_at?: string | null;
+          last_error_summary?: string | null;
           last_upload_at?: string | null;
           transaction_count?: number;
+          stripe_sync_start_date?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["data_sources"]["Insert"]>;
@@ -278,6 +304,27 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["tax_year_settings"]["Insert"]>;
+      };
+      notification_preferences: {
+        Row: {
+          user_id: string;
+          type: "count_based" | "interval_based";
+          value: string;
+          last_notified_at: string | null;
+          last_counter_reset_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          type: "count_based" | "interval_based";
+          value: string;
+          last_notified_at?: string | null;
+          last_counter_reset_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["notification_preferences"]["Insert"]>;
       };
       subscriptions: {
         Row: {

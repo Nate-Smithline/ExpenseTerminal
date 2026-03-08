@@ -78,6 +78,7 @@ export const transactionUpdateBodySchema = z.object({
   amount: amountSchema.optional(),
   description: descriptionSchema.nullable().optional(),
   transaction_type: z.enum(["income", "expense"]).optional(),
+  source: z.enum(["csv_upload", "manual"]).optional(),
 });
 
 export const transactionDeleteBodySchema = z.object({
@@ -156,6 +157,7 @@ export const ACTIVITY_VISIBLE_COLUMNS = [
   "status",
   "category",
   "schedule_c_line",
+  "source",
   "ai_confidence",
   "business_purpose",
   "quick_label",
@@ -171,6 +173,7 @@ export const activityViewFiltersSchema = z.object({
   search: z.string().max(500).optional(),
   date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  source: z.enum(["csv_upload", "manual", "data_feed"]).nullable().optional(),
 });
 
 export const activityViewSettingsPatchSchema = z.object({
@@ -178,4 +181,10 @@ export const activityViewSettingsPatchSchema = z.object({
   sort_asc: z.boolean().optional(),
   visible_columns: z.array(z.enum(ACTIVITY_VISIBLE_COLUMNS)).optional(),
   filters: activityViewFiltersSchema.optional(),
+});
+
+// Notification preferences
+export const notificationPreferencesSchema = z.object({
+  type: z.enum(["count_based", "interval_based"]),
+  value: z.string().min(1, "Value is required"),
 });

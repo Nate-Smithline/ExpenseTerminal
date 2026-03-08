@@ -29,6 +29,7 @@ export type TransactionDetailUpdate = {
   amount?: number;
   transaction_type?: "expense" | "income";
   status?: "pending" | "completed" | "auto_sorted" | "personal";
+  source?: "csv_upload" | "manual";
 };
 
 interface TransactionDetailPanelProps {
@@ -99,6 +100,9 @@ export function TransactionDetailPanel({
   );
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [editSource, setEditSource] = useState<"csv_upload" | "manual">(
+    (transaction.source === "manual" ? "manual" : "csv_upload") as "csv_upload" | "manual",
+  );
 
   const amount = Math.abs(Number(transaction.amount));
   const deductionPct = transaction.deduction_percent ?? 100;
@@ -133,6 +137,10 @@ export function TransactionDetailPanel({
       if (editDate !== (transaction.date ?? "").slice(0, 10)) update.date = editDate;
       if (editTransactionType !== (transaction.transaction_type === "income" ? "income" : "expense")) update.transaction_type = editTransactionType;
       if (editStatus !== (transaction.status ?? "pending")) update.status = editStatus;
+      const currentSource = (transaction.source === "manual" ? "manual" : "csv_upload") as "csv_upload" | "manual";
+      if (transaction.source !== "data_feed" && editSource !== currentSource) {
+        update.source = editSource;
+      }
       if (Object.keys(update).length === 0) return;
       await onSave(transaction.id, update);
     } catch (e) {
@@ -153,7 +161,21 @@ export function TransactionDetailPanel({
     setEditAmount(String(Math.abs(Number(transaction.amount))));
     setEditTransactionType((transaction.transaction_type === "income" ? "income" : "expense") as "expense" | "income");
     setEditStatus((transaction.status as "pending" | "completed" | "auto_sorted" | "personal") ?? "pending");
-  }, [transaction.id, transaction.category, transaction.schedule_c_line, transaction.deduction_percent, transaction.business_purpose, transaction.notes, transaction.vendor, transaction.date, transaction.amount, transaction.transaction_type, transaction.status]);
+    setEditSource((transaction.source === "manual" ? "manual" : "csv_upload") as "csv_upload" | "manual");
+  }, [
+    transaction.id,
+    transaction.category,
+    transaction.schedule_c_line,
+    transaction.deduction_percent,
+    transaction.business_purpose,
+    transaction.notes,
+    transaction.vendor,
+    transaction.date,
+    transaction.amount,
+    transaction.transaction_type,
+    transaction.status,
+    transaction.source,
+  ]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -173,7 +195,7 @@ export function TransactionDetailPanel({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 min-h-[100dvh] z-50 flex justify-end">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
 
@@ -410,8 +432,37 @@ export function TransactionDetailPanel({
             )}
           </PropertyRow>
 
-          <PropertyRow label="Source">
-            <span className="text-xs text-mono-medium">{transaction.source ?? "CSV Upload"}</span>
+          <PropertyRow label="Data source">
+            {transaction.source === "data_feed" ? (
+              <span className="text-xs text-mono-medium">
+                Live Data through{" "}
+                <a
+                  href="https://stripe.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-[#635bff]"
+                >
+                  Stripe
+                </a>
+              </span>
+            ) : editable && onSave ? (
+              <select
+                value={editSource}
+                onChange={(e) => setEditSource(e.target.value as "csv_upload" | "manual")}
+                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+              >
+                <option value="csv_upload">Uploaded via CSV</option>
+                <option value="manual">Entered manually</option>
+              </select>
+            ) : (
+              <span className="text-xs text-mono-medium">
+                {transaction.source === "manual"
+                  ? "Entered manually"
+                  : transaction.source === "csv_upload" || !transaction.source
+                  ? "Uploaded via CSV"
+                  : transaction.source}
+              </span>
+            )}
           </PropertyRow>
 
           {transaction.vendor_normalized != null && transaction.vendor_normalized !== "" && (

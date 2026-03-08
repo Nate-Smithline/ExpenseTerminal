@@ -32,7 +32,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 
-  const { id, quick_label, business_purpose, notes, status, deduction_percent, category, schedule_c_line, date, vendor, amount, description, transaction_type } = parsed.data;
+  const {
+    id,
+    quick_label,
+    business_purpose,
+    notes,
+    status,
+    deduction_percent,
+    category,
+    schedule_c_line,
+    date,
+    vendor,
+    amount,
+    description,
+    transaction_type,
+    source,
+  } = parsed.data;
 
   const updatePayload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
@@ -52,6 +67,7 @@ export async function POST(req: Request) {
   if (amount !== undefined) updatePayload.amount = amount;
   if (description !== undefined) updatePayload.description = description;
   if (transaction_type !== undefined) updatePayload.transaction_type = transaction_type;
+  if (source !== undefined) updatePayload.source = source;
 
   const { error } = await (supabase as any)
     .from("transactions")

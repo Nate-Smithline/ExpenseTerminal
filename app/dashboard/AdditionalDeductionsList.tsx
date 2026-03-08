@@ -14,9 +14,9 @@ export function AdditionalDeductionsList({ additionalDeductions }: AdditionalDed
   };
 
   return (
-    <div className="card px-6 pt-6 pb-4">
-      <h2 className="text-lg text-mono-dark mb-1">Additional Deductions</h2>
-      <p className="text-sm text-mono-medium mb-3">
+    <div className="card overflow-hidden px-6 pt-6 pb-4 border-l-4 border-l-accent-sage/30">
+      <h2 className="text-lg font-semibold text-mono-dark mb-1 tracking-tight">Additional Deductions</h2>
+      <p className="text-sm text-mono-light mb-4">
         Set up deduction calculators like home office, QBI, and mileage
       </p>
       <ul className="divide-y divide-bg-tertiary/40">

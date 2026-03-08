@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { getPlanDefinition } from "@/lib/billing/plans";
 
 type Usage = {
   plan: string;
@@ -100,7 +101,7 @@ export function BillingClient({
       const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
-        const planName = data.plan ? String(data.plan).charAt(0).toUpperCase() + String(data.plan).slice(1) : "paid";
+        const planName = (data.plan === "plus" || data.plan === "starter") ? "Pro" : (data.plan ? String(data.plan).charAt(0).toUpperCase() + String(data.plan).slice(1) : "paid");
         setSuccessPlan(planName);
         setError(null);
         await fetchUsage();
@@ -113,13 +114,13 @@ export function BillingClient({
     })();
   }, [checkoutSessionId, router]);
 
-  const startCheckout = async (plan: "starter" | "plus") => {
-    setCheckoutLoading(plan);
+  const startCheckout = async () => {
+    setCheckoutLoading("plus");
     setError(null);
     const res = await fetch("/api/billing/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan }),
+      body: JSON.stringify({ plan: "plus" }),
     });
     const data = await res.json().catch(() => ({}));
     setCheckoutLoading(null);
@@ -198,7 +199,7 @@ export function BillingClient({
             Current plan
           </p>
           <p className="text-neutral-600 dark:text-neutral-400 capitalize">
-            {usage?.plan ?? "—"}
+            {usage?.plan === "plus" || usage?.plan === "starter" ? "Pro" : usage?.plan ?? "—"}
             {usage?.subscriptionStatus && usage.plan !== "free" ? ` (${usage.subscriptionStatus})` : ""}
           </p>
           {usage?.subscriptionStatus === "canceled" && (
@@ -262,18 +263,11 @@ export function BillingClient({
           <div className="flex flex-wrap gap-2 mt-4">
             <button
               type="button"
-              onClick={() => startCheckout("starter")}
+              onClick={() => startCheckout()}
               disabled={!!checkoutLoading}
               className="px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
             >
-              {checkoutLoading === "starter" ? "Redirecting…" : "Upgrade to Starter"}
-            </button>
-            <button
-              type="button"
-              disabled
-              className="px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm font-medium text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/40 cursor-not-allowed"
-            >
-              Plus (coming soon)
+              {checkoutLoading === "plus" ? "Redirecting…" : `Upgrade to Pro (${getPlanDefinition("plus").priceHuman}/year)`}
             </button>
           </div>
         )}

@@ -92,78 +92,87 @@ export function DashboardStats({
       ? `Typical businesses deduct ~${(TYPICAL_DEDUCTION_PCT * 100).toFixed(0)}% of revenue ($${typicalDeductionAmount.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} at your revenue).`
       : "Track revenue and deductions to see how you compare to typical business deduction rates.";
 
+  const estTaxes = Math.max(0, revenue - fromTransactions - additionalTotal) * taxRate;
+
   return (
     <>
-      <div className="space-y-3">
-        {/* Top row: Revenue, Deductions, Additional */}
+      <div className="space-y-4">
+        {/* Row 1: Revenue, Deductions, Additional — separate boxes */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <div className="card p-6">
-          <p className="text-xs text-mono-light mb-1 uppercase tracking-wide">Revenue</p>
-          <p className="text-2xl font-display text-mono-dark tabular-nums">
-            ${revenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-          </p>
-          <div className="flex items-center gap-3 mt-2">
-            <button
-              type="button"
-              onClick={() => setLogIncomeOpen(true)}
-              className="text-xs text-accent-sage font-medium hover:underline"
-            >
-              Log more
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewIncomeOpen(true)}
-              className="text-xs text-accent-sage font-medium hover:underline"
-            >
-              View logged income
-            </button>
+          <div className="card overflow-hidden p-6 border-l-4 border-l-accent-sage/40 bg-gradient-to-br from-white to-bg-secondary/30">
+            <p className="text-xs font-medium text-mono-light uppercase tracking-wider mb-1.5">Revenue</p>
+            <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
+              ${revenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4">
+              <button
+                type="button"
+                onClick={() => setLogIncomeOpen(true)}
+                className="text-xs text-accent-sage font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded"
+              >
+                Log more
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewIncomeOpen(true)}
+                className="text-xs text-accent-sage font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded"
+              >
+                View logged income
+              </button>
+            </div>
+          </div>
+          <div className="card overflow-hidden p-6 border-l-4 border-l-accent-terracotta/40 bg-gradient-to-br from-white to-bg-secondary/30">
+            <p className="text-xs font-medium text-mono-light uppercase tracking-wider mb-1.5">Deductions</p>
+            <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
+              ${fromTransactions.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+            </p>
+            <p className="text-xs text-mono-light mt-1">From transactions</p>
+            <Link href="/inbox" className="text-xs text-accent-sage font-medium mt-2 inline-block hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded">
+              Inbox
+            </Link>
+          </div>
+          <div className="card overflow-hidden p-6 border-l-4 border-l-accent-warm/40 bg-gradient-to-br from-white to-bg-secondary/30">
+            <p className="text-xs font-medium text-mono-light uppercase tracking-wider mb-1.5">Additional</p>
+            <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
+              ${additionalTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+            </p>
+            <p className="text-xs text-mono-light mt-1">Home office, QBI, mileage</p>
+            <Link href="/other-deductions" className="text-xs text-accent-sage font-medium mt-2 inline-block hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded">
+              Other Deductions
+            </Link>
           </div>
         </div>
-        <div className="card p-6">
-          <p className="text-xs text-mono-light mb-1 uppercase tracking-wide">Deductions</p>
-          <p className="text-2xl font-display text-mono-dark tabular-nums">
-            ${fromTransactions.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs text-mono-light mt-1">From transactions</p>
-          <Link href="/inbox" className="text-xs text-accent-sage font-medium mt-1 inline-block hover:underline">
-            Inbox
-          </Link>
-        </div>
-        <div className="card p-6">
-          <p className="text-xs text-mono-light mb-1 uppercase tracking-wide">Additional</p>
-          <p className="text-2xl font-display text-mono-dark tabular-nums">
-            ${additionalTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-          </p>
-          <p className="text-xs text-mono-light mt-1">
-            From deduction calculators like home office, QBI, and mileage
-          </p>
-          <Link href="/other-deductions" className="text-xs text-accent-sage font-medium mt-1 inline-block hover:underline">
-            Other Deductions
-          </Link>
-        </div>
-        </div>
 
-        {/* Savings on its own line with cross-comparison */}
-        <div className="card p-6">
-        <p className="text-xs text-mono-light mb-1 uppercase tracking-wide">Est. Savings</p>
-        <p className="text-2xl font-display text-accent-sage tabular-nums">
-          ${totalSavings.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+        {/* Row 2: Est. Savings, Est. Taxes — separate boxes */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="card overflow-hidden p-6 bg-accent-sage/5 border border-accent-sage/20">
+            <p className="text-xs font-medium text-accent-sage uppercase tracking-wider mb-1.5">Est. Savings</p>
+            <p className="text-xl font-sans font-semibold text-accent-sage tabular-nums tracking-tight">
+              ${totalSavings.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+            </p>
+          </div>
+          <div className="card overflow-hidden p-6 border-l-4 border-l-bg-tertiary/60 bg-gradient-to-br from-white to-bg-secondary/30">
+            <p className="text-xs font-medium text-mono-light uppercase tracking-wider mb-1.5">Est. Taxes</p>
+            <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
+              ${estTaxes.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+            </p>
+            <p className="text-xs text-mono-light mt-1">At {(taxRate * 100).toFixed(0)}%</p>
+          </div>
+        </div>
+        <p className="text-xs text-mono-medium max-w-xl">
+          Savings: transaction deductions × {(taxRate * 100).toFixed(0)}% rate, plus additional deductions (QBI, home office, etc.) not multiplied by rate.
+          <Link href="/org-profile" className="text-accent-sage ml-1 hover:underline font-medium">Edit rate</Link>
         </p>
-        <p className="text-xs text-mono-light mt-1">
-          At {(taxRate * 100).toFixed(0)}% rate
-          <Link href="/org-profile" className="text-accent-sage ml-1 hover:underline">Edit</Link>
-        </p>
-        <p className="text-xs text-mono-medium mt-3 pt-3 border-t border-bg-tertiary/40">
+        <p className="text-xs text-mono-medium mt-2 pt-2 border-t border-bg-tertiary/40">
           {comparisonNote}
         </p>
-      </div>
       </div>
 
       {/* Log Income modal */}
       {logIncomeOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-auto">
+        <div className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center p-4 overflow-auto">
           <div
-            className="fixed inset-0 min-h-full min-w-full bg-mono-dark/30"
+            className="fixed inset-0 min-h-[100dvh] min-w-full bg-mono-dark/30"
             aria-hidden
             onClick={() => setLogIncomeOpen(false)}
           />
@@ -201,9 +210,9 @@ export function DashboardStats({
 
       {/* View logged income modal */}
       {viewIncomeOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-auto">
+        <div className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center p-4 overflow-auto">
           <div
-            className="fixed inset-0 min-h-full min-w-full bg-mono-dark/30"
+            className="fixed inset-0 min-h-[100dvh] min-w-full bg-mono-dark/30"
             aria-hidden
             onClick={() => setViewIncomeOpen(false)}
           />

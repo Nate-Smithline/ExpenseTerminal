@@ -12,6 +12,7 @@ const COLUMN_LABELS: Record<ActivityVisibleColumn, string> = {
   status: "Status",
   category: "Category",
   schedule_c_line: "Schedule C",
+  source: "Source",
   ai_confidence: "AI %",
   business_purpose: "Business purpose",
   quick_label: "Quick label",
@@ -26,6 +27,7 @@ export interface ActivityViewState {
   filters: {
     status: string | null;
     transaction_type: string | null;
+    source: string | null;
     search: string;
     date_from: string;
     date_to: string;
@@ -54,6 +56,13 @@ const TYPE_OPTIONS = [
   { value: "", label: "All types" },
   { value: "expense", label: "Expense" },
   { value: "income", label: "Income" },
+];
+
+const SOURCE_OPTIONS = [
+  { value: "", label: "All sources" },
+  { value: "data_feed", label: "Stripe" },
+  { value: "csv_upload", label: "CSV" },
+  { value: "manual", label: "Manual" },
 ];
 
 const SORT_OPTIONS: [string, boolean, string][] = [
@@ -111,7 +120,7 @@ function ActivityModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
+      className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby={ariaLabelledby}
@@ -316,7 +325,7 @@ export function ActivityToolbar({
         open={filterOpen}
         onClose={() => setFilterOpen(false)}
         title="Filter"
-        subtitle="Filter by status and transaction type."
+        subtitle="Filter by status, type, and account."
         aria-labelledby="activity-filter-title"
       >
         <div className="space-y-4">
@@ -348,6 +357,26 @@ export function ActivityToolbar({
                   onClick={() => {
                     onViewStateChange({
                       filters: { ...viewState.filters, transaction_type: o.value || null },
+                    });
+                    setFilterOpen(false);
+                  }}
+                  className="rounded-md border border-bg-tertiary/60 px-3 py-1.5 text-xs text-mono-dark hover:bg-bg-secondary/80 transition"
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] font-medium text-mono-light uppercase tracking-wider mb-2">Data source</p>
+            <div className="flex flex-wrap gap-1.5">
+              {SOURCE_OPTIONS.map((o) => (
+                <button
+                  key={o.value || "all"}
+                  type="button"
+                  onClick={() => {
+                    onViewStateChange({
+                      filters: { ...viewState.filters, source: o.value || null },
                     });
                     setFilterOpen(false);
                   }}

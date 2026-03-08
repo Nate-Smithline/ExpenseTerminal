@@ -111,7 +111,7 @@ function MadeInAmericaSection() {
 
       {isModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+          className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center p-4 bg-black/50"
           onClick={() => setIsModalOpen(false)}
         >
           <div
@@ -298,13 +298,13 @@ export function LandingPage() {
                     Coming soon
                   </span>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-white/90">Plus</span>
+                    <span className="font-medium text-white/90">Pro</span>
                   </div>
                   <p className="text-sm font-semibold text-white">
-                    $300<span className="text-xs font-normal text-white/70">/year</span>
+                    $360<span className="text-xs font-normal text-white/70">/year</span>
                   </p>
                   <p className="text-xs text-white/75 mt-1.5">
-                    Planned bank connections and deeper automation for heavy users.
+                    Bank connections and deeper automation for heavy users.
                   </p>
                 </div>
               </div>

@@ -6,6 +6,7 @@ import { normalizeVendor } from "@/lib/vendor-matching";
 import { ActivityToolbar, type ActivityViewState } from "./ActivityToolbar";
 import { ActivityTable } from "./ActivityTable";
 import { TransactionDetailPanel, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
+import { useUpgradeModal } from "@/components/UpgradeModalContext";
 import type { TransactionUpdate } from "@/components/TransactionCard";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
@@ -22,6 +23,7 @@ const DEFAULT_VIEW_STATE: ActivityViewState = {
   filters: {
     status: null,
     transaction_type: null,
+    source: null,
     search: "",
     ...defaultDateRange(),
   },
@@ -58,6 +60,7 @@ export function ActivityPageClient({
 }: ActivityPageClientProps) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [totalCount, setTotalCount] = useState(initialTotalCount);
+  const { openUpgradeModal } = useUpgradeModal();
   const [viewState, setViewState] = useState<ActivityViewState>(DEFAULT_VIEW_STATE);
   const [viewSettingsLoaded, setViewSettingsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -77,6 +80,7 @@ export function ActivityPageClient({
     };
     if (viewState.filters.status) params.status = viewState.filters.status;
     if (viewState.filters.transaction_type) params.transaction_type = viewState.filters.transaction_type;
+    if (viewState.filters.source) params.source = viewState.filters.source;
     if (viewState.filters.search) params.search = viewState.filters.search;
 
     const [txs, count] = await Promise.all([
@@ -87,7 +91,7 @@ export function ActivityPageClient({
     setTotalCount(count);
     setLoading(false);
     return txs;
-  }, [viewState.sort_column, viewState.sort_asc, viewState.filters.status, viewState.filters.transaction_type, viewState.filters.search, viewState.filters.date_from, viewState.filters.date_to]);
+  }, [viewState.sort_column, viewState.sort_asc, viewState.filters.status, viewState.filters.transaction_type, viewState.filters.source, viewState.filters.search, viewState.filters.date_from, viewState.filters.date_to]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,6 +111,7 @@ export function ActivityPageClient({
               filters: {
                 status: data.filters?.status ?? null,
                 transaction_type: data.filters?.transaction_type ?? null,
+                source: data.filters?.source ?? null,
                 search: typeof data.filters?.search === "string" ? data.filters.search : "",
                 date_from: typeof data.filters?.date_from === "string" ? data.filters.date_from : defaultDateRange().date_from,
                 date_to: typeof data.filters?.date_to === "string" ? data.filters.date_to : defaultDateRange().date_to,
@@ -167,6 +172,10 @@ export function ActivityPageClient({
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
+        if (res.status === 402 && (errBody as { ai_limit_reached?: boolean }).ai_limit_reached) {
+          openUpgradeModal("ai_limit");
+          return;
+        }
         setToast((errBody as { error?: string }).error ?? "AI analysis failed");
         setTimeout(() => setToast(null), 5000);
         return;
@@ -223,7 +232,16 @@ export function ActivityPageClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transactionIds: uncategorized.map((t) => t.id) }),
       });
-      if (!res.ok) throw new Error("Analysis failed");
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        if (res.status === 402 && (errBody as { ai_limit_reached?: boolean }).ai_limit_reached) {
+          openUpgradeModal("ai_limit");
+        } else {
+          setToast((errBody as { error?: string }).error ?? "Analysis failed");
+          setTimeout(() => setToast(null), 5000);
+        }
+        return;
+      }
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -356,6 +374,7 @@ export function ActivityPageClient({
         is_meal: null,
         is_travel: null,
         data_source_id: null,
+        data_feed_external_id: row.data_feed_external_id != null ? String(row.data_feed_external_id) : null,
       };
       setSidebarTransaction(normalized);
       const txs = await loadTransactions();

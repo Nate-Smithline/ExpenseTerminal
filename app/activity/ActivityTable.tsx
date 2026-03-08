@@ -23,12 +23,25 @@ function formatAiConfidence(val: number | null) {
   return `${Math.round(Number(val) * 100)}%`;
 }
 
+function sourceTagLabel(source: string | null): string {
+  if (source === "data_feed") return "Stripe";
+  if (source === "csv_upload") return "CSV";
+  if (source === "manual") return "Manual";
+  return source ?? "—";
+}
+
 function cellValue(t: Transaction, col: string): React.ReactNode {
   switch (col) {
     case "date":
       return formatDate(t.date);
     case "vendor":
       return t.vendor || "—";
+    case "source":
+      return (
+        <span className="inline-flex items-center rounded border border-bg-tertiary/60 px-1.5 py-0.5 text-[11px] text-mono-medium bg-white">
+          {sourceTagLabel(t.source)}
+        </span>
+      );
     case "description":
       return t.description ? String(t.description).slice(0, 80) + (String(t.description).length > 80 ? "…" : "") : "—";
     case "amount":
@@ -65,6 +78,7 @@ const COLUMN_LABELS: Record<ActivityVisibleColumn, string> = {
   status: "Status",
   category: "Category",
   schedule_c_line: "Schedule C",
+  source: "Source",
   ai_confidence: "AI %",
   business_purpose: "Business purpose",
   quick_label: "Quick label",

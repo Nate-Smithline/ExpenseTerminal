@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getPlanDefinition, type PlanId } from "@/lib/billing/plans";
 
-const PLUS_COMING_SOON = true;
-
 export function PricingClient({
   checkoutSessionId,
   checkoutStatus,
@@ -19,6 +17,7 @@ export function PricingClient({
   const [error, setError] = useState<string | null>(null);
   const [successPlan, setSuccessPlan] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<PlanId | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [downgradeModalOpen, setDowngradeModalOpen] = useState(false);
   const syncedRef = useRef(false);
 
@@ -57,9 +56,7 @@ export function PricingClient({
       const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
-        const planName = data.plan
-          ? String(data.plan).charAt(0).toUpperCase() + String(data.plan).slice(1)
-          : "paid";
+        const planName = (data.plan === "plus" || data.plan === "starter") ? "Pro" : (data.plan ? String(data.plan).charAt(0).toUpperCase() + String(data.plan).slice(1) : "paid");
         setSuccessPlan(planName);
         setError(null);
         router.replace("/pricing");
@@ -73,8 +70,21 @@ export function PricingClient({
     })();
   }, [checkoutSessionId, router]);
 
-  const planIds: PlanId[] = ["free", "starter", "plus"];
-  const canDowngrade = currentPlan === "starter" || currentPlan === "plus";
+  const planIds: PlanId[] = ["free", "plus"];
+  const isPro = currentPlan === "starter" || currentPlan === "plus";
+
+  const startCheckout = async () => {
+    setCheckoutLoading(true);
+    const res = await fetch("/api/billing/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan: "plus" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setCheckoutLoading(false);
+    if (res.ok && data.url) window.location.href = data.url;
+    else setError(data.error ?? "Checkout failed");
+  };
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -99,28 +109,18 @@ export function PricingClient({
         <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
       )}
 
-      <div className="mt-8 grid gap-6 sm:grid-cols-3">
+      <div className="mt-8 grid gap-6 sm:grid-cols-2">
         {planIds.map((id) => {
           const plan = getPlanDefinition(id);
-          const isPlusComingSoon = plan.id === "plus" && PLUS_COMING_SOON;
-          const isCurrentPlan = currentPlan === plan.id;
+          const isCurrentPlan = id === "plus" ? isPro : currentPlan === "free";
 
           return (
             <div
               key={plan.id}
-              className={`rounded-lg border p-5 flex flex-col ${
-                isPlusComingSoon
-                  ? "border-neutral-200 dark:border-neutral-700 opacity-90"
-                  : "border-neutral-200 dark:border-neutral-700"
-              }`}
+              className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-5 flex flex-col"
             >
               <p className="font-medium text-neutral-900 dark:text-neutral-100">
                 {plan.name}
-                {isPlusComingSoon && (
-                  <span className="ml-2 text-xs font-normal text-neutral-500 dark:text-neutral-400">
-                    Coming soon
-                  </span>
-                )}
               </p>
               <p className="mt-1 text-neutral-600 dark:text-neutral-400">
                 {plan.priceHuman}
@@ -145,7 +145,7 @@ export function PricingClient({
               </ul>
               {plan.id === "free" && (
                 <>
-                  {canDowngrade ? (
+                  {isPro ? (
                     <button
                       type="button"
                       onClick={() => setDowngradeModalOpen(true)}
@@ -154,36 +154,46 @@ export function PricingClient({
                       Downgrade
                     </button>
                   ) : (
-                    <Link
-                      href="/signup"
-                      className="mt-4 inline-block text-center w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800"
-                    >
-                      Get started
-                    </Link>
+                    <>
+                      {currentPlan !== null ? (
+                        <button
+                          type="button"
+                          onClick={startCheckout}
+                          disabled={checkoutLoading}
+                          className="mt-4 w-full px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                        >
+                          {checkoutLoading ? "Redirecting…" : "Upgrade to Pro"}
+                        </button>
+                      ) : (
+                        <Link
+                          href="/signup"
+                          className="mt-4 inline-block text-center w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                        >
+                          Get started
+                        </Link>
+                      )}
+                    </>
                   )}
                 </>
               )}
-              {plan.id === "starter" && (
-                <Link
-                  href="/settings/billing"
-                  className="mt-4 inline-block text-center w-full px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-md text-sm font-medium hover:opacity-90"
-                >
-                  {isCurrentPlan ? "Current plan" : "Upgrade"}
-                </Link>
-              )}
               {plan.id === "plus" && (
                 <>
-                  {isPlusComingSoon ? (
-                    <div className="mt-4 px-4 py-2 rounded-md text-sm font-medium text-center bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 cursor-not-allowed">
-                      Coming soon
-                    </div>
-                  ) : (
+                  {isPro ? (
                     <Link
                       href="/settings/billing"
                       className="mt-4 inline-block text-center w-full px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-md text-sm font-medium hover:opacity-90"
                     >
-                      {isCurrentPlan ? "Current plan" : "Upgrade"}
+                      You&apos;re on Pro · Manage plan
                     </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={startCheckout}
+                      disabled={checkoutLoading}
+                      className="mt-4 w-full px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                    >
+                      {checkoutLoading ? "Redirecting…" : "Upgrade to Pro"}
+                    </button>
                   )}
                 </>
               )}
@@ -194,7 +204,7 @@ export function PricingClient({
 
       {downgradeModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+          className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center p-4 bg-black/50"
           onClick={() => setDowngradeModalOpen(false)}
           role="dialog"
           aria-modal="true"

@@ -44,6 +44,7 @@ export async function GET(req: Request) {
   const searchTerm = (searchParams.get("search") ?? searchParams.get("q"))?.trim() ?? "";
   const dateFrom = searchParams.get("date_from")?.trim() || null;
   const dateTo = searchParams.get("date_to")?.trim() || null;
+  const source = searchParams.get("source")?.trim() || null;
 
   const transactionColumns =
     "id,user_id,date,vendor,description,amount,category,schedule_c_line,ai_confidence,ai_reasoning,ai_suggestions,status,business_purpose,quick_label,notes,vendor_normalized,auto_sort_rule_id,deduction_percent,is_meal,is_travel,tax_year,source,transaction_type,data_source_id,created_at,updated_at";
@@ -57,6 +58,7 @@ export async function GET(req: Request) {
   if (dateTo) query = query.lte("date", dateTo);
   if (status) query = query.eq("status", status);
   if (txType) query = query.eq("transaction_type", txType);
+  if (source) query = query.eq("source", source);
   if (vendorNormalized) query = query.eq("vendor_normalized", vendorNormalized);
   if (excludeId) query = query.neq("id", excludeId);
   if (analyzedOnly === true) query = query.not("ai_confidence", "eq", null);

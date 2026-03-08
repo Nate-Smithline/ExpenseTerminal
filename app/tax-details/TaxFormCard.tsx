@@ -28,7 +28,7 @@ interface TaxFormCardProps {
 }
 
 function formatCurrency(n: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
 
 export function TaxFormCard({ title, subtitle, lineBreakdown, transactions, onSelectTransaction }: TaxFormCardProps) {

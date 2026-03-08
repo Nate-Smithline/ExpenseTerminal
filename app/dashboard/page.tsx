@@ -133,15 +133,10 @@ export default async function DashboardPage() {
       0
     ) ?? 0;
 
-  const taxSavingsTotal =
-    additionalDeductions?.reduce(
-      (sum: number, d: { tax_savings: string }) => sum + Number(d.tax_savings),
-      0
-    ) ?? 0;
-
   const totalDeductions = fromTransactions + additionalTotal;
   const transactionSavings = fromTransactions * taxRate;
-  const totalSavings = transactionSavings + taxSavingsTotal;
+  // Other deductions (QBI, home office, mileage, etc.) are not multiplied by tax rate; add their amounts directly.
+  const totalSavings = transactionSavings + additionalTotal;
 
   return (
     <div className="space-y-10">
@@ -175,32 +170,35 @@ export default async function DashboardPage() {
       <AdditionalDeductionsList additionalDeductions={additionalDeductions ?? []} />
 
       {/* Deduction Breakdown */}
-      <div className="card p-6">
-        <h2 className="text-lg text-mono-dark mb-5">
+      <div className="card overflow-hidden p-6 border-l-4 border-l-bg-tertiary">
+        <h2 className="text-lg font-semibold text-mono-dark mb-1 tracking-tight">
           Deduction Breakdown
         </h2>
+        <p className="text-sm text-mono-light mb-5">
+          By category and by calculator
+        </p>
 
-        <div className="space-y-5">
+        <div className="space-y-6">
           <div>
-            <p className="text-sm font-medium text-mono-dark mb-3">
+            <p className="text-xs font-medium text-mono-light uppercase tracking-wider mb-3">
               From Transactions
             </p>
-            <ul className="space-y-2 text-sm text-mono-medium">
+            <ul className="space-y-2.5 text-sm text-mono-medium">
               {Object.entries(byCategory)
                 .sort((a, b) => b[1] - a[1])
                 .map(([cat, amt]) => (
-                  <li key={cat} className="flex justify-between">
-                    <span>{cat}</span>
-                    <span className="tabular-nums">${amt.toFixed(2)}</span>
+                  <li key={cat} className="flex justify-between items-baseline gap-4 py-1 border-b border-bg-tertiary/30 last:border-0">
+                    <span className="text-mono-dark">{cat}</span>
+                    <span className="tabular-nums font-medium text-mono-dark shrink-0">${amt.toFixed(2)}</span>
                   </li>
                 ))}
               {Object.keys(byCategory).length === 0 && (
-                <li className="text-mono-light">
+                <li className="text-mono-light py-2">
                   No completed transactions yet.
                   {(pendingCount ?? 0) > 0 && (
                     <>
                       {" "}
-                      <Link href="/inbox" className="text-accent-sage hover:underline">
+                      <Link href="/inbox" className="text-accent-sage hover:underline font-medium">
                         Review {pendingCount} pending in Inbox
                       </Link>{" "}
                       to add ${pendingDeductionPotential.toLocaleString("en-US", { minimumFractionDigits: 2 })} to deductions.
@@ -212,21 +210,21 @@ export default async function DashboardPage() {
           </div>
 
           <div className="border-t border-bg-tertiary/40 pt-5">
-            <p className="text-sm font-medium text-mono-dark mb-3">
+            <p className="text-xs font-medium text-mono-light uppercase tracking-wider mb-3">
               Additional Deductions
             </p>
-            <ul className="space-y-2 text-sm text-mono-medium">
+            <ul className="space-y-2.5 text-sm text-mono-medium">
               {additionalDeductions?.map((d: { type: string; amount: string; tax_savings: string }) => (
-                <li key={d.type + d.amount} className="flex justify-between">
-                  <span className="capitalize">{d.type.replace(/_/g, " ")}</span>
-                  <span className="tabular-nums">
-                    ${Number(d.amount).toFixed(2)}
-                    <span className="text-mono-light ml-1">(saves ${Number(d.tax_savings).toFixed(2)})</span>
+                <li key={d.type + d.amount} className="flex justify-between items-baseline gap-4 py-1 border-b border-bg-tertiary/30 last:border-0">
+                  <span className="capitalize text-mono-dark">{d.type.replace(/_/g, " ")}</span>
+                  <span className="tabular-nums shrink-0">
+                    <span className="font-medium text-mono-dark">${Number(d.amount).toFixed(2)}</span>
+                    <span className="text-mono-light ml-1.5 text-xs">saves ${Number(d.tax_savings).toFixed(2)}</span>
                   </span>
                 </li>
               ))}
               {(!additionalDeductions || additionalDeductions.length === 0) && (
-                <li className="text-mono-light">
+                <li className="text-mono-light py-2">
                   None yet. Add deductions from the section above.
                 </li>
               )}

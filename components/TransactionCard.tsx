@@ -26,6 +26,8 @@ interface TransactionCardProps {
   isActive?: boolean;
   onFocus?: () => void;
   taxRate?: number;
+  /** When true, card does not handle 'o' or 'y' so Similar Transactions popup can use them */
+  similarPopupOpen?: boolean;
 }
 
 export interface TransactionCardRef {
@@ -71,7 +73,7 @@ const EXPENSE_CATEGORIES: { line: string; name: string }[] = [
 
 export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardProps>(
   function TransactionCard(
-    { transaction, onSave, onMarkPersonal, onDelete, onCheckSimilar, onApplyToAllSimilar, onOpenManage, isActive, onFocus, taxRate = 0.24 },
+    { transaction, onSave, onMarkPersonal, onDelete, onCheckSimilar, onApplyToAllSimilar, onOpenManage, isActive, onFocus, taxRate = 0.24, similarPopupOpen = false },
     ref,
   ) {
     const [selectedLabel, setSelectedLabel] = useState(transaction.quick_label ?? "");
@@ -283,6 +285,8 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
         const tag = (e.target as HTMLElement)?.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         const key = e.key;
+        // Let Similar Transactions popup handle o / y when it is open
+        if (similarPopupOpen && (key === "o" || key === "O" || key === "y" || key === "Y")) return;
         if (key === "c" || key === "C") {
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -320,7 +324,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
       }
       window.addEventListener("keydown", handleKey, true);
       return () => window.removeEventListener("keydown", handleKey, true);
-    }, [isActive, categoryPickerOpen, onDelete, selectedScheduleLine, transaction.schedule_c_line]);
+    }, [isActive, categoryPickerOpen, onDelete, selectedScheduleLine, transaction.schedule_c_line, similarPopupOpen]);
 
     const isAiCategorized = transaction.schedule_c_line != null || transaction.ai_confidence != null;
     const displayCategory = selectedCategory ?? transaction.category ?? null;

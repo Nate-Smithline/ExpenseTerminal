@@ -1,22 +1,24 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { Sidebar } from "./Sidebar";
+import { UpgradeModalProvider } from "./UpgradeModalContext";
 
 const AUTH_ROUTES = ["/login", "/signup", "/auth", "/terms", "/privacy", "/cookies"];
 const FULL_WIDTH_ROUTES = ["/", "/pricing", "/request-demo"];
 
 const mobileFooterNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
-  { href: "/data-sources", label: "Sources", icon: "database" },
+  { href: "/data-sources", label: "Accounts", icon: "database" },
   { href: "/inbox", label: "Inbox", icon: "inbox" },
   { href: "/tax-details", label: "Tax", icon: "receipt_long" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [isEntering, setIsEntering] = useState(false);
@@ -78,6 +80,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
+    <UpgradeModalProvider>
     <div className="min-h-screen flex bg-bg-secondary">
       {/* Desktop sidebar — hidden on mobile */}
       <aside className="hidden md:block sticky top-0 h-screen shrink-0">
@@ -91,15 +94,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Mobile footer nav — stays underneath overlay when sidebar is open */}
       <footer
-        className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white/95 backdrop-blur-sm border-t border-bg-tertiary/50 pb-[env(safe-area-inset-bottom)]"
+        className="fixed bottom-0 left-0 right-0 z-[100] md:hidden bg-white/95 backdrop-blur-sm border-t border-bg-tertiary/50 pb-[env(safe-area-inset-bottom)] touch-manipulation"
         aria-label="Primary navigation"
       >
-        <nav className="flex items-center justify-around h-16 px-2">
+        <nav className="flex items-center justify-around h-16 px-2 relative z-10">
           {mobileFooterNav.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center gap-0.5 min-w-[56px] py-2 rounded-lg transition-colors duration-200 ${
+              onClick={(e) => {
+                if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+                e.preventDefault();
+                router.push(item.href);
+              }}
+              className={`flex flex-col items-center justify-center gap-0.5 min-w-[56px] py-2 rounded-lg transition-colors duration-200 touch-manipulation ${
                 isActive(item.href)
                   ? "text-accent-terracotta"
                   : "text-mono-medium active:text-mono-dark"
@@ -135,7 +143,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile drawer overlay — smooth slide from left, Aesop-style */}
       {mobileMenuOpen && (
         <div
-          className="fixed inset-0 z-50 md:hidden flex"
+          className="fixed inset-0 z-[110] md:hidden flex"
           role="dialog"
           aria-modal="true"
           aria-label="Navigation menu"
@@ -170,5 +178,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
     </div>
+    </UpgradeModalProvider>
   );
 }

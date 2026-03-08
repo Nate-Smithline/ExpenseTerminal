@@ -44,11 +44,11 @@ interface TaxDetailsClientProps {
 }
 
 function formatCurrency(n: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
 
 function formatPercent(n: number): string {
-  return `${(n * 100).toFixed(1)}%`;
+  return `${(n * 100).toFixed(2)}%`;
 }
 
 export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
@@ -195,6 +195,9 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
               <p className="text-xs text-mono-light mb-1">Total Deductions</p>
               <p className="text-lg sm:text-xl font-semibold text-accent-sage tabular-nums break-words">
                 {formatCurrency(data.totalExpenses)}
+              </p>
+              <p className="text-xs text-mono-light mt-1">
+                Transaction expenses plus additional deductions (QBI, home office, mileage, etc.).
               </p>
             </div>
             <div className="card p-5 min-w-0">

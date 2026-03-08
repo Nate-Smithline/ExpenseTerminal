@@ -5,6 +5,7 @@ import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { parseQueryLimit, parseQueryOffset } from "@/lib/validation/schemas";
+import { getUserPlan, planIsFree } from "@/lib/billing/get-user-plan";
 
 export async function GET(req: Request) {
   const authClient = await createSupabaseRouteClient();
@@ -29,16 +30,15 @@ export async function GET(req: Request) {
   const limit = parseQueryLimit(url.searchParams.get("limit"));
   const offset = parseQueryOffset(url.searchParams.get("offset"));
 
-  const cols = "id,user_id,name,account_type,institution,last_upload_at,transaction_count,created_at";
   const { data, error, count } = await (supabase as any)
     .from("data_sources")
-    .select(cols, { count: "exact" })
+    .select("*", { count: "exact" })
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
   if (error) {
-    return new Response(JSON.stringify({ error: safeErrorMessage(error.message, "Failed to load data sources") }), {
+    return new Response(JSON.stringify({ error: safeErrorMessage(error.message, "Failed to load accounts") }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
   }
   const supabase = authClient;
 
-  let body: { name?: string; account_type?: string; institution?: string };
+  let body: { name?: string; account_type?: string; institution?: string; source_type?: string };
   try {
     body = await req.json();
   } catch {
@@ -81,27 +81,49 @@ export async function POST(req: Request) {
     });
   }
 
-  if (!body.name || !body.account_type) {
+  if (!body.name) {
     return new Response(
-      JSON.stringify({ error: "name and account_type are required" }),
+      JSON.stringify({ error: "name is required" }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
 
-  const cols = "id,user_id,name,account_type,institution,last_upload_at,transaction_count,created_at";
+  const sourceType = body.source_type === "stripe" ? "stripe" : "manual";
+  if (sourceType === "stripe") {
+    const plan = await getUserPlan(supabase, userId);
+    if (planIsFree(plan)) {
+      const { count } = await (supabase as any)
+        .from("data_sources")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("source_type", "stripe");
+      if ((count ?? 0) >= 1) {
+        return new Response(
+          JSON.stringify({
+            error: "Free plan allows one bank connection. Upgrade to Pro to add more.",
+            code: "pro_required_stripe_sources",
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } },
+        );
+      }
+    }
+  }
+
+  // Only insert columns that exist in minimal schema (omit source_type, connected_at, etc. if missing from schema cache).
+  const insertCols = "id,user_id,name,account_type,institution,created_at";
   const { data, error } = await (supabase as any)
     .from("data_sources")
     .insert({
       user_id: userId,
       name: body.name,
-      account_type: body.account_type,
+      account_type: body.account_type || "other",
       institution: body.institution || null,
     })
-    .select(cols)
+    .select(insertCols)
     .single();
 
   if (error) {
-    return new Response(JSON.stringify({ error: safeErrorMessage(error.message, "Failed to create data source") }), {
+    return new Response(JSON.stringify({ error: safeErrorMessage(error.message, "Failed to create account") }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
@@ -159,7 +181,8 @@ export async function PATCH(req: Request) {
     });
   }
 
-  const cols = "id,user_id,name,account_type,institution,last_upload_at,transaction_count,created_at";
+  // Minimal columns so PATCH response works when optional columns are missing from schema.
+  const cols = "id,user_id,name,account_type,institution,created_at";
   const { data, error } = await (supabase as any)
     .from("data_sources")
     .update(update)
@@ -169,12 +192,105 @@ export async function PATCH(req: Request) {
     .single();
 
   if (error) {
-    return new Response(JSON.stringify({ error: safeErrorMessage(error.message, "Failed to update data source") }), {
+    return new Response(JSON.stringify({ error: safeErrorMessage(error.message, "Failed to update account") }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
   }
   return new Response(JSON.stringify({ data }), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+export async function DELETE(req: Request) {
+  const authClient = await createSupabaseRouteClient();
+  const auth = await requireAuth(authClient);
+  if (!auth.authorized) {
+    return new Response(JSON.stringify(auth.body), {
+      status: auth.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const userId = auth.userId;
+  const { success: rlOk } = await rateLimitForRequest(req, userId, generalApiLimit);
+  if (!rlOk) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const supabase = authClient;
+
+  let body: { id: string; delete_transactions?: boolean };
+  try {
+    body = await req.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid request body" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (!body.id) {
+    return new Response(JSON.stringify({ error: "id is required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: row, error: fetchError } = await (supabase as any)
+    .from("data_sources")
+    .select("id")
+    .eq("id", body.id)
+    .eq("user_id", userId)
+    .single();
+
+  if (fetchError || !row) {
+    return new Response(JSON.stringify({ error: "Data source not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (body.delete_transactions) {
+    const { error: delTxError } = await (supabase as any)
+      .from("transactions")
+      .delete()
+      .eq("data_source_id", body.id)
+      .eq("user_id", userId);
+    if (delTxError) {
+      return new Response(JSON.stringify({ error: safeErrorMessage(delTxError.message, "Failed to delete transactions") }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  } else {
+    const { error: unlinkError } = await (supabase as any)
+      .from("transactions")
+      .update({ data_source_id: null })
+      .eq("data_source_id", body.id)
+      .eq("user_id", userId);
+    if (unlinkError) {
+      return new Response(JSON.stringify({ error: safeErrorMessage(unlinkError.message, "Failed to unlink transactions") }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  const { error: delError } = await (supabase as any)
+    .from("data_sources")
+    .delete()
+    .eq("id", body.id)
+    .eq("user_id", userId);
+
+  if (delError) {
+    return new Response(JSON.stringify({ error: safeErrorMessage(delError.message, "Failed to delete account") }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return new Response(JSON.stringify({ ok: true }), {
     headers: { "Content-Type": "application/json" },
   });
 }

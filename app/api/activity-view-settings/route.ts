@@ -27,6 +27,7 @@ function defaultSettings() {
     filters: {
       status: null,
       transaction_type: null,
+      source: null,
       search: "",
       date_from: `${year}-01-01`,
       date_to: `${year}-12-31`,
@@ -75,6 +76,7 @@ export async function GET(req: Request) {
       ? {
           status: data.filters.status ?? null,
           transaction_type: data.filters.transaction_type ?? null,
+          source: data.filters.source ?? null,
           search: typeof data.filters.search === "string" ? data.filters.search : "",
           date_from: typeof data.filters.date_from === "string" ? data.filters.date_from : def.filters.date_from,
           date_to: typeof data.filters.date_to === "string" ? data.filters.date_to : def.filters.date_to,
@@ -170,6 +172,7 @@ export async function PATCH(req: Request) {
         ? {
             ...def.filters,
             ...saved.filters,
+            source: saved.filters.source ?? def.filters.source,
             date_from: saved.filters.date_from ?? def.filters.date_from,
             date_to: saved.filters.date_to ?? def.filters.date_to,
           }

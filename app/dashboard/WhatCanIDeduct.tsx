@@ -114,49 +114,8 @@ export function WhatCanIDeduct() {
 
   return (
     <>
-      <div className="pt-2 -mb-4">
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] sm:text-xs">
-          <Link
-            href="/inbox"
-            className="inline-flex items-center gap-1.5 rounded-full bg-[#435763] px-3 py-1.5 font-medium text-xs text-white hover:bg-[#3a4b57] transition-colors"
-          >
-            <span className="material-symbols-rounded text-white" style={{ fontSize: "15px" }}>
-              visibility
-            </span>
-            Deduct more expenses
-          </Link>
-          <Link
-            href="/activity"
-            className="inline-flex items-center gap-1.5 rounded-full bg-[#435763] px-3 py-1.5 font-medium text-xs text-white hover:bg-[#3a4b57] transition-colors"
-          >
-            <span className="material-symbols-rounded text-white" style={{ fontSize: "15px" }}>
-              history
-            </span>
-            View filtered activity
-          </Link>
-          <Link
-            href="/tax-details"
-            className="inline-flex items-center gap-1.5 rounded-full bg-[#435763] px-3 py-1.5 font-medium text-xs text-white hover:bg-[#3a4b57] transition-colors"
-          >
-            <span className="material-symbols-rounded text-white" style={{ fontSize: "15px" }}>
-              receipt_long
-            </span>
-            Tax details
-          </Link>
-          <Link
-            href="/other-deductions"
-            className="inline-flex items-center gap-1.5 rounded-full bg-[#435763] px-3 py-1.5 font-medium text-xs text-white hover:bg-[#3a4b57] transition-colors"
-          >
-            <span className="material-symbols-rounded text-white" style={{ fontSize: "15px" }}>
-              calculate
-            </span>
-            Other deductions
-          </Link>
-        </div>
-      </div>
-
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px] p-4">
+        <div className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px] p-4">
           <div
             className="rounded-xl bg-white shadow-[0_8px_30px_-6px_rgba(0,0,0,0.14)] max-w-[520px] w-full mx-4 overflow-hidden flex flex-col"
             role="dialog"

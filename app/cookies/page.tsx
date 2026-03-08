@@ -77,10 +77,9 @@ export default function CookiesPage() {
 
             <h3 className="text-base text-mono-dark mb-2 mt-4">2.5 Financial Connection Cookies</h3>
             <p className="mb-2">
-              When you connect financial accounts via Plaid or Stripe Financial Connections, those services may set their own cookies or local storage values during the connection flow. These are governed by each provider&apos;s respective policies. We recommend reviewing:
+              When you connect financial accounts via Stripe Financial Connections, that service may set its own cookies or local storage values during the connection flow. These are governed by Stripe&apos;s policies. We recommend reviewing:
             </p>
             <ul className="list-disc pl-5 space-y-1">
-              <li><a href="https://plaid.com/legal/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-accent-navy underline">Plaid Privacy Policy</a></li>
               <li><a href="https://stripe.com/privacy" target="_blank" rel="noopener noreferrer" className="text-accent-navy underline">Stripe Privacy Policy</a></li>
             </ul>
           </section>

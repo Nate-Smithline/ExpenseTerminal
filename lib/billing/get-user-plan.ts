@@ -34,6 +34,16 @@ export async function getUserPlan(
   return "free";
 }
 
+/** True if user has an active Pro-equivalent subscription (plus or grandfathered starter). */
+export function planIsPro(plan: PlanId): boolean {
+  return plan === "plus" || plan === "starter";
+}
+
+/** True if user is on free plan (no active Pro subscription). */
+export function planIsFree(plan: PlanId): boolean {
+  return plan === "free";
+}
+
 /**
  * Static limits for a plan (no DB). Used by tests and for consistent cap logic.
  */

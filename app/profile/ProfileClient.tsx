@@ -220,7 +220,7 @@ export function ProfileClient({
       {/* Edit Profile Modal */}
       {editModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
+          className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-labelledby="edit-profile-title"

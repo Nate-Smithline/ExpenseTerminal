@@ -35,7 +35,15 @@ export async function POST(req: Request) {
     );
   }
 
-  // 1. Create auto-sort rule
+  // 1. Create auto-sort rule (with conditions/action for unified rules engine)
+  const conditions = {
+    match: { field: "vendor_or_description" as const, pattern: vendorNormalized },
+    source: null,
+  };
+  const action = {
+    type: "auto_categorize" as const,
+    category: category || null,
+  };
   const { data: rule, error: ruleError } = await (supabase as any)
     .from("auto_sort_rules")
     .insert({
@@ -44,6 +52,8 @@ export async function POST(req: Request) {
       quick_label: quickLabel,
       business_purpose: businessPurpose || null,
       category: category || null,
+      conditions,
+      action,
     })
     .select("id")
     .single();

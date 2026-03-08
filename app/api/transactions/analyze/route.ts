@@ -7,6 +7,7 @@ import { safeErrorMessage } from "@/lib/api/safe-error";
 import { transactionIdsBodySchema } from "@/lib/validation/schemas";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import type { Database } from "@/lib/types/database";
+import { getUserPlan, planIsFree } from "@/lib/billing/get-user-plan";
 
 type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
 
@@ -271,6 +272,25 @@ export async function POST(req: Request) {
     });
   }
   const ids = parsed.data.transactionIds;
+
+  const plan = await getUserPlan(supabase, userId);
+  if (planIsFree(plan)) {
+    const { count: analyzedCount } = await (supabase as any)
+      .from("transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .not("ai_confidence", "is", null);
+    const current = (analyzedCount ?? 0) as number;
+    if (current + ids.length > 200) {
+      return new Response(
+        JSON.stringify({
+          ai_limit_reached: true,
+          error: "Free plan allows up to 200 AI-analyzed transactions. Upgrade to Pro for unlimited.",
+        }),
+        { status: 402, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey || !apiKey.startsWith("sk-ant-")) {

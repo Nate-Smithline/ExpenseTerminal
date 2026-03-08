@@ -410,7 +410,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
+      className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="upload-modal-title"
@@ -421,7 +421,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 id="upload-modal-title" className="text-xl font-bold text-white tracking-tight">
-                {step === "choose_source" ? "Choose data source" : "Upload Transactions"}
+                {step === "choose_source" ? "Choose account" : "Upload Transactions"}
               </h2>
               <p className="text-sm text-white/80 mt-1.5">
                 {step === "choose_source"

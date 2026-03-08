@@ -10,6 +10,7 @@ import { TransactionCard } from "@/components/TransactionCard";
 import type { TransactionUpdate, TransactionCardRef } from "@/components/TransactionCard";
 import { TransactionDetailPanel, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
 import { SimilarTransactionsPopup } from "@/components/SimilarTransactionsPopup";
+import { useUpgradeModal } from "@/components/UpgradeModalContext";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
@@ -86,6 +87,7 @@ export function InboxPageClient({
   const [pendingCount, setPendingCount] = useState(initialPendingCount);
   const [unanalyzedCount, setUnanalyzedCount] = useState(initialUnanalyzedCount);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
+  const { openUpgradeModal } = useUpgradeModal();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -219,6 +221,10 @@ export function InboxPageClient({
           setAiProgress(null);
           setAiStalled(false);
           if (stalledCheckRef.id != null) clearInterval(stalledCheckRef.id);
+          if (res.status === 402 && (errBody as { ai_limit_reached?: boolean }).ai_limit_reached) {
+            openUpgradeModal("ai_limit");
+            return { ok: false, error: msg };
+          }
           setToast(msg);
           setTimeout(() => setToast(null), 5000);
           return { ok: false, error: msg };
@@ -399,7 +405,13 @@ export function InboxPageClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transactionIds: [id] }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        if (res.status === 402) {
+          const errBody = await res.json().catch(() => ({}));
+          if ((errBody as { ai_limit_reached?: boolean }).ai_limit_reached) openUpgradeModal("ai_limit");
+        }
+        return;
+      }
 
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
@@ -1091,6 +1103,7 @@ export function InboxPageClient({
             onCheckSimilar={handleCheckSimilar}
             onApplyToAllSimilar={handleApplyToAllSimilar}
             onOpenManage={(tx) => setManageTx(tx)}
+            similarPopupOpen={!!similarPopup}
           />
         ))}
       </div>

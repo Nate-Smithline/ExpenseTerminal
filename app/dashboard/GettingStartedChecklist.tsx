@@ -17,7 +17,7 @@ interface OnboardingProgress {
 const STEPS = [
   {
     id: "data_source" as const,
-    label: "Add your first data source",
+    label: "Add your first account",
     description: "Connect a bank account or financial institution",
     href: "/data-sources",
     icon: "database",

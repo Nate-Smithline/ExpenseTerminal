@@ -78,15 +78,23 @@ CREATE TRIGGER on_auth_user_created
 -- APPLICATION TABLES
 -- =============================================================================
 
--- Data Sources (financial accounts for CSV uploads)
 CREATE TABLE IF NOT EXISTS public.data_sources (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) NOT NULL,
   name TEXT NOT NULL,
   account_type TEXT NOT NULL DEFAULT 'checking',
   institution TEXT,
+  -- Source type & Stripe metadata
+  source_type TEXT NOT NULL DEFAULT 'manual',
+  stripe_account_id TEXT,
+  financial_connections_account_id TEXT,
+  connected_at TIMESTAMPTZ,
+  last_successful_sync_at TIMESTAMPTZ,
+  last_failed_sync_at TIMESTAMPTZ,
+  last_error_summary TEXT,
   last_upload_at TIMESTAMPTZ,
   transaction_count INTEGER DEFAULT 0,
+  stripe_sync_start_date DATE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -130,6 +138,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   source TEXT DEFAULT 'csv_upload',
   transaction_type TEXT DEFAULT 'expense' CHECK (transaction_type IN ('expense', 'income')),
   data_source_id UUID REFERENCES public.data_sources(id),
+  data_feed_external_id TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -146,6 +155,10 @@ CREATE INDEX IF NOT EXISTS idx_transactions_type ON public.transactions(transact
 CREATE INDEX IF NOT EXISTS idx_transactions_vendor_normalized ON public.transactions(vendor_normalized);
 CREATE INDEX IF NOT EXISTS idx_transactions_tax_year ON public.transactions(tax_year);
 CREATE INDEX IF NOT EXISTS idx_transactions_data_source ON public.transactions(data_source_id);
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS data_feed_external_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_data_feed_external
+  ON public.transactions(data_source_id, data_feed_external_id)
+  WHERE data_feed_external_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_transactions_user_year_status_type ON public.transactions(user_id, tax_year, status, transaction_type);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON public.transactions(date DESC);
 
@@ -157,6 +170,11 @@ CREATE TABLE IF NOT EXISTS public.auto_sort_rules (
   quick_label TEXT NOT NULL,
   business_purpose TEXT,
   category TEXT,
+  -- Generalized rules engine fields
+  name TEXT,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  conditions JSONB NOT NULL DEFAULT '{}'::jsonb,
+  action JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -258,6 +276,46 @@ CREATE POLICY "Users can manage own org settings"
 CREATE POLICY "Users can manage own tax year settings"
   ON public.tax_year_settings FOR ALL
   USING (auth.uid() = user_id);
+
+-- =============================================================================
+-- NOTIFICATION PREFERENCES
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.notification_preferences (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK (type IN ('count_based', 'interval_based')),
+  value TEXT NOT NULL,
+  last_notified_at TIMESTAMPTZ,
+  last_counter_reset_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own notification preferences"
+  ON public.notification_preferences FOR ALL
+  USING (auth.uid() = user_id);
+
+-- Backwards-compatible column adds for existing databases
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'manual';
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS stripe_account_id TEXT;
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS financial_connections_account_id TEXT;
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS connected_at TIMESTAMPTZ;
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS last_successful_sync_at TIMESTAMPTZ;
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS last_failed_sync_at TIMESTAMPTZ;
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS last_error_summary TEXT;
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS stripe_sync_start_date DATE;
+
+-- One data source per Stripe FC account per user (block duplicate links).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_data_sources_user_fc_account
+  ON public.data_sources(user_id, financial_connections_account_id)
+  WHERE financial_connections_account_id IS NOT NULL;
+
+ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS conditions JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS action JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 -- =============================================================================
 -- EMAIL VERIFICATIONS (Bible-word tokens)

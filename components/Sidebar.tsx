@@ -6,17 +6,16 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { createSupabaseClient } from "@/lib/supabase/client";
 import { getStickyTaxYearClient } from "@/lib/tax-year-cookie";
 
-const GUIDES_URL = "https://www.notion.so/guides";
-
 const mainNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
-  { href: "/data-sources", label: "Data Sources", icon: "database" },
+  { href: "/data-sources", label: "Accounts", icon: "database" },
   { href: "/inbox", label: "Inbox", icon: "visibility" },
   { href: "/tax-details", label: "Tax Details", icon: "receipt_long" },
 ];
 
 const bottomNav = [
   { href: "/activity", label: "All Activity", icon: "history" },
+  { href: "/rules", label: "Rules & Notifications", icon: "tune" },
   { href: "/other-deductions", label: "Other Deductions", icon: "calculate" },
 ];
 
@@ -40,6 +39,7 @@ export function Sidebar() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [inboxCount, setInboxCount] = useState<number | null>(null);
   const [profile, setProfile] = useState<{ name_prefix?: string | null; first_name?: string | null; last_name?: string | null } | null>(null);
+  const [plan, setPlan] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isActive = (href: string) =>
@@ -84,6 +84,13 @@ export function Sidebar() {
   }, [pathname, loadInboxCount]);
 
   useEffect(() => {
+    fetch("/api/billing/usage")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setPlan(d?.plan ?? null))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     function handleInboxChanged() {
       loadInboxCount();
     }
@@ -122,7 +129,7 @@ export function Sidebar() {
           className="w-full text-left rounded-lg py-2 pl-3 pr-2 hover:bg-bg-tertiary/20 transition-colors"
         >
           <div className="flex items-center justify-between gap-2 min-w-0">
-            <span className="font-display text-lg text-mono-dark tracking-tight truncate">
+            <span className="font-sans text-lg text-mono-dark tracking-tight truncate">
               {greeting}
             </span>
             <span className="material-symbols-rounded text-[18px] text-mono-light shrink-0">
@@ -198,6 +205,29 @@ export function Sidebar() {
 
       {/* Bottom nav - left align with main nav (px-5) */}
       <div className="px-5 pb-3 space-y-0.5">
+        {plan === "free" && (
+          <div className="rounded-lg border border-bg-tertiary/60 bg-white/80 p-3 mb-3">
+            <p className="font-semibold text-mono-dark text-sm">Upgrade to Pro — $360/year</p>
+            <p className="text-xs text-mono-light mt-1 leading-snug">
+              Unlock bank connections and full history.
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                const res = await fetch("/api/billing/checkout", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ plan: "plus" }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.url) window.location.href = data.url;
+              }}
+              className="mt-2 w-full rounded-md bg-mono-dark px-3 py-2 text-xs font-semibold text-white hover:bg-mono-dark/90 transition text-center"
+            >
+              Upgrade to Pro
+            </button>
+          </div>
+        )}
         {bottomNav.map((item) => (
           <Link
             key={item.href}
