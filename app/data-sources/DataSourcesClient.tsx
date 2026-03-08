@@ -244,7 +244,7 @@ export function DataSourcesClient({
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.data) {
-        setSources((prev) => prev.map((s) => (s.id === data.data.id ? data.data : s)));
+        setSources((prev) => prev.map((s) => (s.id === data.data.id ? { ...s, ...data.data } : s)));
         setEditSource(null);
         setToast("Account updated.");
         setTimeout(() => setToast(null), 3000);

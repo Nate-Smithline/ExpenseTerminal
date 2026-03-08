@@ -212,6 +212,7 @@ export async function runSyncForDataSource(
       }
 
       let inserted = 0;
+      let firstInsertError: string | null = null;
       for (const tx of allTx) {
         const date = new Date((tx.transacted_at ?? 0) * 1000);
         const dateStr = date.toISOString().slice(0, 10);
@@ -227,7 +228,7 @@ export async function runSyncForDataSource(
               vendor,
               description: tx.description ?? null,
               amount,
-              status: "completed",
+              status: "pending",
               tax_year: year,
               source: "data_feed",
               transaction_type: amount >= 0 ? "income" : "expense",
@@ -240,6 +241,10 @@ export async function runSyncForDataSource(
               ignoreDuplicates: true,
             }
           );
+        if (insErr && !firstInsertError) {
+          firstInsertError = insErr.message ?? String(insErr);
+          console.warn("[sync-runner] First insert error", { dataSourceId, error: firstInsertError, txId: tx.id });
+        }
         if (!insErr) inserted++;
       }
 
@@ -249,18 +254,19 @@ export async function runSyncForDataSource(
         .eq("data_source_id", dataSourceId);
       const transactionCount = count ?? 0;
 
+      const hadListedButNoInsert = allTx.length > 0 && inserted === 0 && firstInsertError;
       await (supabase as any)
         .from("data_sources")
         .update({
-          last_failed_sync_at: null,
-          last_error_summary: null,
+          last_failed_sync_at: hadListedButNoInsert ? new Date().toISOString() : null,
+          last_error_summary: hadListedButNoInsert && firstInsertError ? `Transactions could not be saved: ${firstInsertError.slice(0, 400)}` : null,
           last_successful_sync_at: new Date().toISOString(),
           transaction_count: transactionCount,
         })
         .eq("id", dataSourceId)
         .eq("user_id", userId);
 
-      console.warn("[sync-runner] Sync completed", { dataSourceId, listed: allTx.length, inserted, transactionCount });
+      console.warn("[sync-runner] Sync completed", { dataSourceId, listed: allTx.length, inserted, transactionCount, firstInsertError: firstInsertError ?? undefined });
       return { success: true, message: `Sync completed. ${inserted} new transactions.` };
     } catch (e) {
       const message = e instanceof Error ? e.message : "Sync failed";

@@ -57,7 +57,7 @@ export default async function DataSourcesPage() {
       if (!sid || !statsBySource[sid]) continue;
       const st = statsBySource[sid];
       st.transactionCount += 1;
-      const reviewed = t.status === "completed" || t.status === "auto_sorted";
+      const reviewed = t.status === "completed" || t.status === "auto_sorted" || t.status === "personal";
       if (reviewed) reviewedCount[sid] += 1;
       const amt = Math.abs(Number(t.amount));
       if (t.transaction_type === "income") {

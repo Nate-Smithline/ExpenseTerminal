@@ -181,14 +181,13 @@ export async function PATCH(req: Request) {
     });
   }
 
-  // Minimal columns so PATCH response works when optional columns are missing from schema.
-  const cols = "id,user_id,name,account_type,institution,created_at";
+  // Return full row so client keeps source_type (e.g. stripe) and other fields when editing name/institution.
   const { data, error } = await (supabase as any)
     .from("data_sources")
     .update(update)
     .eq("id", body.id)
     .eq("user_id", userId)
-    .select(cols)
+    .select()
     .single();
 
   if (error) {
