@@ -21,8 +21,11 @@ async function getServerSupabaseClient() {
       },
       setAll(cookiesToSet) {
         try {
+          // Use "lax" so the session cookie is sent when Stripe/Finicity redirects the user
+          // back to our callback (cross-site top-level GET). "strict" would drop the cookie
+          // and the callback would see the user as logged out (307 to /login, no sync).
           cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, { ...options, sameSite: "strict" })
+            cookieStore.set(name, value, { ...options, sameSite: "lax" })
           );
         } catch {
           // Ignore if cookies cannot be set from this context.

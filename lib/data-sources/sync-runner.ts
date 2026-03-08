@@ -73,8 +73,12 @@ export async function runSyncForDataSource(
       const mode = options?.stripeMode ?? (process.env.STRIPE_MODE === "test" ? "test" : "live");
       const stripe = getStripeClient(mode);
       const fcAccountId = row.financial_connections_account_id as string;
-      const startDate = (options?.startDate !== undefined ? options.startDate : row.stripe_sync_start_date) as string | null;
+      let startDate = (options?.startDate !== undefined ? options.startDate : row.stripe_sync_start_date) as string | null;
       const endDate = options?.endDate ?? null;
+      // Don't filter by a start date in the future (would return zero transactions).
+      if (startDate && new Date(startDate) > new Date()) {
+        startDate = null;
+      }
 
       const fc = (stripe as any).financialConnections;
       if (!fc?.accounts) {
@@ -89,15 +93,79 @@ export async function runSyncForDataSource(
         return { success: false, error: "Stripe FC not available", status: 501 };
       }
 
+      // Ensure we're subscribed to transaction data, then ensure a refresh has completed before listing.
+      // Per Stripe docs: "After you initiate a transaction refresh, you must wait for it to complete, then retrieve the resulting transactions."
+      let account: { transaction_refresh?: { status?: string; id?: string } | null } | null = null;
       try {
         await fc.accounts.subscribe(fcAccountId, { features: ["transactions"] });
       } catch {
         try {
           await fc.accounts.refresh(fcAccountId, { features: ["transactions"] });
         } catch {
-          // Continue to list; prefetched data may be available.
+          // Continue; we may already have data from a previous refresh.
         }
       }
+
+      const refreshTimeoutMs = 120_000;
+      const pollIntervalMs = 5_000;
+      const deadline = Date.now() + refreshTimeoutMs;
+      let refreshedOnce = false;
+      while (Date.now() < deadline) {
+        account = await fc.accounts.retrieve(fcAccountId);
+        const tr = account?.transaction_refresh;
+        const status = tr?.status ?? null;
+        if (status === "succeeded") break;
+        if (status === "pending") {
+          await new Promise((r) => setTimeout(r, pollIntervalMs));
+          continue;
+        }
+        if (status === "failed") {
+          await (supabase as any)
+            .from("data_sources")
+            .update({
+              last_failed_sync_at: new Date().toISOString(),
+              last_error_summary: "Transaction refresh failed. Try again later or reconnect the account.",
+            })
+            .eq("id", dataSourceId)
+            .eq("user_id", userId);
+          return {
+            success: false,
+            error: "Transaction refresh failed. Try again later or reconnect the account.",
+            status: 502,
+          };
+        }
+        // status is null or unknown: no refresh has completed yet. Trigger one if we haven't.
+        if (!refreshedOnce) {
+          refreshedOnce = true;
+          try {
+            await fc.accounts.refresh(fcAccountId, { features: ["transactions"] });
+          } catch {
+            // Ignore; we'll poll and may see pending/succeeded from the earlier subscribe.
+          }
+        }
+        await new Promise((r) => setTimeout(r, pollIntervalMs));
+      }
+
+      if (account?.transaction_refresh?.status !== "succeeded") {
+        const lastStatus = account?.transaction_refresh?.status ?? "null";
+        console.warn("[sync-runner] Transaction refresh did not complete in time", { dataSourceId, lastStatus });
+        await (supabase as any)
+          .from("data_sources")
+          .update({
+            last_failed_sync_at: new Date().toISOString(),
+            last_error_summary: "Transaction refresh did not complete in time. Try again in a few minutes.",
+          })
+          .eq("id", dataSourceId)
+          .eq("user_id", userId);
+        return {
+          success: false,
+          error: "Transaction refresh did not complete in time. Try again in a few minutes.",
+          status: 504,
+        };
+      }
+
+      const refreshId = account?.transaction_refresh?.id;
+      console.warn("[sync-runner] Transaction refresh succeeded", { dataSourceId, mode, refreshId: refreshId ?? undefined });
 
       const allTx: Array<{ id: string; amount: number; description?: string; transacted_at: number; status?: string }> = [];
       let hasMore = true;
@@ -114,10 +182,29 @@ export async function runSyncForDataSource(
         if (Object.keys(transactedAt).length > 0) listParams.transacted_at = transactedAt;
         if (startingAfter) listParams.starting_after = startingAfter;
 
-        const list = await (stripe as any).financialConnections.transactions.list(listParams);
-        const data = list?.data ?? [];
+        let list: { data?: unknown[]; has_more?: boolean } | null = null;
+        try {
+          list = await (stripe as any).financialConnections.transactions.list(listParams);
+        } catch (listErr) {
+          const listMessage = listErr instanceof Error ? listErr.message : String(listErr);
+          await (supabase as any)
+            .from("data_sources")
+            .update({
+              last_failed_sync_at: new Date().toISOString(),
+              last_error_summary: listMessage.slice(0, 500),
+            })
+            .eq("id", dataSourceId)
+            .eq("user_id", userId);
+          console.warn("[sync-runner] List transactions failed", { dataSourceId, listMessage });
+          return { success: false, error: listMessage, status: 502 };
+        }
+
+        const data = (list?.data ?? []) as Array<{ id: string; amount: number; description?: string; transacted_at: number; status?: string }>;
+        if (allTx.length === 0) {
+          console.warn("[sync-runner] First list response", { dataSourceId, count: data.length, has_more: list?.has_more, transacted_at: listParams.transacted_at });
+        }
         // Only include posted (completed) transactions; skip pending and void.
-        const posted = data.filter((tx: { status?: string }) => tx?.status === "posted");
+        const posted = data.filter((tx) => tx?.status === "posted");
         allTx.push(...posted);
         hasMore = list?.has_more ?? false;
         if (data.length > 0) startingAfter = data[data.length - 1]?.id as string | undefined;
@@ -173,6 +260,7 @@ export async function runSyncForDataSource(
         .eq("id", dataSourceId)
         .eq("user_id", userId);
 
+      console.warn("[sync-runner] Sync completed", { dataSourceId, listed: allTx.length, inserted, transactionCount });
       return { success: true, message: `Sync completed. ${inserted} new transactions.` };
     } catch (e) {
       const message = e instanceof Error ? e.message : "Sync failed";

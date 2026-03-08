@@ -9,17 +9,20 @@ import { safeErrorMessage } from "@/lib/api/safe-error";
  * Creates or updates data_sources row with source_type=stripe and runs initial transaction pull.
  */
 export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const returnJson = url.searchParams.get("format") === "json";
+  const sessionId = url.searchParams.get("session_id");
+
   const authClient = await createSupabaseRouteClient();
   const auth = await requireAuth(authClient);
   if (!auth.authorized) {
+    console.warn("[stripe/callback] Unauthorized (no session cookie or expired)", { hasSessionId: !!sessionId, path: url.pathname, host: url.hostname });
     return NextResponse.redirect(new URL("/login", req.url));
   }
   const userId = auth.userId;
 
-  const url = new URL(req.url);
-  const returnJson = url.searchParams.get("format") === "json";
-  const sessionId = url.searchParams.get("session_id");
   if (!sessionId) {
+    console.warn("[stripe/callback] Missing session_id in query", { search: url.search, host: url.hostname });
     return returnJson
       ? NextResponse.json({ success: false, error: "missing_session" }, { status: 400 })
       : NextResponse.redirect(new URL("/data-sources?error=missing_session", req.url));
