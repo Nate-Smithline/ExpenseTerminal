@@ -202,11 +202,15 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     }
 
     function handleApprove() {
+      const incomeTreatmentChanged =
+        isIncomeLike &&
+        incomeTreatment === "business" &&
+        transaction.transaction_type !== "income";
       const categoryChanged =
         selectedScheduleLine !== (transaction.schedule_c_line ?? null) ||
         selectedCategory !== (transaction.category ?? null);
       const hasLabelOrPurpose = !!(selectedLabel || businessPurpose);
-      if (!hasLabelOrPurpose && deductionPct === 100 && !categoryChanged) {
+      if (!hasLabelOrPurpose && deductionPct === 100 && !categoryChanged && !incomeTreatmentChanged) {
         return;
       }
       onSave(saveData, { applyToSimilar: autoSort && similarTransactions.length > 0 });
@@ -643,7 +647,11 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                   <button
                     type="button"
                     onClick={handleApprove}
-                    disabled={saving || (isIncomeLike && incomeTreatment !== "business") || (!selectedLabel && !businessPurpose)}
+                    disabled={
+                      saving ||
+                      (isIncomeLike && incomeTreatment !== "business") ||
+                      (!isIncomeLike && !selectedLabel && !businessPurpose)
+                    }
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-[var(--color-accent-terracotta-dark)] border border-[var(--color-accent-terracotta-dark)]/80 px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-40"
                   >
                     Save

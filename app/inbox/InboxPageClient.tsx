@@ -46,7 +46,7 @@ async function fetchCount(params: Record<string, string>): Promise<number> {
 }
 
 async function fetchTotalPendingCount(): Promise<number> {
-  return fetchCount({ status: "pending" });
+  return fetchCount({ status: "pending", transaction_type: "expense", analyzed_only: "true" });
 }
 
 async function fetchUnanalyzedIds(params: Record<string, string>): Promise<string[]> {
@@ -185,11 +185,15 @@ export function InboxPageClient({
       fetchTransactions({
         tax_year: String(selectedYear),
         status: "pending",
+        transaction_type: "expense",
+        analyzed_only: "true",
         limit: "50",
       }),
       fetchCount({
         tax_year: String(selectedYear),
         status: "pending",
+        transaction_type: "expense",
+        analyzed_only: "true",
       }),
       fetchTotalPendingCount(),
       fetchCount({

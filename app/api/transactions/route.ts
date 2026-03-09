@@ -63,7 +63,7 @@ export async function GET(req: Request) {
     query = query.or(`vendor_normalized.eq.${vendorNormalized},vendor_normalized.is.null`);
   }
   if (excludeId) query = query.neq("id", excludeId);
-  if (analyzedOnly === true) query = query.not("ai_confidence", "eq", null);
+  if (analyzedOnly === true) query = query.not("ai_confidence", "is", null);
   if (analyzedOnly === false) query = query.is("ai_confidence", null);
   if (searchTerm.length > 0) {
     const pattern = `%${searchTerm}%`;
