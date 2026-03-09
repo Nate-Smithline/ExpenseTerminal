@@ -21,15 +21,16 @@ export default async function InboxPage() {
   const taxYear = getEffectiveTaxYear(cookieStore, profile);
   const db = supabase;
 
-  // Inbox shows only AI-analyzed expense transactions that are pending review
+  // Inbox shows pending items that are either:
+  // - expense transactions already analyzed by AI, or
+  // - income transactions (AI optional)
   const { data: transactions } = await (db as any)
     .from("transactions")
     .select("*")
     .eq("user_id", userId)
     .eq("tax_year", taxYear)
     .eq("status", "pending")
-    .eq("transaction_type", "expense")
-    .not("ai_confidence", "is", null)
+    .or("transaction_type.eq.income,and(transaction_type.eq.expense,ai_confidence.not.is.null)")
     .order("date", { ascending: false })
     .limit(20);
 
@@ -39,16 +40,14 @@ export default async function InboxPage() {
     .eq("user_id", userId)
     .eq("tax_year", taxYear)
     .eq("status", "pending")
-    .eq("transaction_type", "expense")
-    .not("ai_confidence", "is", null);
+    .or("transaction_type.eq.income,and(transaction_type.eq.expense,ai_confidence.not.is.null)");
 
   const { count: totalPendingCount } = await (db as any)
     .from("transactions")
     .select("*", { count: "exact", head: true })
     .eq("user_id", userId)
     .eq("status", "pending")
-    .eq("transaction_type", "expense")
-    .not("ai_confidence", "is", null);
+    .or("transaction_type.eq.income,and(transaction_type.eq.expense,ai_confidence.not.is.null)");
 
   const { count: unanalyzedCount } = await (db as any)
     .from("transactions")

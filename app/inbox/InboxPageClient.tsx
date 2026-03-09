@@ -46,7 +46,7 @@ async function fetchCount(params: Record<string, string>): Promise<number> {
 }
 
 async function fetchTotalPendingCount(): Promise<number> {
-  return fetchCount({ status: "pending", transaction_type: "expense", analyzed_only: "true" });
+  return fetchCount({ inbox: "true" });
 }
 
 async function fetchUnanalyzedIds(params: Record<string, string>): Promise<string[]> {
@@ -184,16 +184,12 @@ export function InboxPageClient({
     const [txs, countForYear, totalPending, unanalyzed] = await Promise.all([
       fetchTransactions({
         tax_year: String(selectedYear),
-        status: "pending",
-        transaction_type: "expense",
-        analyzed_only: "true",
+        inbox: "true",
         limit: "50",
       }),
       fetchCount({
         tax_year: String(selectedYear),
-        status: "pending",
-        transaction_type: "expense",
-        analyzed_only: "true",
+        inbox: "true",
       }),
       fetchTotalPendingCount(),
       fetchCount({
@@ -1105,15 +1101,23 @@ export function InboxPageClient({
             onFocus={() => setActiveIdx(i)}
             taxRate={taxRate}
             onSave={(data, opts) =>
-              handleSave(t.id, {
-                quick_label: data.quick_label,
-                business_purpose: data.business_purpose,
-                notes: data.notes,
-                status: data.quick_label === "Personal" ? "personal" : "completed",
-                deduction_percent: data.deduction_percent,
-                category: data.category,
-                schedule_c_line: data.schedule_c_line,
-              }, opts)
+              handleSave(
+                t.id,
+                {
+                  quick_label: data.quick_label,
+                  business_purpose: data.business_purpose,
+                  notes: data.notes,
+                  status:
+                    data.status ??
+                    (data.quick_label === "Personal" ? "personal" : "completed"),
+                  deduction_percent: data.deduction_percent,
+                  category: data.category,
+                  schedule_c_line: data.schedule_c_line,
+                  transaction_type:
+                    data.transaction_type ?? (t.transaction_type ?? undefined),
+                },
+                opts,
+              )
             }
             onMarkPersonal={async () => handleMarkPersonal(t.id)}
             onDelete={async () => handleDelete(t.id)}

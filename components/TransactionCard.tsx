@@ -13,6 +13,7 @@ export interface TransactionUpdate {
   category?: string | null;
   schedule_c_line?: string | null;
   transaction_type?: "income" | "expense";
+  status?: "completed" | "auto_sorted" | "personal";
 }
 
 interface TransactionCardProps {
@@ -183,40 +184,70 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     const maxQuickLabel = 500;
     const maxTextField = 2000;
     const normalizedDeduction = Math.min(100, Math.max(0, deductionPct));
-    const saveData: TransactionUpdate = {
-      quick_label: selectedLabel ? selectedLabel.slice(0, maxQuickLabel) : undefined,
-      business_purpose:
-        selectedLabel === "Personal"
-          ? ""
-          : businessPurpose
-          ? businessPurpose.slice(0, maxTextField)
-          : undefined,
-      notes: notes ? notes.slice(0, maxTextField) : undefined,
-      deduction_percent: normalizedDeduction,
-      category: selectedCategory,
-      schedule_c_line: selectedScheduleLine,
-    };
+    const buildSaveData = (): TransactionUpdate => {
+      const data: TransactionUpdate = {
+        quick_label: selectedLabel ? selectedLabel.slice(0, maxQuickLabel) : undefined,
+        business_purpose:
+          selectedLabel === "Personal"
+            ? ""
+            : businessPurpose
+            ? businessPurpose.slice(0, maxTextField)
+            : undefined,
+        notes: notes ? notes.slice(0, maxTextField) : undefined,
+        deduction_percent: normalizedDeduction,
+        category: selectedCategory,
+        schedule_c_line: selectedScheduleLine,
+      };
 
-    if (isIncomeLike && incomeTreatment === "business") {
-      saveData.transaction_type = "income";
-    }
-
-    function handleApprove() {
-      const incomeTreatmentChanged =
-        isIncomeLike &&
-        incomeTreatment === "business" &&
-        transaction.transaction_type !== "income";
       const categoryChanged =
         selectedScheduleLine !== (transaction.schedule_c_line ?? null) ||
         selectedCategory !== (transaction.category ?? null);
-      const hasLabelOrPurpose = !!(selectedLabel || businessPurpose);
-      if (!hasLabelOrPurpose && deductionPct === 100 && !categoryChanged && !incomeTreatmentChanged) {
+
+      if (!isIncomeLike) {
+        // Expense: mirror existing behavior — "Personal" label marks personal, otherwise completed
+        if (selectedLabel === "Personal") {
+          data.status = "personal";
+        } else if (categoryChanged || selectedLabel || businessPurpose) {
+          data.status = "completed";
+        }
+      } else {
+        // Income-like: classification chooses status / type
+        if (incomeTreatment === "business") {
+          data.transaction_type = "income";
+          data.status = "completed";
+        } else if (incomeTreatment === "personal") {
+          data.status = "personal";
+        }
+      }
+
+      return data;
+    };
+
+    function handleApprove() {
+      const saveData = buildSaveData();
+      const hasAnyChange =
+        !!saveData.status ||
+        !!saveData.transaction_type ||
+        !!saveData.quick_label ||
+        !!saveData.business_purpose ||
+        !!saveData.notes ||
+        !!saveData.category ||
+        !!saveData.schedule_c_line ||
+        saveData.deduction_percent !== undefined;
+
+      if (!hasAnyChange) {
         return;
       }
+
       onSave(saveData, { applyToSimilar: autoSort && similarTransactions.length > 0 });
     }
 
     async function handleMarkPersonalClick() {
+      // For income-like transactions, "Personal" is just a selection; saving is still done via Save / "s"
+      if (isIncomeLike) {
+        setIncomeTreatment("personal");
+        return;
+      }
       setSaving(true);
       await onMarkPersonal();
       setSaving(false);
@@ -555,10 +586,14 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                   </button>
                   <button
                     type="button"
-                    onClick={handleMarkPersonalClick}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition"
+                    onClick={() => setIncomeTreatment("personal")}
+                    className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-xs font-medium transition ${
+                      incomeTreatment === "personal"
+                        ? "bg-mono-dark border-mono-dark text-white"
+                        : "bg-white border-bg-tertiary text-mono-light hover:text-mono-dark hover:bg-bg-secondary"
+                    }`}
                   >
-                    Personal / transfer
+                    Personal income
                   </button>
                 </div>
               </div>
@@ -649,7 +684,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                     onClick={handleApprove}
                     disabled={
                       saving ||
-                      (isIncomeLike && incomeTreatment !== "business") ||
+                      (isIncomeLike && incomeTreatment == null) ||
                       (!isIncomeLike && !selectedLabel && !businessPurpose)
                     }
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-[var(--color-accent-terracotta-dark)] border border-[var(--color-accent-terracotta-dark)]/80 px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-40"

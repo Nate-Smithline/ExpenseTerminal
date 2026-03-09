@@ -45,6 +45,7 @@ export async function GET(req: Request) {
   const dateFrom = searchParams.get("date_from")?.trim() || null;
   const dateTo = searchParams.get("date_to")?.trim() || null;
   const source = searchParams.get("source")?.trim() || null;
+  const inboxOnly = searchParams.get("inbox") === "true";
 
   const transactionColumns =
     "id,user_id,date,vendor,description,amount,category,schedule_c_line,ai_confidence,ai_reasoning,ai_suggestions,status,business_purpose,quick_label,notes,vendor_normalized,auto_sort_rule_id,deduction_percent,is_meal,is_travel,tax_year,source,transaction_type,data_source_id,created_at,updated_at";
@@ -65,6 +66,14 @@ export async function GET(req: Request) {
   if (excludeId) query = query.neq("id", excludeId);
   if (analyzedOnly === true) query = query.not("ai_confidence", "is", null);
   if (analyzedOnly === false) query = query.is("ai_confidence", null);
+  if (inboxOnly) {
+    // Inbox semantics: pending items that are either:
+    // - expense transactions already analyzed by AI, or
+    // - income transactions (AI optional)
+    query = query
+      .eq("status", "pending")
+      .or("transaction_type.eq.income,and(transaction_type.eq.expense,ai_confidence.not.is.null)");
+  }
   if (searchTerm.length > 0) {
     const pattern = `%${searchTerm}%`;
     query = query.or(`vendor.ilike.${pattern},description.ilike.${pattern}`);
