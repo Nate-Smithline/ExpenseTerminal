@@ -206,7 +206,7 @@ export function Sidebar() {
       <div className="px-5 pb-3 space-y-0.5">
         {plan === "free" && (
           <div className="rounded-lg border border-bg-tertiary/60 bg-white/80 p-3 mb-3">
-            <p className="font-semibold text-mono-dark text-sm">Upgrade to Pro — $360/year</p>
+            <p className="font-semibold text-mono-dark text-sm">Upgrade to Pro — $400/year</p>
             <p className="text-xs text-mono-light mt-1 leading-snug">
               Unlock bank connections and full history.
             </p>

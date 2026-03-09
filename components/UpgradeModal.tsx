@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 
-const PRO_PRICE = "$360/year";
+const PRO_PRICE = "$400/year";
 
 const PRO_BENEFITS = [
   "Unlimited AI categorization",

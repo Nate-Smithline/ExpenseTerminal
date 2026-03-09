@@ -55,7 +55,7 @@ export const plans: Record<PlanId, PlanDefinition> = {
   plus: {
     id: "plus",
     name: "Pro",
-    priceHuman: "$360",
+    priceHuman: "$400",
     priceInterval: "year",
     stripeProductId: PLUS_PRODUCT_ID,
     description: "For founders who want ExpenseTerminal woven directly into their banking.",
