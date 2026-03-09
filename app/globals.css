@@ -48,7 +48,7 @@
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--color-bg-secondary);
+  background-color: var(--color-bg-primary);
   color: var(--color-mono-dark);
   font-size: var(--text-sm);
   -webkit-font-smoothing: antialiased;

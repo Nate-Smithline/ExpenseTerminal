@@ -232,7 +232,8 @@ export async function runSyncForDataSource(
         const date = new Date((tx.transacted_at ?? 0) * 1000);
         const dateStr = date.toISOString().slice(0, 10);
         const year = date.getFullYear();
-        const amount = Number((-(tx.amount ?? 0) / 100).toFixed(2));
+        // Stripe FC returns positive amounts for credits (money in) and negative for debits (money out); keep that sign.
+        const amount = Number(((tx.amount ?? 0) / 100).toFixed(2));
         const vendor = ((tx.description ?? "Unknown") as string).slice(0, 255);
         const vendorNormalized = vendor.trim() ? normalizeVendor(vendor) : null;
         const { error: insErr } = await (supabase as any)
