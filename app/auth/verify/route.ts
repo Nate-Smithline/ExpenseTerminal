@@ -10,7 +10,10 @@ import { sendWelcomeEmailForUser } from "@/lib/email/send-welcome";
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
-  const token = searchParams.get("token");
+  const tokenParam = searchParams.get("token");
+  const token = tokenParam
+    ? tokenParam.toLowerCase().trim().replace(/\s+/g, "-")
+    : null;
 
   if (!token) {
     return NextResponse.redirect(new URL("/login?error=invalid-token", origin));
@@ -48,6 +51,35 @@ export async function GET(request: Request) {
   await (supabase as any).auth.admin.updateUserById(verification.user_id, {
     email_confirm: true,
   });
+
+  // Best-effort: ensure profiles.email is populated from auth.users so
+  // any logic that depends on profiles.email can rely on it.
+  try {
+    const { data: authUser, error: authError } =
+      await (supabase as any).auth.admin.getUserById(verification.user_id);
+    if (authError) {
+      console.error("verify: failed to load auth user for profile sync", {
+        userId: verification.user_id,
+        error: authError,
+      });
+    } else if (authUser?.user?.email) {
+      await (supabase as any)
+        .from("profiles")
+        .upsert(
+          {
+            id: verification.user_id,
+            email: authUser.user.email,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
+    }
+  } catch (profileErr) {
+    console.error("verify: failed to sync profiles.email from auth.users", {
+      userId: verification.user_id,
+      error: profileErr,
+    });
+  }
 
   // Best-effort welcome email with product + pricing.
   try {

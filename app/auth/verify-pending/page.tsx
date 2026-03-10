@@ -8,6 +8,7 @@ function VerifyPendingContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const email = searchParams.get("email") ?? "";
+  const userId = searchParams.get("userId") ?? "";
   const [code, setCode] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,15 +19,24 @@ function VerifyPendingContent() {
     if (!email) return;
     setResending(true);
     try {
-      await fetch("/api/email/send-verification", {
+      const res = await fetch("/api/email/send-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email,
+          userId: userId || undefined,
+        }),
       });
-      setResent(true);
-      setError(null);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "Could not resend verification email. Try again in a few minutes.");
+        setResent(false);
+      } else {
+        setResent(true);
+        setError(null);
+      }
     } catch {
-      // Best effort
+      setError("Could not resend verification email. Check your connection and try again.");
     } finally {
       setResending(false);
     }
@@ -34,34 +44,16 @@ function VerifyPendingContent() {
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
-    if (!email) {
-      setError("Email missing from this verification step. Please start from the signup page again.");
-      return;
-    }
     if (!code.trim()) {
       setError("Enter the verification code from your email.");
       return;
     }
     setVerifying(true);
     setError(null);
-    try {
-      const res = await fetch("/api/auth/verify-passphrase", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, passphrase: code.trim() }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data.error ?? "Could not verify code. Try again.");
-        setVerifying(false);
-        return;
-      }
-      router.push("/login?verified=true");
-    } catch {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setVerifying(false);
-    }
+    // Use the same verification path as the email link so codes
+    // always match what's stored, independent of email/user lookups.
+    const token = code.trim();
+    router.push("/auth/verify?token=" + encodeURIComponent(token));
   }
 
   return (

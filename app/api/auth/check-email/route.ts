@@ -30,21 +30,38 @@ export async function POST(req: Request) {
 
   const supabase = createSupabaseServiceClient();
 
-  const { data, error } = await (supabase as any)
+  // First, try to find a matching profile row (case-insensitive) by email.
+  const { data: profile, error: profileError } = await (supabase as any)
     .from("profiles")
-    .select("id")
-    .eq("email", email)
+    .select("id, email")
+    .ilike("email", email)
     .maybeSingle();
 
-  if (error) {
-    console.error("check-email: failed to query profiles", error);
-    return NextResponse.json(
-      { error: "Failed to check account. Please try again." },
-      { status: 500 }
-    );
+  if (profileError) {
+    console.error("check-email: failed to query profiles", profileError);
   }
 
-  const exists = !!data?.id;
+  let exists = !!profile?.id;
+
+  // If no profile row, fall back to Supabase Auth users so we don't
+  // incorrectly tell the user "no account" just because a profile is missing.
+  if (!exists) {
+    try {
+      const { data: authUser, error: authError } = await (supabase as any)
+        .from("auth.users")
+        .select("id, email")
+        .ilike("email", email)
+        .maybeSingle();
+
+      if (authError) {
+        console.error("check-email: failed to query auth.users", authError);
+      } else if (authUser?.id) {
+        exists = true;
+      }
+    } catch (authErr) {
+      console.error("check-email: unexpected error querying auth.users", authErr);
+    }
+  }
 
   return NextResponse.json({ exists });
 }

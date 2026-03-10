@@ -6,6 +6,7 @@ import { createSupabaseClient } from "@/lib/supabase/client";
 import { getAuthErrorMessage } from "@/lib/auth-errors";
 import { AuthLayout } from "@/components/AuthLayout";
 import { validatePassword, getPasswordStrength } from "@/lib/validation/password";
+import { formatUSPhone, parseUSPhone } from "@/lib/format-us-phone";
 import Link from "next/link";
 
 const BUSINESS_TYPES = [
@@ -26,8 +27,7 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [businessType, setBusinessType] = useState("");
-  const [noBusinessYet, setNoBusinessYet] = useState(false);
+  const [phone, setPhone] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +104,7 @@ export default function SignupPage() {
           data: {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
-            business_type: noBusinessYet ? null : businessType,
+            phone_us: parseUSPhone(phone) || null,
             email_opt_in: true,
             terms_accepted_at: new Date().toISOString(),
           },
@@ -117,18 +117,23 @@ export default function SignupPage() {
         return;
       }
 
-      // Send custom verification email
+      const userId = data.user?.id ?? null;
+
+      // Send custom verification email (this route now also ensures a profile
+      // row exists with the correct email using the service-role client).
       try {
         await fetch("/api/email/send-verification", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: emailValue, userId: data.user?.id }),
+          body: JSON.stringify({ email: emailValue, userId }),
         });
       } catch {
         // Verification email is best-effort
       }
 
-      router.push("/auth/verify-pending?email=" + encodeURIComponent(emailValue));
+      const params = new URLSearchParams({ email: emailValue });
+      if (userId) params.set("userId", userId);
+      router.push("/auth/verify-pending?" + params.toString());
     } catch (err) {
       const message =
         err instanceof Error
@@ -177,6 +182,21 @@ export default function SignupPage() {
           onChange={(e) => setEmail(e.target.value)}
           className="auth-input"
         />
+
+        {/* Phone (US only) */}
+        <div className="space-y-1">
+          <input
+            type="tel"
+            inputMode="tel"
+            placeholder="Phone (optional)"
+            value={phone}
+            onChange={(e) => setPhone(formatUSPhone(e.target.value))}
+            className="auth-input"
+          />
+          <p className="text-[11px] text-mono-light">
+            US phone numbers only. Example: (555) 555-1234
+          </p>
+        </div>
 
         {/* Password */}
         <div>
@@ -268,63 +288,6 @@ export default function SignupPage() {
             </span>
           </button>
         </div>
-
-        {/* Business type selector */}
-        <div className="pt-2">
-          <div className="flex items-center gap-2 mb-3">
-            <span
-              className="w-2.5 h-2.5 rounded-full"
-              style={{ background: noBusinessYet ? "var(--color-mono-light)" : "var(--color-accent-terracotta)" }}
-            />
-            <span className="text-sm text-mono-dark font-medium">
-              What type of business do you have?
-            </span>
-          </div>
-
-          {!noBusinessYet && (
-            <button
-              type="button"
-              onClick={() => {
-                const el = document.getElementById("business-type-select");
-                if (el) (el as HTMLSelectElement).showPicker?.();
-              }}
-              className="w-full rounded-lg border border-accent-terracotta/30 bg-white px-4 py-3 text-sm text-left transition hover:border-accent-terracotta/60 relative"
-            >
-              <select
-                id="business-type-select"
-                value={businessType}
-                onChange={(e) => setBusinessType(e.target.value)}
-                className="absolute inset-0 opacity-0 cursor-pointer"
-              >
-                <option value="">+ Select Your Business Type</option>
-                {BUSINESS_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              <span className={businessType ? "text-mono-dark" : "text-accent-terracotta"}>
-                {businessType || "+ Select Your Business Type"}
-              </span>
-            </button>
-          )}
-
-          <label className="flex items-center gap-2 mt-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={noBusinessYet}
-              onChange={(e) => {
-                setNoBusinessYet(e.target.checked);
-                if (e.target.checked) setBusinessType("");
-              }}
-              className="w-4 h-4 rounded border-bg-tertiary accent-accent-sage"
-            />
-            <span className="text-sm text-mono-medium">
-              I don&apos;t have a registered business yet
-            </span>
-          </label>
-        </div>
-
 
         {/* Terms agreement */}
         <label className="flex items-start gap-2 pt-1 cursor-pointer min-w-0">

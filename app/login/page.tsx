@@ -68,28 +68,6 @@ function LoginContent() {
     try {
       const emailValue = email.trim();
 
-      // Check if an account exists for this email before attempting login.
-      try {
-        const res = await fetch("/api/auth/check-email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: emailValue, intent: "login" as const }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setError(data.error ?? "Could not check this email. Please try again.");
-          setLoading(false);
-          return;
-        }
-        if (!data.exists) {
-          setError("No account found with this email. Try signing up instead.");
-          setLoading(false);
-          return;
-        }
-      } catch {
-        // If the check fails, fall back to Supabase's own error handling.
-      }
-
       const supabase = createSupabaseClient();
       const { data, error: signInError } =
         await supabase.auth.signInWithPassword({
@@ -116,7 +94,7 @@ function LoginContent() {
           await fetch("/api/email/send-verification", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: emailValue }),
+            body: JSON.stringify({ email: emailValue, userId: user?.id }),
           });
         } catch {
           // Best-effort; the verify-pending screen still allows resending.
@@ -126,13 +104,24 @@ function LoginContent() {
         await supabase.auth.signOut();
 
         setLoading(false);
-        router.push(
-          "/auth/verify-pending?email=" + encodeURIComponent(emailValue)
-        );
+        const params = new URLSearchParams({ email: emailValue });
+        if (user?.id) params.set("userId", user.id);
+        router.push("/auth/verify-pending?" + params.toString());
         return;
       }
 
       if (data.session) {
+        // Backfill / ensure a profile row exists for this user.
+        try {
+          await fetch("/api/profile", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+        } catch {
+          // Non-fatal; other parts of the app can still function.
+        }
+
         router.refresh();
         router.push("/inbox");
       }

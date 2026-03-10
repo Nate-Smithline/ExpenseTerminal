@@ -90,7 +90,7 @@ export default async function DashboardPage() {
 
   const { data: orgSettings } = await (supabase as any)
     .from("org_settings")
-    .select("id")
+    .select("id, filing_type")
     .eq("user_id", userId)
     .single();
 
@@ -105,6 +105,7 @@ export default async function DashboardPage() {
     upload_csv: (transactionsCount ?? 0) > 0,
     review_inbox: (completedTx?.length ?? 0) > 0 || (pendingCount ?? 0) === 0,
     setup_deductions: (additionalDeductions?.length ?? 0) > 0,
+    business_type: !!orgSettings?.filing_type,
     org_profile: !!orgSettings,
     what_can_i_deduct: false,
   };

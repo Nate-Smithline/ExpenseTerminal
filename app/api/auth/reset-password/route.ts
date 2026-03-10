@@ -23,7 +23,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const token = body.token?.trim();
+  const rawToken = body.token?.trim() ?? "";
+  const token = rawToken
+    ? rawToken.toLowerCase().replace(/\s+/g, "-")
+    : "";
   const password = body.password ?? "";
 
   if (!token) {

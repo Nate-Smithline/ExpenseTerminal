@@ -26,7 +26,11 @@ export async function POST(req: Request) {
   }
 
   const email = body.email?.trim() ?? "";
-  const passphrase = body.passphrase?.trim() ?? "";
+  const rawPassphrase = body.passphrase?.trim() ?? "";
+  const passphrase =
+    rawPassphrase
+      .toLowerCase()
+      .replace(/\s+/g, "-");
 
   if (!email || !passphrase) {
     return NextResponse.json(
@@ -49,18 +53,55 @@ export async function POST(req: Request) {
 
   const supabase = createSupabaseServiceClient();
 
-  const { data: profile } = await (supabase as any)
+  // Resolve user ID for this email. Prefer profiles (for existing installs),
+  // but fall back to Supabase Auth if needed, using case-insensitive match.
+  let userId: string | null = null;
+
+  const { data: profile, error: profileError } = await (supabase as any)
     .from("profiles")
-    .select("id")
-    .eq("email", email)
+    .select("id, email")
+    .ilike("email", email)
     .maybeSingle();
 
-  if (!profile?.id) {
+  if (profileError) {
+    console.error("verify-passphrase: failed to look up profile by email", {
+      email,
+      error: profileError,
+    });
+  }
+
+  if (profile?.id) {
+    userId = profile.id as string;
+  }
+
+  if (!userId) {
+    try {
+      const { data: authUser, error: authError } = await (supabase as any)
+        .from("auth.users")
+        .select("id, email")
+        .ilike("email", email)
+        .maybeSingle();
+
+      if (authError) {
+        console.error("verify-passphrase: failed to query auth.users", {
+          email,
+          error: authError,
+        });
+      } else if (authUser?.id) {
+        userId = authUser.id as string;
+      }
+    } catch (authErr) {
+      console.error("verify-passphrase: unexpected error querying auth.users", {
+        email,
+        error: authErr,
+      });
+    }
+  }
+
+  if (!userId) {
     // Do not reveal whether the email exists.
     return NextResponse.json({ error: "Invalid code or email." }, { status: 400 });
   }
-
-  const userId = profile.id as string;
   const tokenHash = hashToken(passphrase);
 
   const { data: verification, error } = await (supabase as any)
@@ -72,6 +113,13 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (error || !verification) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("verify-passphrase: no matching verification row", {
+        email,
+        userId,
+        error,
+      });
+    }
     return NextResponse.json({ error: "Invalid code or email." }, { status: 400 });
   }
 
@@ -90,6 +138,35 @@ export async function POST(req: Request) {
   await (supabase as any).auth.admin.updateUserById(userId, {
     email_confirm: true,
   });
+
+  // Best-effort: ensure profiles.email is populated from auth.users so
+  // any logic that depends on profiles.email can rely on it.
+  try {
+    const { data: authUser, error: authError } =
+      await (supabase as any).auth.admin.getUserById(userId);
+    if (authError) {
+      console.error("verify-passphrase: failed to load auth user for profile sync", {
+        userId,
+        error: authError,
+      });
+    } else if (authUser?.user?.email) {
+      await (supabase as any)
+        .from("profiles")
+        .upsert(
+          {
+            id: userId,
+            email: authUser.user.email,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
+    }
+  } catch (profileErr) {
+    console.error("verify-passphrase: failed to sync profiles.email from auth.users", {
+      userId,
+      error: profileErr,
+    });
+  }
 
   try {
     await sendWelcomeEmailForUser(userId);

@@ -9,6 +9,7 @@ interface OnboardingProgress {
   upload_csv?: boolean;
   review_inbox?: boolean;
   setup_deductions?: boolean;
+  business_type?: boolean;
   org_profile?: boolean;
   what_can_i_deduct?: boolean;
   skipped_all?: boolean;
@@ -44,6 +45,13 @@ const STEPS = [
     icon: "savings",
   },
   {
+    id: "business_type" as const,
+    label: "Set your business type",
+    description: "Tell us how your business is structured for taxes",
+    href: "/org-profile",
+    icon: "badge",
+  },
+  {
     id: "what_can_i_deduct" as const,
     label: "Learn what you can deduct",
     description: "Walk through common deductions and IRS rules",
@@ -53,7 +61,7 @@ const STEPS = [
   {
     id: "org_profile" as const,
     label: "Configure org profile",
-    description: "Add your business name, address, and filing type",
+    description: "Add your business name and address",
     href: "/org-profile",
     icon: "business",
   },
@@ -64,6 +72,7 @@ export function GettingStartedChecklist({ setupStatus }: { setupStatus?: {
   upload_csv: boolean;
   review_inbox: boolean;
   setup_deductions: boolean;
+  business_type: boolean;
   org_profile: boolean;
   what_can_i_deduct: boolean;
 } }) {

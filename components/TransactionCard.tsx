@@ -388,6 +388,29 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     const displayCategoryName =
       EXPENSE_CATEGORIES.find((c) => c.line === effectiveLine)?.name ?? displayCategory ?? "Uncategorized";
 
+    // Keyboard shortcuts for income classification (business vs personal)
+    useEffect(() => {
+      if (!isActive || !isIncomeLike) return;
+      function handleKey(e: KeyboardEvent) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        const key = e.key;
+        if (key === "b" || key === "B") {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          setIncomeTreatment("business");
+          return;
+        }
+        if (key === "p" || key === "P") {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          setIncomeTreatment("personal");
+        }
+      }
+      window.addEventListener("keydown", handleKey, true);
+      return () => window.removeEventListener("keydown", handleKey, true);
+    }, [isActive, isIncomeLike]);
+
     return (
       <div
         ref={cardRef}
@@ -582,6 +605,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                         : "bg-white border-bg-tertiary text-mono-medium hover:bg-bg-secondary"
                     }`}
                   >
+                    <kbd className="kbd-hint">b</kbd>
                     Business income
                   </button>
                   <button
@@ -593,6 +617,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                         : "bg-white border-bg-tertiary text-mono-light hover:text-mono-dark hover:bg-bg-secondary"
                     }`}
                   >
+                    <kbd className="kbd-hint">p</kbd>
                     Personal income
                   </button>
                 </div>
