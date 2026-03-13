@@ -9,7 +9,7 @@ const NAV_LINKS = [
   { href: "/pricing", label: "Pricing" },
   { href: "/request-demo", label: "Request Demo" },
   { href: "/login", label: "Login" },
-  { href: "/signup", label: "Get Started", primary: true },
+  { href: "/signup", label: "Try Free", primary: true },
 ] as const;
 
 export function LandingHeader() {
@@ -62,17 +62,17 @@ export function LandingHeader() {
   return (
     <>
       {/* Top bar: always visible */}
-      <nav className="flex items-center justify-between px-4 md:px-16 py-5">
+      <nav className="flex items-center justify-between px-4 md:px-16 py-3 bg-[#5B82B4]">
         <Link
           href="/"
           className="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-accent-sage/50 rounded"
         >
           <Image
-            src="/xt-logo.png"
+            src="/xt-logo-v2.png"
             alt="XT"
-            width={60}
-            height={24}
-            className="h-6 w-auto object-contain"
+            width={168}
+            height={60}
+            className="h-12 w-auto object-contain"
             priority
           />
         </Link>
@@ -81,14 +81,18 @@ export function LandingHeader() {
         <div className="hidden md:flex items-center gap-2 sm:gap-3">
           {NAV_LINKS.map((item) =>
             "primary" in item && item.primary ? (
-              <Link key={item.href} href={item.href} className="btn-primary text-sm">
+              <Link
+                key={item.href}
+                href={item.href}
+                className="inline-flex items-center justify-center bg-black px-5 py-2.5 text-sm font-medium text-white rounded-none transition-colors hover:opacity-70"
+              >
                 {item.label}
               </Link>
             ) : (
               <Link
                 key={item.href}
                 href={item.href}
-                className="text-sm text-mono-medium hover:text-mono-dark transition-colors px-4 py-2"
+                className="text-base text-white/90 hover:text-white transition-colors px-4 py-2"
               >
                 {item.label}
               </Link>
@@ -100,7 +104,7 @@ export function LandingHeader() {
         <button
           type="button"
           onClick={mobileMenuOpen ? closeMenu : openMenu}
-          className="md:hidden p-2 rounded-lg text-mono-dark hover:bg-bg-tertiary/50 transition-colors"
+          className="md:hidden p-2 rounded-lg text-white hover:bg-white/10 transition-colors"
           aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
         >
           <span
@@ -137,11 +141,11 @@ export function LandingHeader() {
             <div className="flex items-center justify-between px-4 py-5 border-b border-bg-tertiary/40">
               <Link href="/" onClick={closeMenu} className="flex items-center">
                 <Image
-                  src="/xt-logo.png"
+                  src="/xt-logo-v2.png"
                   alt="XT"
-                  width={60}
-                  height={24}
-                  className="h-6 w-auto object-contain"
+                  width={168}
+                  height={60}
+                  className="h-12 w-auto object-contain"
                 />
               </Link>
               <button

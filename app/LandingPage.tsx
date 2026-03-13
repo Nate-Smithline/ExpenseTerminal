@@ -1,43 +1,59 @@
-"use client";
+ "use client";
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LandingHeader } from "@/components/LandingHeader";
+import { PricingPlansGrid } from "@/components/PricingPlansGrid";
 
 const STEPS = [
   {
     number: "I",
     title: "Sign Up",
-    description: "Create a free account to start tracking your business deductions in minutes. Perfect for ABA professionals and small business owners.",
+    description: "Create your account to start tracking deductions in minutes.",
   },
   {
     number: "II",
     title: "Connect Your Data",
-    description: "Upload CSV or Excel files from your bank, credit card, or accounting tool.",
+    description: "Link your bank or upload CSVs — we keep everything organized and secure.",
   },
   {
     number: "III",
     title: "AI Categorization",
-    description: "Our AI reviews each transaction and maps it to Schedule C categories automatically.",
+    description: "AI maps each transaction to the right category automatically.",
   },
   {
     number: "IV",
+    title: "Burn Through Transactions",
+    description: "Skim audit readiness and deduction savings so reviews take minutes, not hours.",
+  },
+  {
+    number: "V",
     title: "File with Confidence",
-    description: "Generate tax-ready reports, track quarterly estimates, and maximize every deduction.",
+    description: "Export tax-ready reports and file knowing you captured more deductions.",
   },
 ];
 
 const FEATURES = [
   {
+    icon: "account_balance",
+    title: "Bank Syncing",
+    description: "Connect your accounts to pull transactions in automatically and keep everything in one place.",
+  },
+  {
     icon: "auto_awesome",
     title: "AI-Powered Categorization",
-    description: "Claude analyzes each transaction and suggests the right Schedule C line item.",
+    description: "AI analyzes each transaction and suggests the right Schedule C line item.",
+  },
+  {
+    icon: "inbox",
+    title: "Inbox-First Workflow",
+    description: "Review transactions one at a time with keyboard shortcuts for rapid categorization.",
   },
   {
     icon: "receipt_long",
-    title: "Schedule C Ready",
-    description: "See your expenses mapped to IRS form lines, with quarterly payment estimates.",
+    title: "Tax Savings Ready",
+    description: "Stay organized for tax time with reports that mirror what your accountant expects.",
   },
   {
     icon: "savings",
@@ -45,64 +61,68 @@ const FEATURES = [
     description: "Built-in tools for QBI, mileage, home office, health insurance, retirement, and more.",
   },
   {
-    icon: "speed",
-    title: "Inbox-First Workflow",
-    description: "Review transactions one at a time with keyboard shortcuts for rapid categorization.",
-  },
-  {
-    icon: "trending_up",
-    title: "Tax Savings Dashboard",
-    description: "Track your deductions and estimated savings in real-time throughout the year.",
-  },
-  {
     icon: "lock",
     title: "Private & Secure",
-    description: "Your data stays in your Supabase database. We never share or sell your information.",
+    description: "Your financial data is encrypted in transit and at rest, and we never sell or share your information.",
   },
 ];
 
 function MadeInAmericaSection() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsModalOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isModalOpen]);
+
   return (
     <>
-      <section className="px-4 md:px-16 py-16 bg-[#f7f3ea] border-y border-bg-tertiary/40">
+      <section className="px-4 md:px-16 py-16" style={{ background: "#0D1F35" }}>
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-mono-medium mb-3">
+            <p className="text-xs uppercase tracking-[0.2em] text-white/70 mb-3">
               Made in America
             </p>
-            <h2 className="font-display text-2xl md:text-3xl text-mono-dark leading-snug mb-4">
-              Considered tools<br className="hidden md:block" />
-              for American small businesses.
+            <h2 className="font-display text-2xl md:text-3xl text-white leading-snug mb-4">
+              Supporting American<br className="hidden md:block" />
+              Organizations
             </h2>
-            <p className="text-mono-medium text-sm leading-relaxed mb-6">
+            <p className="text-white/80 text-sm leading-relaxed mb-6">
               ExpenseTerminal is proudly based in New Jersey, supporting American entrepreneurs with
               modern, AI-driven tax tools.
             </p>
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="inline-flex items-center justify-center border border-mono-light/60 px-6 py-3 text-sm font-medium text-mono-dark hover:bg-mono-dark hover:text-white transition-colors"
-            >
-              Learn more
-            </button>
-            <p className="mt-3 text-xs text-mono-medium">
+            <div className="flex items-center gap-3 mt-1.5">
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="inline-flex items-center justify-center border border-white px-6 py-3 text-sm font-medium text-[#0D1F35] bg-white hover:bg-white/90 transition-colors"
+                style={{ borderRadius: 0 }}
+              >
+                Learn more
+              </button>
+            </div>
+            <p className="mt-4 text-xs text-white/70">
               Learn more about America&rsquo;s 250th at{" "}
               <a
                 href="https://america250.org"
                 target="_blank"
                 rel="noreferrer"
-                className="font-medium underline underline-offset-4 decoration-mono-medium/60 hover:decoration-mono-dark"
+                className="font-medium underline underline-offset-4 decoration-white/70 hover:decoration-white"
               >
                 America 250
               </a>
               .
             </p>
           </div>
-          <div className="relative w-full h-56 md:h-80 lg:h-[22rem] rounded-lg overflow-hidden">
+          <div className="relative w-full h-56 md:h-80 lg:h-[22rem] overflow-hidden">
             <img
-              src="/made-in-america.png"
-              alt="United States Capitol building at sunset"
+              src="/made-in-america-liberty.png"
+              alt="Statue of Liberty emerging from soft fog"
               className="w-full h-full object-cover"
             />
           </div>
@@ -115,19 +135,37 @@ function MadeInAmericaSection() {
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="bg-white rounded-lg max-w-lg w-full p-8 shadow-xl"
+            className="bg-white max-w-md w-full p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between mb-6">
-              <h3 className="font-display text-2xl text-mono-dark">Made in America</h3>
+            <div className="flex items-start justify-between mb-4 gap-4">
+              <div>
+                <h3 className="font-display text-xl md:text-2xl text-mono-dark mb-1">
+                  Made in America
+                </h3>
+                <p className="text-[11px] text-mono-medium flex items-center gap-1">
+                  <span
+                    className="kbd-hint kbd-on-primary"
+                    style={{
+                      background: "#F5F0E8",
+                      color: "#000000",
+                      borderRadius: 0,
+                      border: "none",
+                    }}
+                  >
+                    Esc
+                  </span>
+                  <span>to close</span>
+                </p>
+              </div>
               <button
                 onClick={() => setIsModalOpen(false)}
                 className="text-mono-light hover:text-mono-dark transition-colors"
               >
-                <span className="material-symbols-rounded">close</span>
+                <span className="material-symbols-rounded text-[22px]">close</span>
               </button>
             </div>
-            <div className="space-y-4 text-mono-medium leading-relaxed">
+            <div className="space-y-4 text-mono-medium leading-relaxed text-sm md:text-base">
               <p>
                 ExpenseTerminal is proudly based out of <strong>New Jersey</strong>, founded by small business owners who understand the challenges of running a business.
               </p>
@@ -138,14 +176,6 @@ function MadeInAmericaSection() {
                 Our platform is built with the needs of American entrepreneurs in mind, providing tools that make tax preparation simpler and more accessible for small businesses across the country.
               </p>
             </div>
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="btn-primary text-sm"
-              >
-                Close
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -155,39 +185,36 @@ function MadeInAmericaSection() {
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-bg-secondary">
+    <div className="min-h-screen bg-white">
       {/* Navbar */}
       <LandingHeader />
 
       {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0">
-          <Image
-            src="/hero-bg-landscape.png"
-            alt=""
-            fill
-            className="object-cover"
-            priority
-          />
-          <div className="absolute inset-0 bg-black/40" />
-        </div>
+      <section
+        className="relative overflow-hidden min-h-[calc(100vh-64px)] flex items-center"
+        style={{
+          background:
+            "radial-gradient(circle at 0% 0%, #E8EEF5 0, #E8EEF5 26%, transparent 52%), radial-gradient(circle at 100% 0%, #8A9BB0 0, #8A9BB0 24%, transparent 52%), radial-gradient(circle at 50% 100%, #F0F1F7 0, #F0F1F7 40%, #0D1F35 100%)",
+        }}
+      >
+        <div className="absolute inset-0 bg-black/45" />
         <div className="relative px-4 md:px-16 py-24 md:py-40 max-w-5xl mx-auto text-center">
           <h1 className="font-display text-4xl md:text-6xl text-white leading-tight tracking-tight mb-6">
-            Keep more of<br />what&rsquo;s yours at tax time.
+            Keep more of what<br />you&rsquo;ve earned
           </h1>
           <p className="text-lg md:text-xl text-white/70 max-w-2xl mx-auto mb-10 leading-relaxed">
-            AI-powered tax deduction technology that finds, organizes, and prepares your write-offs for filing.
+            AI-powered itemized deductions, recommendations, automation for peace of mind and maximized savings
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <Link
               href="/request-demo"
-              className="inline-flex items-center justify-center rounded-full bg-white px-8 py-3.5 text-sm font-medium text-accent-sage transition-all hover:shadow-lg hover:scale-[1.02]"
+              className="inline-flex items-center justify-center bg-[#2563EB] px-8 py-3.5 text-sm font-medium text-white rounded-none transition-all hover:bg-[#1D4ED8] hover:shadow-lg hover:scale-[1.02]"
             >
               Request Demo
             </Link>
             <Link
               href="/login"
-              className="inline-flex items-center justify-center rounded-full border border-white/30 bg-white/5 backdrop-blur-md px-8 py-3.5 text-sm font-medium text-white transition-all hover:bg-white/10"
+              className="inline-flex items-center justify-center border border-white/40 bg-white/5 backdrop-blur-md px-8 py-3.5 text-sm font-medium text-white rounded-none transition-all hover:bg-white/15"
             >
               Login
             </Link>
@@ -195,22 +222,101 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* How it works */}
-      <section className="px-8 md:px-16 py-24 md:py-32" style={{ background: "#435763" }}>
+      {/* Features grid */}
+      <section className="px-8 md:px-16 py-24 md:py-32" style={{ background: "#E8EEF5" }}>
+        <div className="max-w-5xl mx-auto">
+          <div className="mb-14 text-center md:text-left">
+            <h2 className="font-display text-3xl md:text-4xl text-[#0D1F35] mb-3">
+              The right features to make<br />your deductions simple
+            </h2>
+            <p className="text-mono-medium text-base md:text-lg max-w-xl mx-auto md:mx-0">
+              The essential tools for capturing deductions, organizing records, and staying ready when it&rsquo;s time to file.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {FEATURES.map((feature) => (
+              <div key={feature.title} className="border-t border-[#E8EEF5] pt-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="material-symbols-rounded text-[24px] text-[#5B82B4]">
+                    {feature.icon}
+                  </span>
+                  <h3 className="text-base font-semibold text-mono-dark">{feature.title}</h3>
+                </div>
+                <p className="text-sm text-mono-medium leading-relaxed">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section className="px-8 md:px-16 py-20 bg-white">
+        <div className="max-w-5xl mx-auto">
+          <div className="mb-8 text-center md:text-left">
+            <p className="text-xs uppercase tracking-[0.18em] text-mono-medium mb-2">
+              Pricing
+            </p>
+            <h2 className="font-display text-3xl md:text-4xl text-mono-dark mb-3">
+              One plan to unlock 20%+ tax savings
+            </h2>
+            <p className="text-mono-medium max-w-xl mx-auto md:mx-0">
+              Start with a trial, then upgrade when you&rsquo;re ready for deeper automation and bank connections.
+            </p>
+          </div>
+
+          <PricingPlansGrid />
+
+          <div className="mt-8">
+            <Link
+              href="/pricing"
+              className="inline-flex items-center justify-center bg-black text-white px-6 py-2.5 text-sm font-medium rounded-none hover:opacity-70 transition-opacity"
+            >
+              View full pricing
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* About / Mission */}
+      <section className="px-8 md:px-16 py-24 md:py-32" style={{ background: "#F0F1F7" }}>
+        <div className="max-w-2xl mx-auto text-center">
+          <h2 className="font-display text-3xl md:text-4xl text-mono-dark mb-6">
+            Enabling Organizations with<br />Intelligence &amp; Advice
+          </h2>
+          <p className="text-mono-medium text-base md:text-lg leading-relaxed mb-10">
+            Most self-employed professionals, freelancers, and small business owners overpay on taxes and lose track
+            of expenses — because the process is confusing, tedious, and time-consuming.
+            <br />
+            <br />
+            ExpenseTerminal uses AI-powered categorization, smart labeling, and deduction tracking to help you maximize
+            write-offs, stay on top of your finances, and finally feel in control of your money.
+          </p>
+          <Link
+            href="/signup"
+            className="inline-flex items-center justify-center bg-[#2563EB] px-6 py-3 text-sm font-medium text-white rounded-none transition-all hover:bg-[#1D4ED8] hover:shadow-md"
+          >
+            Start Tracking for Free
+          </Link>
+        </div>
+      </section>
+
+      {/* How it works / Get started */}
+      <section className="px-8 md:px-16 py-16 md:py-20" style={{ background: "#8A9BB0" }}>
         <div className="max-w-5xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-start">
             <div>
               <h2 className="font-display text-3xl md:text-4xl text-white/90 leading-snug mb-4">
-                Start tracking<br />in minutes.
+                Start in Minutes
               </h2>
-              <p className="text-white/50 text-sm leading-relaxed mb-8">
-                Our platform is built for self-employed professionals, freelancers, and
-                small business owners who want to stop leaving money on the table at tax time.
+              <p className="text-[#E8EEF5] text-sm md:text-base leading-relaxed mb-8">
+                Our platform is built for self-employed professionals, freelancers, and small business owners who
+                want to stop leaving money on the table.
               </p>
               <div className="flex gap-3">
-                <Link 
-                  href="/signup" 
-                  className="inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-medium text-accent-sage transition-all hover:shadow-lg hover:scale-[1.02]"
+                <Link
+                  href="/signup"
+                  className="inline-flex items-center justify-center bg-[#2563EB] px-6 py-3 text-sm font-medium text-white rounded-none transition-all hover:bg-[#1D4ED8] hover:shadow-lg hover:scale-[1.02]"
                 >
                   Get Started
                 </Link>
@@ -238,126 +344,22 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Features grid */}
-      <section className="px-8 md:px-16 py-24 md:py-32 bg-bg-secondary">
-        <div className="max-w-5xl mx-auto">
-          <div className="mb-14 text-center md:text-left">
-            <h2 className="font-display text-3xl md:text-4xl text-mono-dark mb-3">
-              Everything you need<br />for tax season
-            </h2>
-            <p className="text-mono-medium max-w-xl mx-auto md:mx-0">
-              The essential tools for capturing deductions, organizing records, and staying ready when it&rsquo;s time to file.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-10">
-            {FEATURES.map((feature) => (
-              <div key={feature.title} className="border-t border-bg-tertiary/60 pt-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="material-symbols-rounded text-[24px] text-accent-sage">
-                    {feature.icon}
-                  </span>
-                  <h3 className="text-base font-semibold text-mono-dark">{feature.title}</h3>
-                </div>
-                <p className="text-sm text-mono-medium leading-relaxed">{feature.description}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Pricing snapshot panel */}
-          <div className="rounded-2xl bg-accent-sage text-white p-6 md:p-7 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 shadow-md">
-            <div>
-              <p className="text-xs uppercase tracking-[0.18em] text-white/70 mb-2">
-                Pricing snapshot
-              </p>
-              <h3 className="font-display text-xl md:text-2xl text-white mb-2">
-                Start free. Grow into Starter.
-              </h3>
-              <p className="text-sm text-white/80 max-w-md">
-                Upload CSVs, get AI-reviewed transactions, and stay Schedule C–ready. The free plan
-                includes AI on your first 250 CSV transactions; Starter unlocks a full year of
-                unlimited AI-reviewed CSV uploads.
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 w-full md:w-auto">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="rounded-xl bg-white/6 border border-white/10 px-4 py-3 text-sm">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-white/90">Starter</span>
-                    <span className="text-xs text-white/70">Current</span>
-                  </div>
-                  <p className="text-sm font-semibold text-white">
-                    $120<span className="text-xs font-normal text-white/70">/year</span>
-                  </p>
-                  <p className="text-xs text-white/75 mt-1.5">
-                    Unlimited AI-reviewed CSV transactions.
-                  </p>
-                </div>
-                <div className="rounded-xl bg-white/4 border border-white/10 px-4 py-3 text-sm relative">
-                  <span className="absolute -top-2 right-3 rounded-full bg-white text-[10px] font-semibold text-accent-sage px-2 py-0.5 shadow-sm">
-                    Coming soon
-                  </span>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-white/90">Pro</span>
-                  </div>
-                  <p className="text-sm font-semibold text-white">
-                    $400<span className="text-xs font-normal text-white/70">/year</span>
-                  </p>
-                  <p className="text-xs text-white/75 mt-1.5">
-                    Bank connections and deeper automation for heavy users.
-                  </p>
-                </div>
-              </div>
-              <Link
-                href="/pricing"
-                className="inline-flex items-center justify-center rounded-full bg-white text-accent-sage px-6 py-2.5 text-sm font-medium hover:bg-white/95 transition-colors w-full md:w-auto"
-              >
-                View full pricing
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* About / Mission */}
-      <section className="px-8 md:px-16 py-24 md:py-32 bg-accent-sage">
-        <div className="max-w-2xl mx-auto text-center">
-          <h2 className="font-display text-3xl md:text-4xl text-white mb-6">
-            Small businesses deserve<br />better tax tools.
-          </h2>
-          <p className="text-white/80 leading-relaxed mb-4">
-            Most self-employed professionals overpay on taxes because tracking deductions is tedious and
-            easy to put off.
-          </p>
-          <p className="text-white/80 leading-relaxed mb-10">
-            ExpenseTerminal uses AI-powered categorization and smart deduction calculators to help you
-            capture more write-offs and file with confidence.
-          </p>
-          <Link
-            href="/signup"
-            className="inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-medium text-accent-sage transition-all hover:shadow-md"
-          >
-            Start Tracking for Free
-          </Link>
-        </div>
-      </section>
-
       {/* Made in America */}
       <MadeInAmericaSection />
 
-      {/* Footer — green with white XT logo */}
-      <footer className="px-8 md:px-16 py-12 bg-accent-sage">
+      {/* Footer — cool stock background with black text */}
+      <footer className="px-8 md:px-16 py-12 bg-[#F0F1F7]">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <Link href="/" className="flex items-center hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-white/50 rounded">
+          <Link href="/" className="flex items-center hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-black/10 rounded">
             <Image src="/xt-logo-white.png" alt="XT" width={56} height={24} className="h-6 w-auto object-contain" />
           </Link>
-          <div className="flex items-center gap-6 text-sm text-white/70">
-            <Link href="/login" className="hover:text-white transition-colors">Login</Link>
-            <Link href="/signup" className="hover:text-white transition-colors">Sign Up</Link>
-            <Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link>
-            <Link href="/request-demo" className="hover:text-white transition-colors">Request Demo</Link>
+          <div className="flex items-center gap-6 text-sm text-black/80">
+            <Link href="/login" className="hover:text-black transition-colors">Login</Link>
+            <Link href="/signup" className="hover:text-black transition-colors">Sign Up</Link>
+            <Link href="/pricing" className="hover:text-black transition-colors">Pricing</Link>
+            <Link href="/request-demo" className="hover:text-black transition-colors">Request Demo</Link>
           </div>
-          <p className="text-xs text-white/60">
+          <p className="text-xs text-black/60">
             &copy; {new Date().getFullYear()} ExpenseTerminal
           </p>
         </div>

@@ -13,6 +13,8 @@ const supporting = [
   { name: "Deep Navy", hex: "#0D1F35", role: "Elevated Surface", usage: "Cards, sidebars, modals on black BG" },
   { name: "Steel", hex: "#8A9BB0", role: "Secondary Text", usage: "Subtext, labels, placeholders, borders" },
   { name: "Frost", hex: "#E8EEF5", role: "Light Surface", usage: "Input backgrounds, table rows, subtle dividers" },
+  { name: "Cool Stock", hex: "#F0F1F7", role: "Cool Off-White Surface", usage: "Alternate light backgrounds, receipts, neutral UI zones" },
+  { name: "Warm Stock", hex: "#F5F0E8", role: "Warm Off-White Surface", usage: "Invoices, documents, warm-feeling surfaces" },
   { name: "CTA Blue", hex: "#2563EB", role: "Buttons / Interactive", usage: "Primary buttons, links, focus rings" },
   { name: "CTA Hover", hex: "#1D4ED8", role: "Button Hover / Pressed", usage: "Hover and active states on CTA Blue" },
   { name: "Signal Gold", hex: "#C9A84C", role: "Trust / Premium Accent", usage: "Badges, 'Made in America', premium tier markers — use sparingly" },
@@ -34,7 +36,7 @@ type SwatchProps = {
 
 function Swatch({ name, hex, role, usage, large }: SwatchProps) {
   const [copied, setCopied] = useState(false);
-  const isLight = ["#FFFFFF", "#E8EEF5", "#DCFCE7", "#FEE2E2", "#FEF3C7"].includes(hex);
+  const isLight = ["#FFFFFF", "#E8EEF5", "#DCFCE7", "#FEE2E2", "#FEF3C7", "#F0F1F7", "#F5F0E8"].includes(hex);
 
   const copy = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {

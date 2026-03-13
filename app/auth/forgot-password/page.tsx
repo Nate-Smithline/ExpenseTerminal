@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AuthLayout } from "@/components/AuthLayout";
 import { validatePassword } from "@/lib/validation/password";
@@ -16,6 +16,23 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const isMobile = window.matchMedia("(max-width: 767px)").matches;
+    if (isMobile) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        router.push("/login");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [router]);
 
   async function handleSendCode(e: React.FormEvent) {
     e.preventDefault();
@@ -120,12 +137,12 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthLayout>
-      <p className="text-center text-sm text-mono-medium mb-8">
-        Reset the password for your ExpenseTerminal account.
-      </p>
+      <h1 className="text-center text-lg md:text-2xl font-display text-mono-dark mb-6">
+        Reset your password
+      </h1>
 
       {!emailSent ? (
-        <form onSubmit={handleSendCode} className="space-y-3.5">
+        <form onSubmit={handleSendCode} className="space-y-3.5 w-full min-w-0">
           <input
             ref={emailInputRef}
             type="email"
@@ -135,11 +152,11 @@ export default function ForgotPasswordPage() {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="auth-input"
+            className="auth-input h-12"
           />
 
           {error && (
-            <p className="text-sm text-danger bg-bg-secondary border border-bg-tertiary p-3 rounded-lg">
+            <p className="text-sm p-3 bg-[#FEE2E2] text-[#DC2626]">
               {error}
             </p>
           )}
@@ -147,30 +164,27 @@ export default function ForgotPasswordPage() {
           <button
             type="submit"
             disabled={loading}
-            className="btn-warm w-full"
+            className="w-full mt-2 bg-black text-white text-sm font-medium h-12 px-4 rounded-none transition-opacity duration-150 hover:opacity-70 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {loading ? "Sending..." : "Send Reset Code"}
           </button>
         </form>
       ) : (
         <>
-          <div className="rounded-lg border border-green-200 bg-green-50 p-4 space-y-3 mb-4">
-            <p className="text-sm text-green-800">
+          <div className="mb-4 bg-[#F5F0E8] p-4 space-y-1">
+            <p className="text-sm text-black">
               If an account exists for <span className="font-medium">{email}</span>, we&apos;ve sent a reset code.
-            </p>
-            <p className="text-xs text-mono-medium">
-              Check your email for a Bible-word style code (for example: <span className="font-mono">ark-the-olive-dove</span>), then enter it below with your new password.
             </p>
           </div>
 
-          <form onSubmit={handleCompleteReset} className="space-y-3.5">
+          <form onSubmit={handleCompleteReset} className="space-y-3.5 w-full min-w-0">
             <input
               type="text"
               required
               placeholder="Reset code from your email"
               value={resetCode}
               onChange={(e) => setResetCode(e.target.value)}
-              className="auth-input"
+              className="auth-input h-12"
             />
             <input
               type="password"
@@ -181,7 +195,7 @@ export default function ForgotPasswordPage() {
               placeholder="New password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="auth-input"
+              className="auth-input h-12"
             />
             <input
               type="password"
@@ -192,11 +206,11 @@ export default function ForgotPasswordPage() {
               placeholder="Confirm new password"
               value={confirmNewPassword}
               onChange={(e) => setConfirmNewPassword(e.target.value)}
-              className="auth-input"
+              className="auth-input h-12"
             />
 
             {error && (
-              <p className="text-sm text-danger bg-bg-secondary border border-bg-tertiary p-3 rounded-lg">
+              <p className="text-sm p-3 bg-[#FEE2E2] text-[#DC2626]">
                 {error}
               </p>
             )}
@@ -204,7 +218,7 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="btn-warm w-full"
+              className="w-full mt-2 bg-black text-white text-sm font-medium h-12 px-4 rounded-none transition-opacity duration-150 hover:opacity-70 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? "Updating..." : "Reset password"}
             </button>
@@ -222,8 +236,9 @@ export default function ForgotPasswordPage() {
       )}
 
       <p className="mt-6 text-sm text-mono-medium text-center">
-        <Link href="/login" className="text-accent-navy font-medium">
-          Back to sign in
+        <Link href="/login" className="inline-flex items-center gap-2 text-accent-navy font-medium">
+          <span className="kbd-hint hidden md:inline-flex">Esc</span>
+          <span>Back to sign in</span>
         </Link>
       </p>
     </AuthLayout>

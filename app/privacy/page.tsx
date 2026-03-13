@@ -1,29 +1,34 @@
 import Link from "next/link";
+import { LandingHeader } from "@/components/LandingHeader";
+import { LegalBackLink } from "@/components/LegalBackLink";
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-bg-secondary">
-      <div className="max-w-[720px] mx-auto px-6 py-16">
-        <Link
-          href="/signup"
-          className="inline-flex items-center gap-1.5 text-sm text-mono-light hover:text-mono-medium transition-colors mb-10"
-        >
-          <span className="material-symbols-rounded text-[18px]">arrow_back</span>
-          Back
-        </Link>
+    <div className="min-h-screen bg-white">
+      <LandingHeader />
 
-        <h1 className="font-display text-3xl text-mono-dark mb-2">Privacy Policy</h1>
-        <p className="text-sm text-mono-light mb-10">Effective Date: February 20, 2026</p>
+      <main className="max-w-[880px] mx-auto px-6 md:px-12 py-10 md:py-16">
+        <LegalBackLink href="/signup" label="Back to signup" />
 
-        <div className="card p-8 space-y-8 text-sm text-mono-medium leading-relaxed">
+        <h1 className="font-display text-3xl md:text-4xl text-[#0D1F35] mb-2">
+          Privacy Policy
+        </h1>
+        <p className="text-sm text-mono-medium mb-8">
+          <span className="inline-flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-[#C9A84C]" />
+            <span>Effective Date: February 20, 2026</span>
+          </span>
+        </p>
+
+        <div className="space-y-8 text-sm text-mono-medium leading-relaxed border-t border-bg-tertiary pt-8">
           <section>
             <p className="mb-4">
-              Smith Global LLC (&ldquo;Company,&rdquo; &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;) is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use the ExpenseTerminal platform (&ldquo;Platform&rdquo;), including when you connect financial accounts through third-party aggregators such as Stripe Financial Connections.
+              Sociatty LLC (&ldquo;Company,&rdquo; &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;) is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use the ExpenseTerminal platform (&ldquo;Platform&rdquo;), including when you connect financial accounts through third-party aggregators such as Stripe Financial Connections.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">1. Information We Collect</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">1. Information We Collect</h2>
             <h3 className="text-base text-mono-dark mb-2 mt-4">1.1 Information You Provide Directly</h3>
             <ul className="list-disc pl-5 space-y-1 mb-3">
               <li>Account registration data (name, email address, password, billing information)</li>
@@ -54,7 +59,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">2. How We Use Your Information</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">2. How We Use Your Information</h2>
             <p className="mb-2">We use the information we collect to:</p>
             <ul className="list-disc pl-5 space-y-1 mb-3">
               <li>Provide, operate, maintain, and improve the Platform</li>
@@ -72,7 +77,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">3. Legal Bases for Processing (For EEA/UK Users)</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">3. Legal Bases for Processing (For EEA/UK Users)</h2>
             <p className="mb-2">
               If you are located in the European Economic Area or United Kingdom, our legal bases for processing include:
             </p>
@@ -85,7 +90,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">4. Information Sharing &amp; Disclosure</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">4. Information Sharing &amp; Disclosure</h2>
             <h3 className="text-base text-mono-dark mb-2 mt-4">4.1 Service Providers</h3>
             <p className="mb-3">
               We share data with trusted third-party service providers who assist in operating the Platform, including cloud hosting, payment processing, analytics, and customer support. These providers are contractually bound to use your data only as directed by us and in compliance with this Privacy Policy.
@@ -109,7 +114,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">5. Data Retention</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">5. Data Retention</h2>
             <p className="mb-2">We retain your personal and financial data for as long as your account is active or as needed to provide the Platform&apos;s services. Specifically:</p>
             <ul className="list-disc pl-5 space-y-1 mb-3">
               <li>Account data is retained until account deletion plus a 90-day grace period</li>
@@ -124,7 +129,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">6. Data Security</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">6. Data Security</h2>
             <p className="mb-2">
               We implement industry-standard technical and organizational security measures designed to protect your information from unauthorized access, use, alteration, or destruction. These measures include:
             </p>
@@ -140,7 +145,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">7. Cookies &amp; Tracking Technologies</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">7. Cookies &amp; Tracking Technologies</h2>
             <p className="mb-3">
               We use cookies and similar technologies to maintain your logged-in session and Platform preferences, analyze Platform usage and performance (via analytics tools), and prevent fraud and enhance security.
             </p>
@@ -150,7 +155,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">8. Your Privacy Rights</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">8. Your Privacy Rights</h2>
             <p className="mb-2">Depending on your jurisdiction, you may have the following rights regarding your personal data:</p>
             <ul className="list-disc pl-5 space-y-1 mb-3">
               <li><strong>Access &amp; Portability</strong> — Request a copy of the personal data we hold about you in a portable format</li>
@@ -170,7 +175,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">9. California Privacy Rights (CCPA/CPRA)</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">9. California Privacy Rights (CCPA/CPRA)</h2>
             <p className="mb-2">
               If you are a California resident, you have additional rights under the California Consumer Privacy Act (CCPA) as amended by the California Privacy Rights Act (CPRA):
             </p>
@@ -188,40 +193,40 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">10. Children&apos;s Privacy</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">10. Children&apos;s Privacy</h2>
             <p>
               The Platform is not directed to individuals under the age of 18. We do not knowingly collect personal information from children. If we become aware that a child under 18 has provided us with personal information without parental consent, we will take steps to delete such information promptly. If you believe we may have collected information from a child, please contact us at <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">11. International Data Transfers</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">11. International Data Transfers</h2>
             <p>
               Your information may be transferred to and processed in countries other than your country of residence, including the United States, where data protection laws may differ from those in your jurisdiction. For transfers from the EEA or UK, we rely on appropriate safeguards such as Standard Contractual Clauses (SCCs) approved by the European Commission. By using the Platform, you consent to such transfers.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">12. Third-Party Links &amp; Integrations</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">12. Third-Party Links &amp; Integrations</h2>
             <p>
               The Platform may contain links to third-party websites or integrate with third-party services. This Privacy Policy does not apply to third-party services. We encourage you to review the privacy policies of any third-party services you interact with. We are not responsible for the privacy practices of third-party services.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">13. Changes to This Privacy Policy</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">13. Changes to This Privacy Policy</h2>
             <p>
               We may update this Privacy Policy from time to time. When we make material changes, we will notify you by email to your registered address and/or by posting a prominent notice on the Platform at least 30 days before the effective date of the changes. Your continued use of the Platform after the effective date constitutes acceptance of the revised Privacy Policy.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">14. Contact Us</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">14. Contact Us</h2>
             <p className="mb-2">
               If you have questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact:
             </p>
             <p className="mb-1">
-              <strong>Smith Global LLC</strong>
+              <strong>Sociatty LLC</strong>
             </p>
             <p className="mb-1">
               Privacy Team: <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>
@@ -234,7 +239,7 @@ export default function PrivacyPage() {
             </p>
           </section>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

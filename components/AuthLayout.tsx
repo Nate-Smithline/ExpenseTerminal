@@ -15,23 +15,22 @@ export function AuthLayout({ children, isLoading = false }: AuthLayoutProps) {
       <div className="hidden lg:block lg:w-1/2 fixed left-0 top-0 h-screen overflow-hidden">
         <div className="absolute inset-0">
           <Image
-            src="/auth-panel-bg.png"
+            src="/auth-sidebar-bg-v2.png"
             alt=""
             fill
             className="object-cover object-center"
             priority
             quality={100}
-            unoptimized
             sizes="50vw"
           />
         </div>
         <div className="absolute inset-0 flex items-end p-12">
-          <div>
-            <p className="text-mono-dark font-display text-2xl md:text-3xl leading-snug mb-3 font-medium">
+          <div className="text-white drop-shadow-[0_4px_10px_rgba(0,0,0,0.55)]">
+            <p className="font-display text-2xl md:text-3xl leading-snug mb-3 font-medium">
               Track every deduction.<br />
               File with confidence.
             </p>
-            <p className="text-white text-sm md:text-base">
+            <p className="text-sm md:text-base">
               AI-powered expense tracking for small businesses
             </p>
           </div>
@@ -39,7 +38,10 @@ export function AuthLayout({ children, isLoading = false }: AuthLayoutProps) {
       </div>
 
       {/* Right half — form area */}
-      <div className="flex-1 flex flex-col bg-bg-secondary min-h-screen overflow-y-auto lg:ml-[50%] min-w-0">
+      <div
+        className="auth-shell flex-1 flex flex-col min-h-screen overflow-y-auto lg:ml-[50%] min-w-0"
+        style={{ backgroundColor: "#FFFFFF" }}
+      >
         <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-12 py-12 pb-28">
           {/* Logo / loader spinner */}
           {isLoading && (
@@ -75,14 +77,14 @@ export function AuthLayout({ children, isLoading = false }: AuthLayoutProps) {
             </div>
           )}
 
-          {/* XT logo — link to home (2x size for visibility) */}
+          {/* XT logo — link to home (larger for visibility) */}
           <Link href="/" className="mb-6 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-accent-sage/50 rounded">
             <Image
-              src="/xt-logo.png"
+              src="/xt-logo-v2.png"
               alt="XT"
-              width={120}
-              height={48}
-              className="h-12 w-auto object-contain"
+              width={160}
+              height={64}
+              className="h-16 w-auto object-contain"
               priority
             />
           </Link>

@@ -11,10 +11,10 @@ function LoginFallback() {
   return (
     <div className="relative w-full">
       <AuthLayout isLoading={false}>
-        <p className="text-center text-sm text-mono-medium mb-8">
+        <h1 className="text-center text-lg md:text-2xl font-display text-mono-dark mb-6">
           Sign in to review your business deductions.
-        </p>
-        <div className="h-10 rounded-lg bg-bg-tertiary animate-pulse" />
+        </h1>
+        <div className="h-12 bg-bg-tertiary animate-pulse" />
       </AuthLayout>
     </div>
   );
@@ -43,6 +43,10 @@ function LoginContent() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const isMobile = window.matchMedia("(max-width: 767px)").matches;
+    if (isMobile) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle if not typing in an input
       if (e.target instanceof HTMLInputElement) return;
@@ -58,7 +62,7 @@ function LoginContent() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [emailInputRef, passwordInputRef, router]);
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -140,11 +144,17 @@ function LoginContent() {
     <div className="relative w-full">
       <AuthLayout isLoading={loading}>
         <>
-          <p className="text-center text-sm text-mono-medium mb-8">
+          <h1 className="text-center text-lg md:text-2xl font-display text-mono-dark mb-6">
             Sign in to review your business deductions.
-          </p>
+          </h1>
 
-          <form onSubmit={handleSubmit} className="space-y-3.5">
+          <form onSubmit={handleSubmit} className="space-y-3.5 w-full min-w-0">
+            {error && (
+              <p className="text-sm p-3 bg-[#FEE2E2] text-[#DC2626]">
+                {error}
+              </p>
+            )}
+
             <input
               ref={emailInputRef}
               type="email"
@@ -152,9 +162,8 @@ function LoginContent() {
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="auth-input"
+              className="auth-input h-12"
             />
-
             <div className="relative">
               <input
                 ref={passwordInputRef}
@@ -163,7 +172,7 @@ function LoginContent() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="auth-input pr-12"
+                className="auth-input h-12 pr-12"
               />
               <button
                 type="button"
@@ -183,51 +192,28 @@ function LoginContent() {
                 href="/auth/forgot-password"
                 className="flex items-center gap-2 text-sm font-semibold text-mono-medium hover:text-accent-navy transition-colors"
               >
-                <span className="kbd-hint">F</span>
+                <span className="kbd-hint hidden md:inline-flex">F</span>
                 Forgot Password?
               </Link>
               <Link
                 href="/signup"
                 className="flex items-center gap-2 text-sm font-semibold text-mono-medium hover:text-accent-navy transition-colors"
               >
-                <span className="kbd-hint">S</span>
+                <span className="kbd-hint hidden md:inline-flex">S</span>
                 Sign Up
               </Link>
             </div>
 
-            {error && (
-              <p className="text-sm text-danger bg-bg-secondary border border-bg-tertiary p-3 rounded-lg">
-                {error}
-              </p>
-            )}
-
             <button
               type="submit"
               disabled={loading}
-              className="btn-warm w-full"
+              className="w-full mt-2 bg-black text-white text-sm font-medium h-12 px-4 rounded-none transition-opacity duration-150 hover:opacity-70 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
         </>
       </AuthLayout>
-      
-      <div className="fixed bottom-6 right-6 text-right z-10">
-        <p className="text-xs text-mono-light">
-          By using this app, you agree to our{" "}
-          <Link href="/terms" className="underline hover:text-mono-medium transition-colors">
-            terms
-          </Link>
-          {", "}
-          <Link href="/privacy" className="underline hover:text-mono-medium transition-colors">
-            privacy policy
-          </Link>
-          {", and "}
-          <Link href="/cookies" className="underline hover:text-mono-medium transition-colors">
-            cookie policy
-          </Link>
-        </p>
-      </div>
     </div>
   );
 }

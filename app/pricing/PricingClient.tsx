@@ -87,29 +87,8 @@ export function PricingClient({
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
-        Plans & pricing
-      </h1>
-
-      {syncing && (
-        <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-          Processing your subscription…
-        </p>
-      )}
-      {successPlan && (
-        <p className="mt-2 text-sm text-green-600 dark:text-green-400">
-          You’re now on the {successPlan} plan.{" "}
-          <Link href="/settings/billing" className="underline">
-            Manage billing
-          </Link>
-        </p>
-      )}
-      {error && (
-        <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
-      )}
-
-      <div className="mt-8 grid gap-6 sm:grid-cols-2">
+    <div>
+      <div className="mt-4 grid gap-6 sm:grid-cols-2">
         {planIds.map((id) => {
           const plan = getPlanDefinition(id);
           const isCurrentPlan = id === "plus" ? isPro : currentPlan === "free";
@@ -117,26 +96,26 @@ export function PricingClient({
           return (
             <div
               key={plan.id}
-              className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-5 flex flex-col"
+              className="flex flex-col border border-[#E8EEF5] bg-[#F5F0E8] px-5 py-6 sm:px-6 sm:py-7"
             >
-              <p className="font-medium text-neutral-900 dark:text-neutral-100">
+              <p className="font-display text-lg text-[#0D1F35]">
                 {plan.name}
               </p>
-              <p className="mt-1 text-neutral-600 dark:text-neutral-400">
+              <p className="mt-1 text-sm text-[#5B82B4]">
                 {plan.priceHuman}
                 {plan.priceInterval === "year" && "/year"}
               </p>
-              <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-400">
+              <p className="mt-3 text-sm text-mono-medium">
                 {plan.description}
               </p>
               <ul className="mt-4 flex-1 space-y-3 list-none pl-0">
                 {plan.highlights.map((h, i) => (
                   <li
                     key={i}
-                    className="flex gap-3 text-sm text-neutral-600 dark:text-neutral-400"
+                    className="flex gap-3 text-sm text-mono-medium"
                   >
                     <span
-                      className="mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full border border-current opacity-60"
+                      className="mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full border border-[#5B82B4] bg-[#5B82B4]/10"
                       aria-hidden
                     />
                     <span>{h}</span>
@@ -149,7 +128,7 @@ export function PricingClient({
                     <button
                       type="button"
                       onClick={() => setDowngradeModalOpen(true)}
-                      className="mt-4 w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 text-center"
+                      className="mt-4 w-full px-4 py-2 border border-[#E8EEF5] text-sm font-medium text-mono-dark hover:bg-[#E8EEF5] text-center"
                     >
                       Downgrade
                     </button>
@@ -160,14 +139,14 @@ export function PricingClient({
                           type="button"
                           onClick={startCheckout}
                           disabled={checkoutLoading}
-                          className="mt-4 w-full px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                          className="mt-4 w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8] disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           {checkoutLoading ? "Redirecting…" : "Upgrade to Pro"}
                         </button>
                       ) : (
                         <Link
                           href="/signup"
-                          className="mt-4 inline-block text-center w-full px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                          className="mt-4 inline-block text-center w-full px-4 py-2 border border-[#E8EEF5] text-sm font-medium text-mono-dark hover:bg-[#E8EEF5]"
                         >
                           Get started
                         </Link>
@@ -181,7 +160,7 @@ export function PricingClient({
                   {isPro ? (
                     <Link
                       href="/settings/billing"
-                      className="mt-4 inline-block text-center w-full px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-md text-sm font-medium hover:opacity-90"
+                      className="mt-4 inline-block text-center w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8]"
                     >
                       You&apos;re on Pro · Manage plan
                     </Link>
@@ -190,7 +169,7 @@ export function PricingClient({
                       type="button"
                       onClick={startCheckout}
                       disabled={checkoutLoading}
-                      className="mt-4 w-full px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                      className="mt-4 w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8] disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {checkoutLoading ? "Redirecting…" : "Upgrade to Pro"}
                     </button>
@@ -211,16 +190,16 @@ export function PricingClient({
           aria-labelledby="downgrade-modal-title"
         >
           <div
-            className="bg-white dark:bg-neutral-900 rounded-xl shadow-xl max-w-md w-full p-6"
+            className="bg-white rounded-xl shadow-xl max-w-md w-full p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <h2
               id="downgrade-modal-title"
-              className="text-lg font-semibold text-neutral-900 dark:text-neutral-100"
+              className="text-lg font-semibold text-[#0D1F35]"
             >
               Downgrade to Free
             </h2>
-            <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-400">
+            <p className="mt-3 text-sm text-mono-medium">
               To move back to the Free plan, cancel your subscription in billing.
               You’ll keep your current plan until the end of your billing period,
               then your account will switch to Free.
@@ -229,13 +208,13 @@ export function PricingClient({
               <button
                 type="button"
                 onClick={() => setDowngradeModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md"
+                className="px-4 py-2 text-sm font-medium text-mono-medium hover:bg-[#E8EEF5] rounded-none"
               >
                 Cancel
               </button>
               <Link
                 href="/settings/billing"
-                className="px-4 py-2 text-sm font-medium bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-md hover:opacity-90"
+                className="px-4 py-2 text-sm font-medium bg-[#2563EB] text-white rounded-none hover:bg-[#1D4ED8]"
               >
                 Go to Billing
               </Link>
@@ -244,12 +223,12 @@ export function PricingClient({
         </div>
       )}
 
-      <p className="mt-8 text-sm text-neutral-500">
-        <Link href="/settings/billing" className="underline hover:no-underline">
+      <p className="mt-8 text-sm text-mono-medium">
+        <Link href="/settings/billing" className="text-accent-navy underline hover:no-underline">
           Manage billing
         </Link>{" "}
-        · <Link href="/" className="underline hover:no-underline">Home</Link>{" "}
-        · <Link href="/request-demo" className="underline hover:no-underline">Request Demo</Link>
+        · <Link href="/" className="text-accent-navy underline hover:no-underline">Home</Link>{" "}
+        · <Link href="/request-demo" className="text-accent-navy underline hover:no-underline">Request Demo</Link>
       </p>
     </div>
   );

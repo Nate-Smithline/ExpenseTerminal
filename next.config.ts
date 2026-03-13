@@ -11,8 +11,8 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     return [
-      { source: "/favicon.ico", destination: "/icon.png", permanent: false },
-      { source: "/apple-icon", destination: "/icon.png", permanent: false },
+      { source: "/favicon.ico", destination: "/xt-icon.png", permanent: false },
+      { source: "/apple-icon", destination: "/xt-icon.png", permanent: false },
     ];
   },
 };

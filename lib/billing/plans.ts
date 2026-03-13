@@ -20,7 +20,7 @@ const PLUS_PRODUCT_ID = process.env.STRIPE_PLUS_PRODUCT_ID ?? null;
 export const plans: Record<PlanId, PlanDefinition> = {
   free: {
     id: "free",
-    name: "Free",
+    name: "Trial",
     priceHuman: "$0",
     priceInterval: "year",
     stripeProductId: null,

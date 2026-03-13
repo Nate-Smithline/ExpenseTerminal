@@ -1,36 +1,41 @@
 import Link from "next/link";
+import { LandingHeader } from "@/components/LandingHeader";
+import { LegalBackLink } from "@/components/LegalBackLink";
 
 export default function CookiesPage() {
   return (
-    <div className="min-h-screen bg-bg-secondary">
-      <div className="max-w-[720px] mx-auto px-6 py-16">
-        <Link
-          href="/signup"
-          className="inline-flex items-center gap-1.5 text-sm text-mono-light hover:text-mono-medium transition-colors mb-10"
-        >
-          <span className="material-symbols-rounded text-[18px]">arrow_back</span>
-          Back
-        </Link>
+    <div className="min-h-screen bg-white">
+      <LandingHeader />
 
-        <h1 className="font-display text-3xl text-mono-dark mb-2">Cookie Policy</h1>
-        <p className="text-sm text-mono-light mb-10">Effective Date: February 20, 2026</p>
+      <main className="max-w-[880px] mx-auto px-6 md:px-12 py-10 md:py-16">
+        <LegalBackLink href="/signup" label="Back to signup" />
 
-        <div className="card p-8 space-y-8 text-sm text-mono-medium leading-relaxed">
+        <h1 className="font-display text-3xl md:text-4xl text-[#0D1F35] mb-2">
+          Cookie Policy
+        </h1>
+        <p className="text-sm text-mono-medium mb-8">
+          <span className="inline-flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-[#C9A84C]" />
+            <span>Effective Date: February 20, 2026</span>
+          </span>
+        </p>
+
+        <div className="space-y-8 text-sm text-mono-medium leading-relaxed border-t border-bg-tertiary pt-8">
           <section>
             <p className="mb-4">
-              This Cookie Policy explains how Smith Global LLC, doing business as ExpenseTerminal (&ldquo;Company,&rdquo; &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;), uses cookies and similar tracking technologies on the ExpenseTerminal platform (&ldquo;Platform&rdquo;). This policy should be read alongside our <Link href="/privacy" className="text-accent-navy underline">Privacy Policy</Link> and <Link href="/terms" className="text-accent-navy underline">Terms of Service</Link>.
+              This Cookie Policy explains how Sociatty LLC, doing business as ExpenseTerminal (&ldquo;Company,&rdquo; &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;), uses cookies and similar tracking technologies on the ExpenseTerminal platform (&ldquo;Platform&rdquo;). This policy should be read alongside our <Link href="/privacy" className="text-accent-navy underline">Privacy Policy</Link> and <Link href="/terms" className="text-accent-navy underline">Terms of Service</Link>.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">1. What Are Cookies?</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">1. What Are Cookies?</h2>
             <p>
               Cookies are small text files placed on your device when you visit a website or use a web-based application. They allow the Platform to recognize your device, remember your preferences, and collect information about how you interact with our services. Similar technologies include web beacons, pixel tags, local storage objects, and session tokens — all of which we refer to collectively as &ldquo;cookies&rdquo; in this policy.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">2. Types of Cookies We Use</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">2. Types of Cookies We Use</h2>
             <h3 className="text-base text-mono-dark mb-2 mt-4">2.1 Strictly Necessary Cookies</h3>
             <p className="mb-2">
               These cookies are essential for the Platform to function. They cannot be disabled without breaking core functionality. They include:
@@ -85,7 +90,7 @@ export default function CookiesPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">3. What We Do NOT Use Cookies For</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">3. What We Do NOT Use Cookies For</h2>
             <p className="mb-2">We do not use cookies to:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Serve third-party advertisements or build advertising profiles</li>
@@ -96,7 +101,7 @@ export default function CookiesPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">4. Cookie Duration</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">4. Cookie Duration</h2>
             <p className="mb-2">Cookies we set fall into two categories by duration:</p>
             <ul className="list-disc pl-5 space-y-1 mb-3">
               <li><strong>Session cookies</strong> — deleted automatically when you close your browser</li>
@@ -108,7 +113,7 @@ export default function CookiesPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">5. Your Cookie Choices &amp; Controls</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">5. Your Cookie Choices &amp; Controls</h2>
             <h3 className="text-base text-mono-dark mb-2 mt-4">5.1 Browser Settings</h3>
             <p className="mb-2">
               Most browsers allow you to view, manage, block, and delete cookies through their settings. Common browser controls:
@@ -135,33 +140,33 @@ export default function CookiesPage() {
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">6. California Residents</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">6. California Residents</h2>
             <p>
               Under the CCPA/CPRA, certain cookie-derived data may constitute &ldquo;personal information.&rdquo; We do not sell cookie-derived personal information. If you have questions about your California privacy rights in connection with our cookie practices, please see the California Privacy Rights section of our <Link href="/privacy" className="text-accent-navy underline">Privacy Policy</Link> or contact us at <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">7. EEA &amp; UK Residents</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">7. EEA &amp; UK Residents</h2>
             <p>
               If you access the Platform from the European Economic Area or United Kingdom, we will obtain your consent before placing non-essential cookies on your device, in accordance with the ePrivacy Directive and applicable national laws. You may withdraw consent at any time by adjusting your browser settings or contacting us. Strictly necessary cookies do not require consent under applicable law.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">8. Updates to This Cookie Policy</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">8. Updates to This Cookie Policy</h2>
             <p>
               We may update this Cookie Policy from time to time to reflect changes in our practices or applicable law. We will notify you of material changes via the Platform or by email. The &ldquo;Effective Date&rdquo; at the top of this policy indicates when it was last revised.
             </p>
           </section>
 
           <section>
-            <h2 className="text-lg text-mono-dark mb-3">9. Contact Us</h2>
+            <h2 className="text-lg text-[#5B82B4] mb-3">9. Contact Us</h2>
             <p className="mb-2">
               If you have questions about our use of cookies, please contact:
             </p>
             <p className="mb-1">
-              <strong>Smith Global LLC, doing business as ExpenseTerminal</strong>
+              <strong>Sociatty LLC, doing business as ExpenseTerminal</strong>
             </p>
             <p className="mb-1">
               Email: <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>
@@ -174,7 +179,7 @@ export default function CookiesPage() {
             </p>
           </section>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

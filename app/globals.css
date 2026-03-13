@@ -120,12 +120,11 @@ button, [role="button"], a.btn-primary, a.btn-secondary, a.btn-pill, a.btn-warm 
 /* ---- Auth input style (Practicing the Way) ---- */
 
 .auth-input {
-  @apply w-full border border-bg-tertiary/60 bg-white px-4 py-3.5 text-sm text-mono-dark placeholder-mono-light transition-all duration-200;
-  border-radius: 10px;
+  @apply w-full border border-bg-tertiary/60 bg-white px-4 text-sm text-mono-dark placeholder-mono-light transition-all duration-200;
+  border-radius: 0;
 }
 .auth-input:focus {
-  @apply border-accent-sage/40 outline-none;
-  box-shadow: 0 0 0 3px rgba(63, 81, 71, 0.08);
+  @apply border-black outline-none;
 }
 
 /* ---- Custom range slider ---- */
@@ -281,6 +280,12 @@ kbd {
   color: var(--color-mono-medium);
   line-height: 1;
 }
+.auth-shell .kbd-hint {
+  border: none;
+  background: #F5F0E8;
+  color: #000000;
+  border-radius: 0;
+}
 .kbd-hint.opacity-50 {
   background: rgba(255, 255, 255, 0.5);
 }
@@ -311,7 +316,6 @@ h1 {
 *:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(63, 81, 71, 0.12);
-  border-radius: 8px;
 }
 
 /* Selection color */

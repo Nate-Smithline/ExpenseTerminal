@@ -24,19 +24,20 @@ export default function SignupPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [phone, setPhone] = useState("");
-  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const isMobile = window.matchMedia("(max-width: 767px)").matches;
+    if (isMobile) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle if not typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      
+
       if (e.key === "l" || e.key === "L") {
         e.preventDefault();
         router.push("/login");
@@ -51,14 +52,6 @@ export default function SignupPage() {
     e.preventDefault();
     setError(null);
 
-    if (!agreedToTerms) {
-      setError("Please agree to the Terms & Conditions to continue.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
     const passwordCheck = validatePassword(password);
     if (!passwordCheck.valid) {
       setError(passwordCheck.message ?? "Password does not meet requirements.");
@@ -148,9 +141,9 @@ export default function SignupPage() {
   return (
     <div className="relative w-full min-w-0 max-w-full">
       <AuthLayout>
-        <p className="text-center text-sm text-mono-medium mb-8">
-          Track and maximize your business deductions.
-        </p>
+        <h1 className="text-center text-lg md:text-2xl font-display text-mono-dark mb-6">
+          Keep more of what you earn. Increase peace of mind about it.
+        </h1>
 
       <form onSubmit={handleSubmit} className="space-y-3.5 w-full min-w-0">
         {/* Name row */}
@@ -161,7 +154,7 @@ export default function SignupPage() {
             placeholder="First name"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
-            className="auth-input flex-1"
+            className="auth-input signup-input flex-1 h-12"
           />
           <input
             type="text"
@@ -169,7 +162,7 @@ export default function SignupPage() {
             placeholder="Last name"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
-            className="auth-input flex-1"
+            className="auth-input signup-input flex-1 h-12"
           />
         </div>
 
@@ -180,7 +173,7 @@ export default function SignupPage() {
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="auth-input"
+          className="auth-input signup-input h-12"
         />
 
         {/* Phone (US only) */}
@@ -188,14 +181,12 @@ export default function SignupPage() {
           <input
             type="tel"
             inputMode="tel"
-            placeholder="Phone (optional)"
+            placeholder="Phone"
+            required
             value={phone}
             onChange={(e) => setPhone(formatUSPhone(e.target.value))}
-            className="auth-input"
+            className="auth-input signup-input h-12"
           />
-          <p className="text-[11px] text-mono-light">
-            US phone numbers only. Example: (555) 555-1234
-          </p>
         </div>
 
         {/* Password */}
@@ -208,7 +199,7 @@ export default function SignupPage() {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="auth-input pr-12"
+              className="auth-input signup-input pr-12 h-12"
             />
             <button
               type="button"
@@ -223,34 +214,34 @@ export default function SignupPage() {
             </button>
           </div>
           {password && (
-            <div className="mt-2 p-3 rounded-lg border border-bg-tertiary bg-bg-secondary min-w-0">
+            <div className="mt-2 p-3 bg-[#E8EEF5] text-[#16A34A] min-w-0">
               <div className="space-y-1.5 text-xs break-words">
                 <div className={`flex items-center gap-2 ${password.length >= 12 || (password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) ? "text-green-600" : "text-mono-medium"}`}>
-                  <span className="material-symbols-rounded text-[16px]">
+                  <span className="material-symbols-rounded text-[14px]">
                     {password.length >= 12 || (password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) ? "check_circle" : "radio_button_unchecked"}
                   </span>
                   <span>{password.length >= 12 ? "12+ characters" : "8+ characters with uppercase, lowercase, number, and special character"}</span>
                 </div>
                 <div className={`flex items-center gap-2 ${/[a-z]/.test(password) ? "text-green-600" : "text-mono-medium"}`}>
-                  <span className="material-symbols-rounded text-[16px]">
+                  <span className="material-symbols-rounded text-[14px]">
                     {/[a-z]/.test(password) ? "check_circle" : "radio_button_unchecked"}
                   </span>
                   <span>Lowercase letter</span>
                 </div>
                 <div className={`flex items-center gap-2 ${/[A-Z]/.test(password) ? "text-green-600" : "text-mono-medium"}`}>
-                  <span className="material-symbols-rounded text-[16px]">
+                  <span className="material-symbols-rounded text-[14px]">
                     {/[A-Z]/.test(password) ? "check_circle" : "radio_button_unchecked"}
                   </span>
                   <span>Uppercase letter</span>
                 </div>
                 <div className={`flex items-center gap-2 ${/\d/.test(password) ? "text-green-600" : "text-mono-medium"}`}>
-                  <span className="material-symbols-rounded text-[16px]">
+                  <span className="material-symbols-rounded text-[14px]">
                     {/\d/.test(password) ? "check_circle" : "radio_button_unchecked"}
                   </span>
                   <span>Number</span>
                 </div>
                 <div className={`flex items-center gap-2 ${/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password) ? "text-green-600" : "text-mono-medium"}`}>
-                  <span className="material-symbols-rounded text-[16px]">
+                  <span className="material-symbols-rounded text-[14px]">
                     {/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password) ? "check_circle" : "radio_button_unchecked"}
                   </span>
                   <span>Special character</span>
@@ -264,54 +255,22 @@ export default function SignupPage() {
             </div>
           )}
         </div>
-
-        {/* Confirm Password */}
-        <div className="relative">
-          <input
-            type={showConfirm ? "text" : "password"}
-            required
-            minLength={8}
-            placeholder="Confirm password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className="auth-input pr-12"
-          />
-          <button
-            type="button"
-            onClick={() => setShowConfirm(!showConfirm)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-mono-light hover:text-mono-medium transition-colors flex items-center justify-center"
-            tabIndex={-1}
-            style={{ height: '20px', width: '20px' }}
-          >
-            <span className="material-symbols-rounded text-[20px] leading-none">
-              {showConfirm ? "visibility_off" : "visibility"}
-            </span>
-          </button>
-        </div>
-
-        {/* Terms agreement */}
-        <label className="flex items-start gap-2 pt-1 cursor-pointer min-w-0">
-          <input
-            type="checkbox"
-            checked={agreedToTerms}
-            onChange={(e) => setAgreedToTerms(e.target.checked)}
-            className="w-4 h-4 mt-0.5 shrink-0 rounded border-bg-tertiary accent-accent-sage"
-          />
-          <span className="text-sm text-mono-medium break-words">
-            I agree to the{" "}
-            <Link href="/terms" className="text-accent-navy underline">
-              Terms & Conditions
-            </Link>{" "}
-            and{" "}
-            <Link href="/privacy" className="text-accent-navy underline">
-              Privacy Policy
-            </Link>
-          </span>
-        </label>
+        {/* Terms copy only */}
+        <p className="pt-1 text-xs text-mono-medium">
+          By proceeding, you agree to the{" "}
+          <Link href="/terms" className="text-accent-navy underline">
+            Terms &amp; Conditions
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="text-accent-navy underline">
+            Privacy Policy
+          </Link>
+          .
+        </p>
 
         {/* Error */}
         {error && (
-          <p className="text-sm text-danger bg-bg-secondary border border-bg-tertiary p-3 rounded-lg">
+          <p className="text-sm text-black bg-[#F5F0E8] p-3">
             {error}
           </p>
         )}
@@ -320,17 +279,16 @@ export default function SignupPage() {
         <button
           type="submit"
           disabled={loading}
-          className="btn-warm w-full mt-2"
+          className="w-full mt-2 bg-black text-white text-sm font-medium h-12 px-4 rounded-none transition-opacity duration-150 hover:opacity-70 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {loading ? "Creating account..." : "Get Started"}
         </button>
         </form>
 
         <p className="mt-6 text-sm text-mono-medium text-center break-words">
-          Already have an account?{" "}
-          <Link href="/login" className="flex items-center gap-2 text-accent-navy font-medium inline-flex">
-            <span className="kbd-hint">L</span>
-            Sign In
+          <Link href="/login" className="inline-flex items-center gap-2 text-accent-navy font-medium">
+            <span className="kbd-hint hidden md:inline-flex">L</span>
+            <span>Already have an account?</span>
           </Link>
         </p>
       </AuthLayout>
