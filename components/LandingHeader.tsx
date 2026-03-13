@@ -100,22 +100,35 @@ export function LandingHeader() {
           )}
         </div>
 
+        {/* Mobile: primary CTA always visible */}
+        <div className="flex items-center gap-3 md:hidden">
+          {NAV_LINKS.filter((item) => "primary" in item && item.primary).map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="inline-flex items-center justify-center bg-black px-4 py-2 text-sm font-medium text-white rounded-none transition-colors hover:opacity-70"
+            >
+              {item.label}
+            </Link>
+          ))}
+
         {/* Mobile: hamburger */}
-        <button
-          type="button"
-          onClick={mobileMenuOpen ? closeMenu : openMenu}
-          className="md:hidden p-2 rounded-lg text-white hover:bg-white/10 transition-colors"
-          aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-        >
-          <span
-            className={`hamburger-icon block ${mobileMenuOpen ? "hamburger-icon--open" : ""}`}
-            aria-hidden
+          <button
+            type="button"
+            onClick={mobileMenuOpen ? closeMenu : openMenu}
+            className="md:hidden p-2 rounded-lg text-black hover:bg-white/10 transition-colors"
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
           >
-            <span />
-            <span />
-            <span />
-          </span>
-        </button>
+            <span
+              className={`hamburger-icon block ${mobileMenuOpen ? "hamburger-icon--open" : ""}`}
+              aria-hidden
+            >
+              <span />
+              <span />
+              <span />
+            </span>
+          </button>
+        </div>
       </nav>
 
       {/* Mobile drawer — slide in from left */}
@@ -134,28 +147,20 @@ export function LandingHeader() {
             aria-hidden
           />
           <div
-            className={`relative w-[260px] max-w-[85vw] h-full bg-bg-secondary shadow-xl flex flex-col drawer-panel ${
+            className={`relative w-[260px] max-w-[85vw] h-full bg-[#5B82B4] shadow-xl flex flex-col drawer-panel ${
               isEntering ? "drawer-panel--entering" : isClosing ? "-translate-x-full" : "translate-x-0"
             }`}
           >
-            <div className="flex items-center justify-between px-4 py-5 border-b border-bg-tertiary/40">
+            <div className="flex items-center justify-between px-4 py-5">
               <Link href="/" onClick={closeMenu} className="flex items-center">
                 <Image
-                  src="/xt-logo-v2.png"
+                  src="/mobile-logo.png"
                   alt="XT"
-                  width={168}
-                  height={60}
-                  className="h-12 w-auto object-contain"
+                  width={100}
+                  height={36}
+                  className="h-7 w-auto object-contain"
                 />
               </Link>
-              <button
-                type="button"
-                onClick={closeMenu}
-                className="p-2 rounded-lg text-mono-medium hover:bg-bg-tertiary/40 transition-colors"
-                aria-label="Close menu"
-              >
-                <span className="material-symbols-rounded text-[24px]">close</span>
-              </button>
             </div>
             <nav className="flex flex-col py-4">
               {NAV_LINKS.map((item) => (
@@ -165,13 +170,20 @@ export function LandingHeader() {
                   onClick={closeMenu}
                   className={
                     "primary" in item && item.primary
-                      ? "mx-4 mt-2 btn-primary text-sm text-center"
-                      : "px-4 py-3 text-sm text-mono-dark hover:bg-bg-tertiary/40 transition-colors"
+                      ? "mx-4 mt-2 inline-flex items-center justify-center bg-black px-5 py-2.5 text-base font-medium text-white rounded-none transition-colors hover:opacity-70 text-center"
+                      : "px-4 py-3 text-base text-black hover:bg-white/10 transition-colors"
                   }
                 >
                   {item.label}
                 </Link>
               ))}
+              <button
+                type="button"
+                onClick={closeMenu}
+                className="mt-4 mx-4 inline-flex items-center justify-center px-5 py-2.5 text-base font-medium text-black bg-transparent border border-black text-center"
+              >
+                Close
+              </button>
             </nav>
           </div>
         </div>
