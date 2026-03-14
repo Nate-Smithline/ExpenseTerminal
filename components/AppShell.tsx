@@ -81,14 +81,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <UpgradeModalProvider>
-    <div className="min-h-screen flex bg-bg-secondary">
+    <div className="min-h-screen flex bg-white">
       {/* Desktop sidebar — hidden on mobile */}
       <aside className="hidden md:block sticky top-0 h-screen shrink-0">
         <Sidebar />
       </aside>
 
       {/* Main content — extra bottom padding on mobile for footer */}
-      <main className="flex-1 overflow-y-auto px-5 py-8 md:px-14 md:py-14 pb-24 md:pb-14">
+      <main className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-14 pb-24 md:pb-14">
         <div className="max-w-[880px] mx-auto">{children}</div>
       </main>
 
@@ -109,7 +109,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               }}
               className={`flex flex-col items-center justify-center gap-0.5 min-w-[56px] py-2 rounded-lg transition-colors duration-200 touch-manipulation ${
                 isActive(item.href)
-                  ? "text-accent-terracotta"
+                  ? "text-sovereign-blue"
                   : "text-mono-medium active:text-mono-dark"
               }`}
             >
@@ -159,7 +159,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
           {/* Panel — slide from left */}
           <div
-            className={`relative w-[260px] max-w-[85vw] h-full bg-bg-secondary shadow-xl flex flex-col drawer-panel ${
+            className={`relative w-[260px] max-w-[85vw] h-full bg-white shadow-xl flex flex-col drawer-panel ${
               isEntering ? "drawer-panel--entering" : isClosing ? "-translate-x-full" : "translate-x-0"
             }`}
           >

@@ -5,6 +5,8 @@
   --color-bg-primary: #ffffff;
   --color-bg-secondary: #f9f7f5;
   --color-bg-tertiary: #e8e2dc;
+  --color-cool-stock: #F0F1F7;
+  --color-frost: #E8EEF5;
 
   --color-accent-sage: #3f5147;
   --color-accent-navy: #435763;
@@ -12,6 +14,7 @@
   --color-accent-red: #c0392b;
   --color-accent-terracotta: #b87c5e;
   --color-accent-terracotta-dark: #9a6b4a;
+  --color-sovereign-blue: #5B82B4;
 
   --color-mono-light: #a3a3a3;
   --color-mono-medium: #636363;
@@ -305,6 +308,22 @@ h1, h2, h3 {
 
 h1 {
   font-weight: 400;
+}
+
+/* Profile dropdown — clean fade-in; fade + slide away on close */
+.profile-dropdown-panel {
+  transition: transform 0.4s ease-out, opacity 0.4s ease-out;
+  overflow: hidden;
+}
+.profile-dropdown-panel--entering {
+  opacity: 0;
+}
+.profile-dropdown-panel--open {
+  opacity: 1;
+}
+.profile-dropdown-panel--closing {
+  transform: translateY(-12px);
+  opacity: 0;
 }
 
 /* Material Symbols */

@@ -36,6 +36,8 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  const [isEntering, setIsEntering] = useState(false);
   const [inboxCount, setInboxCount] = useState<number | null>(null);
   const [profile, setProfile] = useState<{ name_prefix?: string | null; first_name?: string | null; last_name?: string | null } | null>(null);
   const [plan, setPlan] = useState<string | null>(null);
@@ -97,17 +99,49 @@ export function Sidebar() {
     return () => window.removeEventListener("inbox-count-changed", handleInboxChanged);
   }, [loadInboxCount]);
 
+  const closeProfile = useCallback(() => {
+    setIsClosing(true);
+    const t = setTimeout(() => {
+      setProfileOpen(false);
+      setIsClosing(false);
+    }, 400);
+    return () => clearTimeout(t);
+  }, []);
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setProfileOpen(false);
+        closeProfile();
       }
     }
-    if (profileOpen) {
+    if (profileOpen && !isClosing) {
       document.addEventListener("mousedown", handleClick);
       return () => document.removeEventListener("mousedown", handleClick);
     }
-  }, [profileOpen]);
+  }, [profileOpen, isClosing, closeProfile]);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") closeProfile();
+    }
+    if (profileOpen && !isClosing) {
+      document.addEventListener("keydown", handleKeyDown);
+      return () => document.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [profileOpen, isClosing, closeProfile]);
+
+  /* After mounting with opacity:0, wait for a painted frame then transition to open (fade-in) */
+  useEffect(() => {
+    if (!profileOpen || !isEntering || isClosing) return;
+    let raf2: number;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setIsEntering(false));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2 != null) cancelAnimationFrame(raf2);
+    };
+  }, [profileOpen, isEntering, isClosing]);
 
   const handleLogout = useCallback(async () => {
     const supabase = createSupabaseClient();
@@ -117,84 +151,97 @@ export function Sidebar() {
   }, [router]);
 
   return (
-    <aside className="sticky top-0 h-screen w-[260px] shrink-0 bg-bg-secondary flex flex-col">
-      {/* Profile dropdown — left align "Hi" with nav icons (px-5 + pl-3 = same as nav link content) */}
-      <div className="px-5 pt-6 pb-4 relative" ref={dropdownRef}>
+    <aside className="sticky top-0 h-screen w-[260px] shrink-0 bg-white flex flex-col">
+      {/* Profile dropdown — same width as main nav (pl-0 pr-5); gap below before Home */}
+      <div className="pl-0 pr-5 pt-6 pb-4 relative" ref={dropdownRef}>
         <button
           onClick={() => {
-            setProfileOpen((v) => !v);
-            if (!profileOpen) loadProfile();
+            if (profileOpen) {
+              closeProfile();
+            } else {
+              setIsEntering(true);
+              setProfileOpen(true);
+              loadProfile();
+            }
           }}
-          className="w-full text-left rounded-lg py-2 pl-3 pr-2 hover:bg-bg-tertiary/20 transition-colors"
+          className={`w-full text-left rounded-none py-2 pl-8 pr-2 transition-all ${
+            profileOpen
+              ? "text-sovereign-blue bg-sovereign-blue/10"
+              : "text-mono-dark hover:text-mono-dark hover:bg-sovereign-blue/10"
+          }`}
         >
           <div className="flex items-center justify-between gap-2 min-w-0">
-            <span className="font-sans text-lg text-mono-dark tracking-tight truncate">
+            <span className="font-sans text-lg tracking-tight truncate">
               {greeting}
             </span>
-            <span className="material-symbols-rounded text-[18px] text-mono-light shrink-0">
+            <span className={`material-symbols-rounded text-[18px] font-light shrink-0 ${profileOpen ? "text-sovereign-blue" : "text-black"}`}>
               {profileOpen ? "expand_less" : "expand_more"}
             </span>
           </div>
         </button>
 
-        {profileOpen && (
-          <div className="absolute left-3 right-3 top-full mt-1 bg-white rounded-lg shadow-lg border border-bg-tertiary/40 py-1.5 z-50 animate-in">
+        {(profileOpen || isClosing) && (
+          <div
+            className={`profile-dropdown-panel absolute left-0 right-5 top-full bg-white rounded-none shadow-lg border border-bg-tertiary/40 border-t-0 py-1.5 z-50 ${
+              isClosing ? "profile-dropdown-panel--closing" : isEntering ? "profile-dropdown-panel--entering" : "profile-dropdown-panel--open"
+            }`}
+          >
             <Link
               href="/profile"
-              onClick={() => setProfileOpen(false)}
-              className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-mono-medium hover:bg-bg-secondary/60 hover:text-mono-dark transition-colors"
+              onClick={() => closeProfile()}
+              className="flex items-center gap-2.5 px-4 py-2.5 text-base text-mono-medium hover:bg-sovereign-blue/10 hover:text-mono-dark transition-colors"
             >
-              <span className="material-symbols-rounded text-[18px]">person</span>
+              <span className="material-symbols-rounded shrink-0" style={{ fontSize: 18 }}>person</span>
               Profile Settings
             </Link>
             <Link
               href="/org-profile"
-              onClick={() => setProfileOpen(false)}
-              className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-mono-medium hover:bg-bg-secondary/60 hover:text-mono-dark transition-colors"
+              onClick={() => closeProfile()}
+              className="flex items-center gap-2.5 px-4 py-2.5 text-base text-mono-medium hover:bg-sovereign-blue/10 hover:text-mono-dark transition-colors"
             >
-              <span className="material-symbols-rounded text-[18px]">business</span>
+              <span className="material-symbols-rounded shrink-0" style={{ fontSize: 18 }}>business</span>
               Org Profile
             </Link>
             <Link
               href="/settings/billing"
-              onClick={() => setProfileOpen(false)}
-              className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-mono-medium hover:bg-bg-secondary/60 hover:text-mono-dark transition-colors"
+              onClick={() => closeProfile()}
+              className="flex items-center gap-2.5 px-4 py-2.5 text-base text-mono-medium hover:bg-sovereign-blue/10 hover:text-mono-dark transition-colors"
             >
-              <span className="material-symbols-rounded text-[18px]">credit_card</span>
+              <span className="material-symbols-rounded shrink-0" style={{ fontSize: 18 }}>credit_card</span>
               Billing
             </Link>
             <div className="border-t border-bg-tertiary/30 my-1" />
             <button
               onClick={handleLogout}
-              className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm text-mono-medium hover:bg-bg-secondary/60 hover:text-mono-dark transition-colors text-left"
+              className="flex items-center gap-2.5 w-full px-4 py-2.5 text-base text-mono-medium hover:bg-sovereign-blue/10 hover:text-mono-dark transition-colors text-left"
             >
-              <span className="material-symbols-rounded text-[18px]">logout</span>
+              <span className="material-symbols-rounded shrink-0" style={{ fontSize: 18 }}>logout</span>
               Log Out
             </button>
           </div>
         )}
       </div>
 
-      {/* Main nav - left align with Guides and bottom nav (px-5) */}
-      <nav className="flex-1 px-5 space-y-1">
+      {/* Main nav - block extends to left edge; content stays aligned (pl-8 = 5+3) */}
+      <nav className="flex-1 pl-0 pr-5 space-y-1">
         {mainNav.map((item) => (
           <Link
             key={item.href}
             href={item.href}
-            className={`flex items-center gap-3 rounded-lg px-3 py-3 text-[14px] font-medium transition-all ${
+            className={`flex items-center gap-3 rounded-none pl-8 pr-3 py-3 text-[14px] font-medium transition-all ${
               isActive(item.href)
-                ? "text-accent-terracotta bg-accent-terracotta/10"
-                : "text-mono-medium hover:text-mono-dark hover:bg-bg-tertiary/30"
+                ? "text-sovereign-blue bg-sovereign-blue/10"
+                : "text-mono-medium hover:text-mono-dark hover:bg-sovereign-blue/10"
             }`}
           >
             <span className={`material-symbols-rounded text-[22px] leading-none transition-colors ${
-              isActive(item.href) ? "text-accent-terracotta" : ""
+              isActive(item.href) ? "text-sovereign-blue" : ""
             }`}>
               {item.icon}
             </span>
             <span className="flex-1">{item.label}</span>
             {item.href === "/inbox" && inboxCount != null && inboxCount > 0 && (
-              <span className="bg-accent-sage/10 text-accent-sage text-[11px] font-semibold rounded-full px-2 py-0.5 tabular-nums">
+              <span className="bg-[#8A9BB0] text-black text-[11px] font-semibold rounded-none px-2 py-0.5 tabular-nums">
                 {inboxCount}
               </span>
             )}
@@ -233,7 +280,7 @@ export function Sidebar() {
             href={item.href}
             className={`flex items-center py-2.5 text-base transition-all group ${
               isActive(item.href)
-                ? "text-accent-terracotta font-medium"
+                ? "text-sovereign-blue font-medium"
                 : "text-mono-light hover:text-mono-medium"
             }`}
           >
@@ -243,7 +290,7 @@ export function Sidebar() {
                 isActive(item.href) ? "w-[20px]" : "w-0 group-hover:w-[20px]"
               }`}
             >
-              <span className="h-0.5 w-[20px] rounded-full bg-accent-terracotta" />
+              <span className="h-0.5 w-[20px] rounded-full bg-sovereign-blue" />
             </span>
             <span className="ml-2">{item.label}</span>
           </Link>
@@ -253,7 +300,7 @@ export function Sidebar() {
           className="flex items-center py-2.5 text-base transition-all group text-mono-light hover:text-mono-medium"
         >
           <span className="shrink-0 overflow-hidden flex items-center transition-all duration-500 w-0 group-hover:w-[20px]">
-            <span className="h-0.5 w-[20px] rounded-full bg-accent-terracotta" />
+            <span className="h-0.5 w-[20px] rounded-full bg-sovereign-blue" />
           </span>
           <span className="ml-2">Contact Our Team</span>
         </a>
