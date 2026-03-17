@@ -6,6 +6,7 @@ import { createSupabaseClient } from "@/lib/supabase/client";
 import { validatePassword, getPasswordStrength } from "@/lib/validation/password";
 import { formatUSPhone, parseUSPhone, displayUSPhone } from "@/lib/format-us-phone";
 import { PreferencesTabs } from "@/app/preferences/PreferencesTabs";
+import type { Database } from "@/lib/types/database";
 
 const NAME_PREFIXES = [
   { value: "", label: "" },
@@ -25,19 +26,22 @@ interface Profile {
   phone: string | null;
 }
 
+type OrgSettings = Database["public"]["Tables"]["org_settings"]["Row"];
+
 const PREF_TABS = [
   { href: "/preferences/automations", label: "Automations" },
   { href: "/preferences/profile", label: "Profile" },
   { href: "/preferences/billing", label: "Billing" },
-  { href: "/preferences/org", label: "Org" },
 ] as const;
 
 export function ProfileClient({
   initialProfile,
   userEmail,
+  initialOrg,
 }: {
   initialProfile: Profile | null;
   userEmail: string | null;
+  initialOrg: OrgSettings | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -233,6 +237,42 @@ export function ProfileClient({
             </button>
           </div>
           {saved && <p className="text-xs text-accent-sage font-medium">Profile saved!</p>}
+        </div>
+
+        {/* Business Information summary under My Profile */}
+        <div className="mt-6 border border-[#F0F1F7] divide-y divide-[#F0F1F7] bg-white">
+          <div className="px-4 py-3">
+            <div
+              role="heading"
+              aria-level={2}
+              className="text-base md:text-lg font-normal font-sans text-mono-dark"
+            >
+              Business Information
+            </div>
+            <p className="mt-1 text-xs text-mono-medium font-sans">
+              Legal details that drive deductions and filings.
+            </p>
+          </div>
+          <div className="px-4 py-3 space-y-2 text-xs font-sans text-mono-medium">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span className="font-semibold text-mono-dark min-w-[110px]">Business Name</span>
+              <span className="truncate">
+                {initialOrg?.business_name || "Not set"}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span className="font-semibold text-mono-dark min-w-[110px]">Filing Type</span>
+              <span className="truncate">
+                {initialOrg?.filing_type || "Not set"}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span className="font-semibold text-mono-dark min-w-[110px]">Business Address</span>
+              <span className="truncate">
+                {initialOrg?.business_address || "Not set"}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 

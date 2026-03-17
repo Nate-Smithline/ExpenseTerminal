@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import type { Database } from "@/lib/types/database";
 import type { NormalizedRule, RuleConditions, RuleAction } from "@/lib/rules/types";
 import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
 import { PreferencesTabs } from "@/app/preferences/PreferencesTabs";
@@ -46,21 +47,24 @@ function notificationSummary(prefs: NotificationPrefs): string {
   return `Every ${prefs.value} transactions`;
 }
 
+type TaxYearSetting = Database["public"]["Tables"]["tax_year_settings"]["Row"];
+
 interface RulesPageClientProps {
   initialRules: NormalizedRule[];
   initialNotificationPreferences: NotificationPrefs;
+  initialTaxSettings: TaxYearSetting[];
 }
 
 const PREF_TABS = [
   { href: "/preferences/automations", label: "Automations" },
   { href: "/preferences/profile", label: "Profile" },
   { href: "/preferences/billing", label: "Billing" },
-  { href: "/preferences/org", label: "Org" },
 ] as const;
 
 export function RulesPageClient({
   initialRules,
   initialNotificationPreferences,
+  initialTaxSettings,
 }: RulesPageClientProps) {
   const [rules, setRules] = useState<NormalizedRule[]>(initialRules);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPrefs>(initialNotificationPreferences);
@@ -71,6 +75,13 @@ export function RulesPageClient({
   const [notificationModalOpen, setNotificationModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  const [taxSettings, setTaxSettings] = useState<TaxYearSetting[]>(initialTaxSettings);
+  const [newYear, setNewYear] = useState(new Date().getFullYear());
+  const [newRate, setNewRate] = useState("24");
+  const [savingTax, setSavingTax] = useState(false);
+  const [taxModalOpen, setTaxModalOpen] = useState(false);
+  const [taxError, setTaxError] = useState<string | null>(null);
+
   const reload = useCallback(async () => {
     const res = await fetch("/api/rules");
     if (!res.ok) return;
@@ -79,14 +90,50 @@ export function RulesPageClient({
     setNotificationPreferences(data.notificationPreferences ?? null);
   }, []);
 
+  async function handleAddTaxYear() {
+    const rate = parseFloat(newRate);
+    if (isNaN(rate) || rate < 0 || rate > 100) {
+      setTaxError("Enter a rate between 0 and 100.");
+      return;
+    }
+    setSavingTax(true);
+
+    const res = await fetch("/api/tax-year-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tax_year: newYear, tax_rate: rate / 100 }),
+    });
+
+    if (res.ok) {
+      const { data } = await res.json();
+      setTaxSettings((prev) => {
+        const filtered = prev.filter((s) => s.tax_year !== newYear);
+        return [data as TaxYearSetting, ...filtered].sort((a, b) => b.tax_year - a.tax_year);
+      });
+      setTaxModalOpen(false);
+      setTaxError(null);
+    }
+    setSavingTax(false);
+  }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setTaxModalOpen(false);
+    }
+    if (taxModalOpen) {
+      document.addEventListener("keydown", onKey);
+      return () => document.removeEventListener("keydown", onKey);
+    }
+  }, [taxModalOpen]);
+
   useEffect(() => {
     const t = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(t);
   }, [toast]);
 
   return (
-    <div className="space-y-8">
-      <div className="space-y-4">
+    <div className="space-y-6">
+      <div className="space-y-3">
         <div>
           <div
             role="heading"
@@ -102,77 +149,148 @@ export function RulesPageClient({
         <PreferencesTabs tabs={PREF_TABS} />
       </div>
 
-      {/* Notifications header + summary */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-4">
-          <div
-            role="heading"
-            aria-level={2}
-            className="text-base md:text-lg font-normal font-sans text-mono-dark"
-          >
-            Notifications
+      {/* Notifications header + summary in flat card */}
+      <section className="border border-[#F0F1F7] divide-y divide-[#F0F1F7] bg-white">
+        <div className="px-4 py-3 flex items-center justify-between gap-4">
+          <div>
+            <div
+              role="heading"
+              aria-level={2}
+              className="text-base md:text-lg font-normal font-sans text-mono-dark"
+            >
+              Notifications
+            </div>
+            <p className="mt-1 text-xs text-mono-medium font-sans">
+              How often we nudge you to review new transactions.
+            </p>
           </div>
           <button
             type="button"
             onClick={() => setNotificationModalOpen(true)}
-            className="rounded-none bg-[#E8EEF5] px-4 py-2 text-sm font-medium font-sans text-mono-dark hover:bg-[#e0e8f3] transition-colors"
+            className="rounded-none bg-[#E8EEF5] px-4 py-2 text-sm font-medium font-sans text-mono-dark hover:opacity-80"
           >
             Manage
           </button>
         </div>
-        <p className="text-sm text-mono-medium font-sans mt-3">
-          {notificationSummary(notificationPreferences)}
-        </p>
-      </section>
-
-      {/* Rules list */}
-      <section>
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <div
-            role="heading"
-            aria-level={2}
-            className="text-base md:text-lg font-normal font-sans text-mono-dark"
-          >
-            Rules
+        <div className="px-4 py-3 text-xs font-sans text-mono-medium">
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <span className="font-semibold text-mono-dark min-w-[110px]">Frequency</span>
+            <span className="truncate">
+              {notificationSummary(notificationPreferences)}
+            </span>
           </div>
         </div>
-        <div className="space-y-3">
+      </section>
+
+      {/* Tax Rates summary under Notifications */}
+      <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
+        <div className="px-4 py-3 flex items-center justify-between gap-4">
+          <div>
+            <div
+              role="heading"
+              aria-level={2}
+              className="text-base md:text-lg font-normal font-sans text-mono-dark"
+            >
+              Tax Rates
+            </div>
+            <p className="mt-1 text-xs text-mono-medium font-sans">
+              Custom marginal rates that override the default 24%.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setTaxError(null);
+              setTaxModalOpen(true);
+            }}
+            className="rounded-none bg-[#E8EEF5] px-4 py-2 text-sm font-medium font-sans text-mono-dark hover:opacity-80"
+          >
+            Edit Rate
+          </button>
+        </div>
+        <div className="px-4 py-3 space-y-3">
+          {taxSettings.length > 0 ? (
+            <div className="space-y-3 text-xs font-sans text-mono-medium">
+              {taxSettings.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex flex-wrap gap-x-4 gap-y-1 border-t border-[#F0F1F7] first:border-t-0 pt-2 first:pt-0"
+                >
+                  <div className="min-w-[110px]">
+                    <span className="font-semibold text-mono-dark">{s.tax_year}</span>
+                  </div>
+                  <div className="flex-1">
+                    <span className="tabular-nums">
+                      {(Number(s.tax_rate) * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-mono-medium font-sans">
+              No custom tax rates yet. Use Edit Rate to add a yearly rate.
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* Rules list in flat card */}
+      <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
+        <div className="px-4 py-3 flex items-center justify-between gap-4">
+          <div>
+            <div
+              role="heading"
+              aria-level={2}
+              className="text-base md:text-lg font-normal font-sans text-mono-dark"
+            >
+              Rules
+            </div>
+            <p className="mt-1 text-xs text-mono-medium font-sans">
+              Saved automations that categorize or exclude transactions.
+            </p>
+          </div>
+        </div>
+        <div className="px-0 py-0">
           {visibleRules.length === 0 ? (
-            <div className="rounded-xl border border-bg-tertiary/40 bg-white p-6 text-center">
-              <p className="text-sm font-medium text-mono-dark">No rules yet</p>
-              <p className="text-sm text-mono-light mt-2 max-w-md mx-auto">
-                Rules automatically categorize or exclude transactions based on vendor or description. For example: when vendor contains &ldquo;AWS&rdquo; → categorize as Software, or when description contains &ldquo;Netflix&rdquo; → exclude from business.
-              </p>
-              <p className="text-sm text-mono-medium mt-3">
+            <div className="px-4 py-4 text-xs font-sans text-mono-medium">
+              <p className="font-semibold text-mono-dark">No rules yet</p>
+              <p className="mt-2">
+                Rules automatically categorize or exclude transactions based on vendor or description.
                 Rules you create elsewhere will appear here automatically.
               </p>
             </div>
           ) : (
-            <div className="border border-[#F0F1F7] divide-y divide-[#F0F1F7]">
+            <div>
               {visibleRules.map((rule) => (
-              <div
-                key={rule.id}
-                className="px-4 py-3 flex items-center justify-between gap-3 bg-white"
-              >
-                <p className="text-xs text-mono-medium font-sans leading-relaxed min-w-0 flex-1">
-                  If {formatConditionSummary(rule.conditions)} → {formatActionSummary(rule.action)}
-                </p>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!confirm("Delete this rule?")) return;
-                    const res = await fetch(`/api/rules?id=${rule.id}`, { method: "DELETE" });
-                    if (res.ok) {
-                      await reload();
-                      setToast("Rule deleted");
-                    }
-                  }}
-                  className="p-1.5 text-mono-light hover:text-red-600 shrink-0 flex items-center justify-center self-center transition-colors duration-500"
-                  aria-label="Delete rule"
+                <div
+                  key={rule.id}
+                  className="px-4 py-3 flex items-center justify-between gap-3"
                 >
-                  <span className="material-symbols-rounded leading-none inline-flex items-center justify-center" style={{ fontSize: 16 }}>delete</span>
-                </button>
-              </div>
+                  <p className="text-xs text-mono-medium font-sans leading-relaxed min-w-0 flex-1">
+                    If {formatConditionSummary(rule.conditions)} → {formatActionSummary(rule.action)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!confirm("Delete this rule?")) return;
+                      const res = await fetch(`/api/rules?id=${rule.id}`, { method: "DELETE" });
+                      if (res.ok) {
+                        await reload();
+                        setToast("Rule deleted");
+                      }
+                    }}
+                    className="p-1.5 text-mono-light hover:text-red-600 shrink-0 flex items-center justify-center self-center transition-colors duration-500"
+                    aria-label="Delete rule"
+                  >
+                    <span
+                      className="material-symbols-rounded leading-none inline-flex items-center justify-center"
+                      style={{ fontSize: 16 }}
+                    >
+                      delete
+                    </span>
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -204,6 +322,92 @@ export function RulesPageClient({
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-lg bg-mono-dark px-4 py-2.5 text-sm text-white shadow-lg z-50">
           {toast}
+        </div>
+      )}
+
+      {/* Tax Rate Modal */}
+      {taxModalOpen && (
+        <div
+          className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-white px-6 pt-6 pb-1 flex items-start">
+              <h2
+                className="text-xl text-mono-dark font-medium"
+                style={{ fontFamily: "var(--font-sans)" }}
+              >
+                Set Tax Rate
+              </h2>
+            </div>
+            <div className="px-6 py-3 space-y-3">
+              <p className="text-xs text-mono-medium">
+                Choose a tax year and set a custom marginal rate. This overrides the default 24% for that year.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-mono-medium mb-1">Year</label>
+                  <select
+                    value={newYear}
+                    onChange={(e) => setNewYear(parseInt(e.target.value, 10))}
+                    className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
+                  >
+                    {[0, 1, 2].map((offset) => {
+                      const y = new Date().getFullYear() - offset;
+                      return (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-mono-medium mb-1">Rate (%)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={newRate}
+                    onChange={(e) => {
+                      setNewRate(e.target.value);
+                      setTaxError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddTaxYear();
+                      }
+                    }}
+                    placeholder="e.g. 24"
+                    className={`w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none tabular-nums ${
+                      taxError ? "border-amber-500" : "border-bg-tertiary/60"
+                    }`}
+                  />
+                  {taxError && <p className="text-xs text-amber-600 mt-1">{taxError}</p>}
+                </div>
+              </div>
+            </div>
+            <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setTaxModalOpen(false)}
+                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAddTaxYear}
+                disabled={savingTax}
+                className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 disabled:opacity-50 transition-colors"
+              >
+                {savingTax ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -269,26 +473,36 @@ function NotificationControlsModal({
 
   return (
     <div className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]" role="dialog" aria-modal="true">
-      <div className="rounded-xl bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
-        <div className="bg-[#2d3748] px-6 pt-6 pb-4 flex justify-between items-start">
-          <h2 className="text-xl font-bold text-white">Notification Controls</h2>
-          <button type="button" onClick={onClose} className="text-white/80 hover:text-white" aria-label="Close">
-            <span className="material-symbols-rounded text-[24px]">close</span>
-          </button>
+      <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
+        <div className="bg-white px-6 pt-6 pb-1 flex items-start">
+          <h2
+            className="text-xl text-mono-dark font-medium"
+            style={{ fontFamily: "var(--font-sans)" }}
+          >
+            Notification Preferences
+          </h2>
         </div>
-        <div className="px-6 py-5 space-y-4">
+        <div className="px-6 py-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => setTab("time")}
-              className={`py-2.5 rounded-lg text-sm font-medium transition ${tab === "time" ? "bg-accent-sage text-white" : "border border-bg-tertiary text-mono-medium hover:bg-bg-secondary"}`}
+              className={`py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border ${
+                tab === "time"
+                  ? "border-[#F0F1F7] bg-[#F0F1F7] text-mono-dark"
+                  : "border-[#F0F1F7] bg-white text-mono-medium hover:bg-[#F0F1F7]"
+              }`}
             >
               Time-Based
             </button>
             <button
               type="button"
               onClick={() => setTab("count")}
-              className={`py-2.5 rounded-lg text-sm font-medium transition ${tab === "count" ? "bg-accent-sage text-white" : "border border-bg-tertiary text-mono-medium hover:bg-bg-secondary"}`}
+              className={`py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border ${
+                tab === "count"
+                  ? "border-[#F0F1F7] bg-[#F0F1F7] text-mono-dark"
+                  : "border-[#F0F1F7] bg-white text-mono-medium hover:bg-[#F0F1F7]"
+              }`}
             >
               Number of Transactions
             </button>
@@ -304,7 +518,11 @@ function NotificationControlsModal({
                     key={v}
                     type="button"
                     onClick={() => setInterval(v)}
-                    className={`rounded-lg px-3 py-2 text-sm font-medium capitalize ${interval === v ? "bg-accent-sage text-white" : "border border-bg-tertiary hover:bg-bg-secondary"}`}
+                    className={`px-3 py-2 text-sm font-medium font-sans capitalize rounded-none border ${
+                      interval === v
+                        ? "border-[#F5F0E8] bg-[#F5F0E8] text-mono-dark"
+                        : "border-[#F5F0E8] bg-white text-mono-medium hover:bg-[#F5F0E8]"
+                    }`}
                   >
                     {v}
                   </button>
@@ -322,7 +540,11 @@ function NotificationControlsModal({
                     key={v}
                     type="button"
                     onClick={() => { setCountValue(v); setCustomCount(""); setCountError(null); }}
-                    className={`rounded-lg px-3 py-2 text-sm font-medium ${countValue === v && !customCount ? "bg-accent-sage text-white" : "border border-bg-tertiary hover:bg-bg-secondary"}`}
+                    className={`px-3 py-2 text-sm font-medium font-sans rounded-none border ${
+                      countValue === v && !customCount
+                        ? "border-[#F5F0E8] bg-[#F5F0E8] text-mono-dark"
+                        : "border-[#F5F0E8] bg-white text-mono-medium hover:bg-[#F5F0E8]"
+                    }`}
                   >
                     Every {v}
                   </button>
@@ -335,20 +557,35 @@ function NotificationControlsModal({
                   min={1}
                   value={customCount}
                   onChange={(e) => { setCustomCount(e.target.value); setCountError(null); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleSave();
+                    }
+                  }}
                   placeholder="e.g. 250"
-                  className={`w-full border rounded-md px-3 py-2 text-sm ${countError ? "border-amber-500" : "border-bg-tertiary"}`}
+                  className={`w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none ${
+                    countError ? "border-amber-500" : "border-bg-tertiary/60"
+                  }`}
                 />
                 {countError && <p className="text-xs text-amber-600 mt-1">{countError}</p>}
               </div>
             </>
           )}
         </div>
-        <div className="px-6 py-4 border-t border-bg-tertiary/40 flex justify-end">
+        <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors"
+          >
+            Cancel
+          </button>
           <button
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-sage/90 disabled:opacity-50"
+            className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 disabled:opacity-50 transition-colors"
           >
             {saving ? "Saving…" : "Save"}
           </button>

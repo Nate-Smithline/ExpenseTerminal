@@ -34,7 +34,6 @@ const PREF_TABS = [
   { href: "/preferences/automations", label: "Automations" },
   { href: "/preferences/profile", label: "Profile" },
   { href: "/preferences/billing", label: "Billing" },
-  { href: "/preferences/org", label: "Org" },
 ] as const;
 
 export function BillingClient({
@@ -184,16 +183,18 @@ export function BillingClient({
   return (
     <div className="space-y-4">
       <div className="space-y-4">
-        <div
-          role="heading"
-          aria-level={1}
-          className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
-        >
-          Billing
+        <div>
+          <div
+            role="heading"
+            aria-level={1}
+            className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
+          >
+            Billing
+          </div>
+          <p className="text-base text-mono-medium mt-1 font-sans">
+            Manage your subscription, invoices, and receipts
+          </p>
         </div>
-        <p className="text-base text-mono-medium mt-1 font-sans">
-          Manage your subscription, invoices, and receipts.
-        </p>
         <PreferencesTabs tabs={PREF_TABS} />
       </div>
 

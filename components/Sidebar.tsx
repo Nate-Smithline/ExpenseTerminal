@@ -10,12 +10,12 @@ const mainNav = [
   { href: "/data-sources", label: "Accounts", icon: "database" },
   { href: "/inbox", label: "Inbox", icon: "visibility" },
   { href: "/tax-details", label: "Tax Details", icon: "receipt_long" },
+  { href: "/other-deductions", label: "Other Deductions", icon: "savings" },
 ];
 
 const bottomNav = [
   { href: "/activity", label: "All Activity", icon: "history" },
   { href: "/preferences/automations", label: "Preferences", icon: "tune" },
-  { href: "/other-deductions", label: "Other Deductions", icon: "calculate" },
 ];
 
 export function Sidebar() {
@@ -81,9 +81,15 @@ export function Sidebar() {
                 : "text-mono-medium hover:text-mono-dark hover:bg-sovereign-blue/10"
             }`}
           >
-            <span className={`material-symbols-rounded text-[22px] leading-none transition-colors ${
-              isActive(item.href) ? "text-sovereign-blue" : ""
-            }`}>
+            <span
+              className={`material-symbols-rounded leading-none transition-colors ${
+                isActive(item.href) ? "text-sovereign-blue" : ""
+              }`}
+              style={{
+                fontSize: 20,
+                fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20",
+              }}
+            >
               {item.icon}
             </span>
             <span className="flex-1">{item.label}</span>
