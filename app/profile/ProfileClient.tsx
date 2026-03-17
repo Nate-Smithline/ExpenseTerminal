@@ -187,8 +187,16 @@ export function ProfileClient({
     <div className="space-y-10">
       <div className="space-y-4">
         <div>
-          <h1 className="text-3xl text-mono-dark">My Account</h1>
-          <p className="text-sm text-mono-medium mt-1">Manage your profile and password</p>
+          <div
+            role="heading"
+            aria-level={1}
+            className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
+          >
+            Profile
+          </div>
+          <p className="text-base text-mono-medium mt-1 font-sans">
+            Manage your profile and password
+          </p>
         </div>
         <PreferencesTabs tabs={PREF_TABS} />
       </div>

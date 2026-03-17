@@ -183,10 +183,17 @@ export function BillingClient({
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+      <div className="space-y-4">
+        <div
+          role="heading"
+          aria-level={1}
+          className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
+        >
           Billing
-        </h1>
+        </div>
+        <p className="text-base text-mono-medium mt-1 font-sans">
+          Manage your subscription, invoices, and receipts.
+        </p>
         <PreferencesTabs tabs={PREF_TABS} />
       </div>
 

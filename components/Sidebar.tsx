@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { useState, useEffect } from "react";
 
 const mainNav = [
@@ -54,8 +55,19 @@ export function Sidebar() {
 
   return (
     <aside className="sticky top-0 h-screen w-[260px] shrink-0 bg-white flex flex-col">
-      {/* Simple header spacing to align with main nav */}
-      <div className="pl-8 pr-5 pt-6 pb-4" />
+      {/* Small XT logo header */}
+      <div className="pl-8 pr-5 pt-6 pb-4">
+        <Link href="/" className="inline-flex items-center">
+          <Image
+            src="/xt-logo-v2.png"
+            alt="XT"
+            width={80}
+            height={32}
+            className="h-8 w-auto object-contain"
+            priority={false}
+          />
+        </Link>
+      </div>
 
       {/* Main nav - block extends to left edge; content stays aligned (pl-8 = 5+3) */}
       <nav className="flex-1 pl-0 pr-5 space-y-1">
@@ -63,7 +75,7 @@ export function Sidebar() {
           <Link
             key={item.href}
             href={item.href}
-            className={`flex items-center gap-3 rounded-none pl-8 pr-3 py-3 text-[14px] font-medium transition-all ${
+            className={`flex items-center gap-3 rounded-none pl-8 pr-3 py-2 text-[13px] font-medium transition-all ${
               isActive(item.href)
                 ? "text-sovereign-blue bg-sovereign-blue/10"
                 : "text-mono-medium hover:text-mono-dark hover:bg-sovereign-blue/10"
