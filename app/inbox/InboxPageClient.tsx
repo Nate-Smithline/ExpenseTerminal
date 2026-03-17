@@ -785,32 +785,34 @@ export function InboxPageClient({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-mono-dark">Inbox</h1>
-        <p className="text-sm text-mono-medium mt-1">
-          {pendingCount} {pendingCount === 1 ? "item" : "items"} to review
-        </p>
-        {pendingCount > 0 && transactions.length === 0 && (
-          <p className="text-xs text-mono-light mt-1">
-            No pending for {selectedYear}. Change the tax year above to see items from other years.
+      <div className="space-y-3">
+        <div>
+          <div
+            role="heading"
+            aria-level={1}
+            className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
+          >
+            Inbox
+          </div>
+          <p className="text-base text-mono-medium mt-1 font-sans">
+            {pendingCount} {pendingCount === 1 ? "item" : "items"} to review
           </p>
-        )}
+          {pendingCount > 0 && transactions.length === 0 && (
+            <p className="text-xs text-mono-light mt-1 font-sans">
+              No pending for {selectedYear}. Change the tax year above to see items from other years.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-6">
         <TaxYearSelector
           value={selectedYear}
           onChange={(y) => setSelectedYear(y)}
           label="Tax year"
           compact={false}
         />
-        <Link
-          href="/data-sources"
-          className="inline-flex items-center justify-center bg-sovereign-blue px-6 py-3 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-sovereign-blue/90 hover:shadow-md"
-        >
-          Get more transactions
-        </Link>
         <button
           onClick={() => setShowShortcuts((v) => !v)}
           type="button"

@@ -9,8 +9,8 @@ const mainNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/data-sources", label: "Accounts", icon: "database" },
   { href: "/inbox", label: "Inbox", icon: "visibility" },
-  { href: "/tax-details", label: "Tax Details", icon: "receipt_long" },
-  { href: "/other-deductions", label: "Other Deductions", icon: "savings" },
+  { href: "/tax-details", label: "Tax Details", icon: "savings" },
+  { href: "/other-deductions", label: "Other Deductions", icon: "receipt_long" },
 ];
 
 const bottomNav = [
@@ -94,8 +94,8 @@ export function Sidebar() {
             </span>
             <span className="flex-1">{item.label}</span>
             {item.href === "/inbox" && inboxCount != null && inboxCount > 0 && (
-              <span className="bg-[#8A9BB0] text-black text-[11px] font-semibold rounded-none px-2 py-0.5 tabular-nums">
-                {inboxCount}
+              <span className="bg-[#2563EB] text-white text-[11px] font-semibold rounded-none px-2 py-0.5 tabular-nums">
+                <span className="relative top-px">{inboxCount}</span>
               </span>
             )}
           </Link>

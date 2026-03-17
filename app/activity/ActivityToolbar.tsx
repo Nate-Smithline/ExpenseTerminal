@@ -212,9 +212,17 @@ export function ActivityToolbar({
   return (
     <div className="space-y-4">
       {/* Header: title + count only */}
-      <div>
-        <h1 className="text-3xl font-bold text-mono-dark">All Activity</h1>
-        <p className="text-[11px] text-mono-light mt-0.5 tracking-wide">{totalCount} transactions</p>
+      <div className="space-y-1.5">
+        <div
+          role="heading"
+          aria-level={1}
+          className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
+        >
+          All Activity
+        </div>
+        <p className="text-sm text-mono-medium mt-1 font-sans">
+          {totalCount} transaction{totalCount === 1 ? "" : "s"}
+        </p>
       </div>
 
       {/* Loading bar when scanning */}

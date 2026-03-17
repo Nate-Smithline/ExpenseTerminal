@@ -12,11 +12,19 @@ export function OtherDeductionsHeader({ taxYear }: OtherDeductionsHeaderProps) {
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <h1 className="text-3xl font-bold text-mono-dark mb-1">Other Deductions</h1>
-        <p className="text-mono-medium text-sm">
-          Calculate and track additional tax deductions outside your regular expenses.
-        </p>
+      <div className="space-y-3">
+        <div>
+          <div
+            role="heading"
+            aria-level={1}
+            className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
+          >
+            Other Deductions
+          </div>
+          <p className="text-base text-mono-medium mt-1 font-sans">
+            Calculate and track additional tax deductions outside your regular expenses.
+          </p>
+        </div>
       </div>
       <TaxYearSelector
         value={taxYear}

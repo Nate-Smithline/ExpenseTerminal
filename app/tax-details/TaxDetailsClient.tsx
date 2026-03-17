@@ -114,10 +114,16 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
   return (
     <div className="space-y-8">
       {/* Page header */}
-      <div className="flex items-start justify-between">
+      <div className="space-y-3">
         <div>
-          <h1 className="text-3xl font-bold text-mono-dark mb-2">Tax Details</h1>
-          <p className="text-mono-medium text-sm">
+          <div
+            role="heading"
+            aria-level={1}
+            className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
+          >
+            Tax Details
+          </div>
+          <p className="text-base text-mono-medium mt-1 font-sans">
             {filingConfig.label} &middot; {filingConfig.forms.join(", ")}
           </p>
         </div>

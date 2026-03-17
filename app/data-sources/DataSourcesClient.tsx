@@ -355,11 +355,19 @@ export function DataSourcesClient({
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-mono-dark">Accounts</h1>
-          <p className="text-sm text-mono-medium mt-1">
-            Accounts you upload transactions from
-          </p>
+        <div className="space-y-3">
+          <div>
+            <div
+              role="heading"
+              aria-level={1}
+              className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
+            >
+              Accounts
+            </div>
+            <p className="text-base text-mono-medium mt-1 font-sans">
+              Accounts you upload transactions from
+            </p>
+          </div>
         </div>
         <button onClick={() => setShowAdd(true)} className="btn-primary">
           <kbd className="kbd-hint kbd-on-primary mr-2.5">a</kbd>
