@@ -36,13 +36,13 @@ function formatActionSummary(a: RuleAction): string {
 }
 
 function notificationSummary(prefs: NotificationPrefs): string {
-  if (!prefs) return "Notifications: Monthly";
+  if (!prefs) return "Monthly";
   if (prefs.type === "interval_based") {
     const v = prefs.value;
     const label = v === "daily" ? "Daily" : v === "weekly" ? "Weekly" : v === "monthly" ? "Monthly" : v === "quarterly" ? "Quarterly" : v;
-    return `Notifications: ${label}`;
+    return label;
   }
-  return `Notifications: Every ${prefs.value} transactions`;
+  return `Every ${prefs.value} transactions`;
 }
 
 interface RulesPageClientProps {
@@ -61,12 +61,6 @@ export function RulesPageClient({
     (r) => typeof r.conditions?.match?.pattern === "string" && r.conditions.match.pattern.trim() !== "",
   );
   const [notificationModalOpen, setNotificationModalOpen] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
-  const [applyScopeOpen, setApplyScopeOpen] = useState(false);
-  const [applyScopeRuleId, setApplyScopeRuleId] = useState<string | null>(null);
-  const [applyScopeMatchCount, setApplyScopeMatchCount] = useState<number | null>(null);
-  const [applyScopeConfirming, setApplyScopeConfirming] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -85,43 +79,51 @@ export function RulesPageClient({
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold text-mono-dark">Rules</h1>
-        <p className="text-sm text-mono-medium mt-1">
+        <div
+          role="heading"
+          aria-level={1}
+          className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
+        >
+          Rules &amp; Notifications
+        </div>
+        <p className="text-base text-mono-medium mt-1 font-sans">
           Set policies to help automate decisions and save even more time.
         </p>
       </div>
 
-      {/* Notification Controls */}
-      <section className="rounded-xl border border-bg-tertiary/40 bg-white p-5">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h2 className="text-sm font-semibold text-mono-dark">Notification Controls</h2>
-            <p className="text-sm text-mono-medium mt-0.5">{notificationSummary(notificationPreferences)}</p>
+      {/* Notifications header + summary */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <div
+            role="heading"
+            aria-level={2}
+            className="text-base md:text-lg font-normal font-sans text-mono-dark"
+          >
+            Notifications
           </div>
           <button
             type="button"
             onClick={() => setNotificationModalOpen(true)}
-            className="rounded-lg border border-bg-tertiary px-4 py-2 text-sm font-medium text-mono-dark hover:bg-bg-secondary transition"
+            className="rounded-none bg-[#E8EEF5] px-4 py-2 text-sm font-medium font-sans text-mono-dark hover:bg-[#e0e8f3] transition-colors"
           >
             Manage
           </button>
         </div>
+        <p className="text-sm text-mono-medium font-sans mt-3">
+          {notificationSummary(notificationPreferences)}
+        </p>
       </section>
 
       {/* Rules list */}
       <section>
         <div className="flex items-center justify-between gap-4 mb-4">
-          <h2 className="text-sm font-semibold text-mono-dark">Rules</h2>
-          <button
-            type="button"
-            onClick={() => {
-              setEditingRuleId(null);
-              setEditorOpen(true);
-            }}
-            className="rounded-lg bg-accent-sage px-4 py-2 text-sm font-medium text-white hover:bg-accent-sage/90 transition"
+          <div
+            role="heading"
+            aria-level={2}
+            className="text-base md:text-lg font-normal font-sans text-mono-dark"
           >
-            New rule
-          </button>
+            Rules
+          </div>
         </div>
         <div className="space-y-3">
           {visibleRules.length === 0 ? (
@@ -130,74 +132,38 @@ export function RulesPageClient({
               <p className="text-sm text-mono-light mt-2 max-w-md mx-auto">
                 Rules automatically categorize or exclude transactions based on vendor or description. For example: when vendor contains &ldquo;AWS&rdquo; → categorize as Software, or when description contains &ldquo;Netflix&rdquo; → exclude from business.
               </p>
-              <p className="text-sm text-mono-medium mt-3">Create your first rule to get started.</p>
-              <button
-                type="button"
-                onClick={() => { setEditingRuleId(null); setEditorOpen(true); }}
-                className="mt-4 rounded-lg bg-accent-sage px-4 py-2 text-sm font-medium text-white hover:bg-accent-sage/90 transition"
-              >
-                New rule
-              </button>
+              <p className="text-sm text-mono-medium mt-3">
+                Rules you create elsewhere will appear here automatically.
+              </p>
             </div>
           ) : (
-            visibleRules.map((rule) => (
+            <div className="border border-[#F0F1F7] divide-y divide-[#F0F1F7]">
+              {visibleRules.map((rule) => (
               <div
                 key={rule.id}
-                className="rounded-xl border border-bg-tertiary/40 bg-white p-4 flex flex-wrap items-start justify-between gap-3"
+                className="px-4 py-3 flex items-center justify-between gap-3 bg-white"
               >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-mono-dark">{rule.name || "Unnamed rule"}</span>
-                    {!rule.enabled && (
-                      <span className="text-xs text-mono-light bg-bg-tertiary/50 px-2 py-0.5 rounded">Disabled</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-mono-medium mt-1">
-                    If {formatConditionSummary(rule.conditions)} → {formatActionSummary(rule.action)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const res = await fetch("/api/rules", {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ id: rule.id, enabled: !rule.enabled }),
-                      });
-                      if (res.ok) await reload();
-                    }}
-                    className="text-xs text-mono-medium hover:text-mono-dark"
-                  >
-                    {rule.enabled ? "Disable" : "Enable"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingRuleId(rule.id);
-                      setEditorOpen(true);
-                    }}
-                    className="text-xs text-accent-sage hover:underline"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!confirm("Delete this rule?")) return;
-                      const res = await fetch(`/api/rules?id=${rule.id}`, { method: "DELETE" });
-                      if (res.ok) {
-                        await reload();
-                        setToast("Rule deleted");
-                      }
-                    }}
-                    className="text-xs text-red-600 hover:underline"
-                  >
-                    Delete
-                  </button>
-                </div>
+                <p className="text-xs text-mono-medium font-sans leading-relaxed min-w-0 flex-1">
+                  If {formatConditionSummary(rule.conditions)} → {formatActionSummary(rule.action)}
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!confirm("Delete this rule?")) return;
+                    const res = await fetch(`/api/rules?id=${rule.id}`, { method: "DELETE" });
+                    if (res.ok) {
+                      await reload();
+                      setToast("Rule deleted");
+                    }
+                  }}
+                  className="p-1.5 text-mono-light hover:text-red-600 shrink-0 flex items-center justify-center self-center transition-colors duration-500"
+                  aria-label="Delete rule"
+                >
+                  <span className="material-symbols-rounded leading-none inline-flex items-center justify-center" style={{ fontSize: 16 }}>delete</span>
+                </button>
               </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
       </section>
@@ -221,93 +187,6 @@ export function RulesPageClient({
               setToast(data?.error ?? "Failed to save notification preference");
             }
           }}
-        />
-      )}
-
-      {editorOpen && (
-        <RuleEditorModal
-          rule={editingRuleId ? rules.find((r) => r.id === editingRuleId) ?? null : null}
-          onClose={() => {
-            setEditorOpen(false);
-            setEditingRuleId(null);
-          }}
-          onSave={async (payload) => {
-            if (editingRuleId) {
-              const res = await fetch("/api/rules", {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id: editingRuleId, ...payload }),
-              });
-              if (res.ok) {
-                await reload();
-                setEditorOpen(false);
-                setEditingRuleId(null);
-                setApplyScopeRuleId(editingRuleId);
-                setApplyScopeOpen(true);
-              }
-            } else {
-              const res = await fetch("/api/rules", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-              });
-              if (res.ok) {
-                const data = await res.json();
-                await reload();
-                setEditorOpen(false);
-                if (data.rule?.id) {
-                  setApplyScopeRuleId(data.rule.id);
-                  setApplyScopeOpen(true);
-                }
-              }
-            }
-          }}
-        />
-      )}
-
-      {applyScopeOpen && applyScopeRuleId && (
-        <ApplyScopeModal
-          ruleId={applyScopeRuleId}
-          matchCount={applyScopeMatchCount}
-          onClose={() => {
-            setApplyScopeOpen(false);
-            setApplyScopeRuleId(null);
-            setApplyScopeMatchCount(null);
-            setApplyScopeConfirming(false);
-          }}
-          onGoingForward={() => {
-            setApplyScopeOpen(false);
-            setApplyScopeRuleId(null);
-            setToast("Rule will apply to new transactions only");
-          }}
-          onRetroactivePreview={async () => {
-            const res = await fetch("/api/rules/apply", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ruleId: applyScopeRuleId, preview: true }),
-            });
-            if (res.ok) {
-              const data = await res.json();
-              setApplyScopeMatchCount(data.matchCount ?? 0);
-            }
-          }}
-          onRetroactiveConfirm={async () => {
-            setApplyScopeConfirming(true);
-            const res = await fetch("/api/rules/apply", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ruleId: applyScopeRuleId, preview: false }),
-            });
-            setApplyScopeConfirming(false);
-            if (res.ok) {
-              const data = await res.json();
-              setToast(`Applied to ${(data.updatedCount ?? 0) + (data.deletedCount ?? 0)} transactions`);
-              setApplyScopeOpen(false);
-              setApplyScopeRuleId(null);
-              setApplyScopeMatchCount(null);
-            }
-          }}
-          confirming={applyScopeConfirming}
         />
       )}
 
@@ -462,256 +341,6 @@ function NotificationControlsModal({
           >
             {saving ? "Saving…" : "Save"}
           </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RuleEditorModal({
-  rule,
-  onClose,
-  onSave,
-}: {
-  rule: NormalizedRule | null;
-  onClose: () => void;
-  onSave: (payload: { name?: string | null; conditions: RuleConditions; action: RuleAction }) => Promise<void>;
-}) {
-  const [name, setName] = useState(rule?.name ?? "");
-  const [pattern, setPattern] = useState(rule?.conditions.match.pattern ?? "");
-  const [sourceFilter, setSourceFilter] = useState<string>(rule?.conditions.source ?? "");
-  const [actionType, setActionType] = useState<"auto_categorize" | "exclude">(rule?.action.type === "exclude" ? "exclude" : "auto_categorize");
-  const [category, setCategory] = useState(rule?.action.type === "auto_categorize" ? (rule.action.category ?? "") : "");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const handleSave = async () => {
-    if (!pattern.trim()) return;
-    setSaving(true);
-    try {
-      await onSave({
-        name: name.trim() || null,
-        conditions: {
-          match: { field: "vendor_or_description", pattern: pattern.trim() },
-          source: sourceFilter === "" ? null : (sourceFilter as "data_feed" | "csv_upload" | "manual"),
-        },
-        action:
-          actionType === "exclude"
-            ? { type: "exclude" }
-            : { type: "auto_categorize", category: category || null },
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]" role="dialog" aria-modal="true">
-      <div className="rounded-xl bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden max-h-[90vh] overflow-y-auto">
-        <div className="bg-[#2d3748] px-6 pt-6 pb-4 flex justify-between items-start">
-          <h2 className="text-xl font-bold text-white">{rule ? "Edit rule" : "New rule"}</h2>
-          <button type="button" onClick={onClose} className="text-white/80 hover:text-white" aria-label="Close">
-            <span className="material-symbols-rounded text-[24px]">close</span>
-          </button>
-        </div>
-        <div className="px-6 py-5 space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-mono-medium mb-1">Name (optional)</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Uber to Travel"
-              className="w-full border border-bg-tertiary rounded-md px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-mono-medium mb-1">Merchant / description contains</label>
-            <input
-              type="text"
-              value={pattern}
-              onChange={(e) => setPattern(e.target.value)}
-              placeholder="e.g. UBER"
-              className="w-full border border-bg-tertiary rounded-md px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-mono-medium mb-1">Data source (optional)</label>
-            <select
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value)}
-              className="w-full border border-bg-tertiary rounded-md px-3 py-2 text-sm"
-            >
-              <option value="">Any</option>
-              <option value="data_feed">Stripe</option>
-              <option value="csv_upload">CSV</option>
-              <option value="manual">Manual</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-mono-medium mb-2">Action</label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="radio" checked={actionType === "auto_categorize"} onChange={() => setActionType("auto_categorize")} />
-                <span className="text-sm">Auto-categorize</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="radio" checked={actionType === "exclude"} onChange={() => setActionType("exclude")} />
-                <span className="text-sm">Exclude (delete)</span>
-              </label>
-            </div>
-            {actionType === "auto_categorize" && (
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="mt-2 w-full border border-bg-tertiary rounded-md px-3 py-2 text-sm"
-              >
-                <option value="">—</option>
-                {SCHEDULE_C_LINES.map((l) => (
-                  <option key={l.line} value={l.label}>
-                    {l.label}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        </div>
-        <div className="px-6 py-4 border-t border-bg-tertiary/40 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg border border-bg-tertiary px-4 py-2 text-sm font-medium">
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || !pattern.trim()}
-            className="rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-sage/90 disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save rule"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ApplyScopeModal({
-  ruleId,
-  matchCount,
-  onClose,
-  onGoingForward,
-  onRetroactivePreview,
-  onRetroactiveConfirm,
-  confirming,
-}: {
-  ruleId: string;
-  matchCount: number | null;
-  onClose: () => void;
-  onGoingForward: () => void;
-  onRetroactivePreview: () => Promise<void>;
-  onRetroactiveConfirm: () => Promise<void>;
-  confirming: boolean;
-}) {
-  const [retroactiveStep, setRetroactiveStep] = useState<"choose" | "preview" | "confirm">("choose");
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-      if (e.key === "g") onGoingForward();
-      if (e.key === "r" && retroactiveStep === "choose") onRetroactivePreview();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, onGoingForward, onRetroactivePreview, retroactiveStep]);
-
-  const showPreview = retroactiveStep === "preview";
-  const showConfirm = retroactiveStep === "confirm";
-  const previewLoading = showPreview && matchCount == null;
-
-  return (
-    <div className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]" role="dialog" aria-modal="true">
-      <div className="rounded-xl bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
-        <div className="bg-[#2d3748] px-6 pt-6 pb-4 flex justify-between items-start">
-          <h2 className="text-xl font-bold text-white">Apply rule</h2>
-          <button type="button" onClick={onClose} className="text-white/80 hover:underline" aria-label="Close">
-            <span className="material-symbols-rounded text-[24px]">close</span>
-          </button>
-        </div>
-        <div className="px-6 py-5 space-y-4">
-          {!showPreview && !showConfirm && (
-            <>
-              <p className="text-sm text-mono-medium">Apply this rule going forward only, or to all existing matching transactions?</p>
-              <div className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={onGoingForward}
-                  className="w-full rounded-lg border border-bg-tertiary py-2.5 text-sm font-medium hover:bg-bg-secondary flex items-center justify-between px-4"
-                >
-                  Apply going forward only
-                  <kbd className="kbd-hint text-xs">g</kbd>
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await onRetroactivePreview();
-                    setRetroactiveStep("preview");
-                  }}
-                  className="w-full rounded-lg border border-bg-tertiary py-2.5 text-sm font-medium hover:bg-bg-secondary flex items-center justify-between px-4"
-                >
-                  Apply retroactively to all matching
-                  <kbd className="kbd-hint text-xs">r</kbd>
-                </button>
-              </div>
-            </>
-          )}
-          {showPreview && !showConfirm && (
-            <>
-              {previewLoading ? (
-                <p className="text-sm text-mono-medium">Loading…</p>
-              ) : (
-                <p className="text-sm text-mono-medium">
-                  This will affect <strong>{matchCount ?? 0}</strong> transaction{(matchCount ?? 0) !== 1 ? "s" : ""}.
-                </p>
-              )}
-              {!previewLoading && (matchCount ?? 0) >= 100 && (
-                <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
-                  This is a large batch. Confirm to apply.
-                </p>
-              )}
-              <div className="flex gap-2">
-                <button type="button" onClick={onClose} className="rounded-lg border border-bg-tertiary px-4 py-2 text-sm font-medium">
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRetroactiveStep("confirm")}
-                  disabled={previewLoading}
-                  className="rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-sage/90 disabled:opacity-50"
-                >
-                  Confirm
-                </button>
-              </div>
-            </>
-          )}
-          {showConfirm && (
-            <>
-              <p className="text-sm text-mono-medium">Applying rule to {matchCount} transactions…</p>
-              <button
-                type="button"
-                onClick={onRetroactiveConfirm}
-                disabled={confirming}
-                className="w-full rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-sage/90 disabled:opacity-50"
-              >
-                {confirming ? "Applying…" : "Apply now"}
-              </button>
-            </>
-          )}
         </div>
       </div>
     </div>

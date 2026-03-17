@@ -7,6 +7,7 @@
   --color-bg-tertiary: #e8e2dc;
   --color-cool-stock: #F0F1F7;
   --color-frost: #E8EEF5;
+  --color-warm-stock: #F5F0E8;
 
   --color-accent-sage: #3f5147;
   --color-accent-navy: #435763;
@@ -296,6 +297,19 @@ kbd {
   border: 1px solid white;
   background: transparent;
   color: white;
+}
+.kbd-frost {
+  background: var(--color-frost);
+  border-color: transparent;
+  border-radius: 0;
+  color: black;
+  opacity: 1;
+}
+
+.kbd-warm {
+  background: var(--color-warm-stock);
+  border-color: transparent;
+  border-radius: 0;
 }
 
 /* ---- Page headings — display font with generous spacing ---- */

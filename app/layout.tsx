@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import { Marcellus } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "../components/AppShell";
+import { baseMarketingMetadata } from "../components/SeoJsonLd";
 
 const satoshi = localFont({
   src: [
@@ -26,8 +27,7 @@ const marcellus = Marcellus({
 });
 
 export const metadata: Metadata = {
-  title: "ExpenseTerminal — Business Deduction Tracker",
-  description: "Inbox-first tax deduction tracker for small businesses",
+  ...baseMarketingMetadata,
   icons: {
     icon: [
       { url: "/xt-icon.png", type: "image/png", sizes: "32x32" },

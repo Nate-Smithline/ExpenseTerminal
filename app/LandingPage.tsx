@@ -189,7 +189,7 @@ export function LandingPage() {
       {/* Navbar */}
       <LandingHeader />
 
-      {/* Hero */}
+      {/* Hero — main AEO/SEO summary */}
       <section
         className="relative overflow-hidden min-h-[calc(100vh-64px)] flex items-center"
         style={{
@@ -200,10 +200,11 @@ export function LandingPage() {
         <div className="absolute inset-0 bg-black/45" />
         <div className="relative px-4 md:px-16 py-24 md:py-40 max-w-5xl mx-auto text-center">
           <h1 className="font-display text-4xl md:text-6xl text-white leading-tight tracking-tight mb-6">
-            Keep more of what<br />you&rsquo;ve earned
+            AI-powered expense tracking for self‑employed tax deductions
           </h1>
           <p className="text-lg md:text-xl text-white/70 max-w-2xl mx-auto mb-10 leading-relaxed">
-            AI-powered itemized deductions, recommendations, automation for peace of mind and maximized savings
+            ExpenseTerminal helps self-employed professionals and small businesses categorize transactions, track
+            write-offs, and prepare audit-ready reports so you keep more of what you earn at tax time.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <Link
@@ -250,7 +251,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing */}
+      {/* Pricing teaser with internal link */}
       <section className="px-8 md:px-16 py-20 bg-white">
         <div className="max-w-5xl mx-auto">
           <div className="mb-8 text-center md:text-left">
@@ -278,7 +279,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* About / Mission */}
+      {/* About / Overview for answer engines */}
       <section className="px-8 md:px-16 py-24 md:py-32" style={{ background: "#F0F1F7" }}>
         <div className="max-w-2xl mx-auto text-center">
           <h2 className="font-display text-3xl md:text-4xl text-mono-dark mb-6">
@@ -292,12 +293,20 @@ export function LandingPage() {
             ExpenseTerminal uses AI-powered categorization, smart labeling, and deduction tracking to help you maximize
             write-offs, stay on top of your finances, and finally feel in control of your money.
           </p>
-          <Link
-            href="/signup"
-            className="inline-flex items-center justify-center bg-[#2563EB] px-6 py-3 text-sm font-medium text-white rounded-none transition-all hover:bg-[#1D4ED8] hover:shadow-md"
-          >
-            Start Tracking for Free
-          </Link>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
+            <Link
+              href="/signup"
+              className="inline-flex items-center justify-center bg-[#2563EB] px-6 py-3 text-sm font-medium text-white rounded-none transition-all hover:bg-[#1D4ED8] hover:shadow-md"
+            >
+              Start Tracking for Free
+            </Link>
+            <Link
+              href="/pricing"
+              className="inline-flex items-center justify-center border border-[#0D1F35]/20 bg-white text-sm font-medium text-mono-dark px-6 py-3 rounded-none hover:bg-white/80 transition-all"
+            >
+              View pricing
+            </Link>
+          </div>
         </div>
       </section>
 

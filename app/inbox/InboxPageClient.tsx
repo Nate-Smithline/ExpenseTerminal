@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
 import type { Database } from "@/lib/types/database";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { getPlanDefinition } from "@/lib/billing/plans";
@@ -696,9 +697,12 @@ export function InboxPageClient({
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
+      const key = e.key;
+      const keyLower = key.toLowerCase();
+
       const activeCard = transactions[activeIdx] ? cardRefs.current.get(transactions[activeIdx].id) : null;
 
-      switch (e.key) {
+      switch (keyLower) {
         case "j":
           e.preventDefault();
           setActiveIdx((prev) => Math.min(prev + 1, transactions.length - 1));
@@ -709,7 +713,7 @@ export function InboxPageClient({
           break;
         case "1": case "2": case "3": case "4":
           e.preventDefault();
-          activeCard?.selectLabel(Number(e.key) - 1);
+          activeCard?.selectLabel(Number(key) - 1);
           break;
         case "p":
           e.preventDefault();
@@ -745,12 +749,12 @@ export function InboxPageClient({
           e.preventDefault();
           if (unanalyzedCount > 0 && !bulkAnalyzing) runBulkAnalyze();
           break;
-        case "Enter":
+        case "enter":
           e.preventDefault();
           activeCard?.expand();
           break;
-        case "Backspace":
-        case "Delete":
+        case "backspace":
+        case "delete":
           e.preventDefault();
           activeCard?.deleteTransaction();
           break;
@@ -758,7 +762,7 @@ export function InboxPageClient({
           e.preventDefault();
           setShowShortcuts((v) => !v);
           break;
-        case "Escape":
+        case "escape":
           if (manageTx) {
             setManageTx(null);
           } else {
@@ -801,20 +805,19 @@ export function InboxPageClient({
           label="Tax year"
           compact={false}
         />
-        <button
-          onClick={() => setUploadOpen(true)}
-          className="btn-primary"
+        <Link
+          href="/data-sources"
+          className="inline-flex items-center justify-center bg-sovereign-blue px-6 py-3 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-sovereign-blue/90 hover:shadow-md"
         >
-          Upload CSV
-          <kbd className="kbd-hint ml-1.5">u</kbd>
-        </button>
+          Get more transactions
+        </Link>
         <button
           onClick={() => setShowShortcuts((v) => !v)}
           type="button"
           className="inline-flex items-center text-sm text-mono-medium hover:text-mono-dark"
           title="Keyboard shortcuts"
         >
-          <kbd className="kbd-hint mr-1.5">?</kbd> Shortcuts
+          <kbd className="kbd-hint kbd-warm mr-1.5">?</kbd> Shortcuts
         </button>
       </div>
 

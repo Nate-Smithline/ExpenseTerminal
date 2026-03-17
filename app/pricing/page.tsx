@@ -1,4 +1,15 @@
+import { Metadata } from "next";
 import { PricingPlansGrid } from "@/components/PricingPlansGrid";
+import { FaqJsonLd } from "@/components/SeoJsonLd";
+
+export const metadata: Metadata = {
+  title: "ExpenseTerminal pricing — AI expense tracking for self‑employed tax deductions",
+  description:
+    "Compare ExpenseTerminal Trial and Pro plans for AI-powered expense tracking and tax deductions for self-employed professionals and small businesses.",
+  alternates: {
+    canonical: "https://expenseterminal.com/pricing",
+  },
+};
 
 const FEATURE_SECTIONS = [
   {
@@ -54,16 +65,29 @@ const FEATURE_SECTIONS = [
 ] as const;
 
 export default function PricingPage() {
-
   return (
     <div className="px-4 md:px-8 py-10 md:py-14">
+      <FaqJsonLd
+        items={[
+          {
+            question: "How much does ExpenseTerminal cost?",
+            answer:
+              "ExpenseTerminal offers a Trial plan so you can start tracking deductions with limited volume, and a Pro plan for ongoing AI-powered expense tracking and deeper automations. Pricing is designed for self-employed professionals and small businesses that want to maximize tax deductions.",
+          },
+          {
+            question: "What is the difference between the Trial and Pro plans?",
+            answer:
+              "The Trial plan lets you upload and review a limited number of CSV transactions so you can see how ExpenseTerminal fits your workflow. The Pro plan unlocks unlimited AI-reviewed transactions, bank connections, advanced deduction workflows, and higher-touch support.",
+          },
+        ]}
+      />
       <div className="max-w-5xl mx-auto">
         <h1 className="font-display text-3xl md:text-4xl text-[#0D1F35] mb-3">
-          Pricing
+          ExpenseTerminal pricing for self‑employed tax deductions
         </h1>
         <p className="text-sm text-mono-medium mb-8 max-w-xl">
           Start on the Trial plan, then move into Pro when you&apos;re ready to run all your
-          deductions through ExpenseTerminal.
+          deductions and year-round expense tracking through ExpenseTerminal.
         </p>
         <PricingPlansGrid />
 

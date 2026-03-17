@@ -59,12 +59,12 @@ export function TaxYearSelector({
         aria-expanded={open}
         aria-label={`${label}: ${value}. Click to change.`}
         className={`
-          inline-flex items-center gap-2 border bg-white transition-all
-          hover:border-accent-sage/40 hover:shadow-sm
+          inline-flex items-center gap-2 bg-frost transition-all
+          hover:shadow-sm
           focus:outline-none focus:ring-2 focus:ring-accent-sage/30 focus:ring-offset-1
-          ${pill ? "rounded-full px-6 py-3 text-sm font-medium" : "rounded-xl"}
+          ${pill ? "rounded-full px-6 py-3 text-sm font-medium" : "rounded-none"}
           ${!pill && (compact ? "px-4 py-1.5 text-xs" : "px-4 py-2.5 text-base font-medium")}
-          ${open ? "border-accent-sage/50 shadow-md ring-2 ring-accent-sage/20" : "border-bg-tertiary/60"}
+          ${open ? "shadow-md ring-2 ring-accent-sage/20" : ""}
         `}
       >
         <span className="text-mono-dark tabular-nums">{value}</span>
@@ -80,7 +80,7 @@ export function TaxYearSelector({
         <div
           role="listbox"
           aria-label={label}
-          className="absolute left-0 top-full z-50 mt-1.5 min-w-[6rem] overflow-hidden rounded-xl border border-bg-tertiary/60 bg-white py-1 shadow-lg animate-in fade-in slide-in-from-top-1 duration-150"
+          className="absolute left-0 top-full z-50 mt-1.5 min-w-[6rem] overflow-hidden rounded-none border border-[#8A9BB0]/50 bg-white py-1 shadow-lg animate-in fade-in slide-in-from-top-1 duration-150"
         >
           {YEAR_OPTIONS.map((year) => {
             const isSelected = value === year;
@@ -94,12 +94,21 @@ export function TaxYearSelector({
                 onClick={() => handleSelect(year)}
                 className={`
                   flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm transition-colors
-                  ${isSelected ? "bg-accent-sage/12 text-accent-sage font-medium" : "text-mono-dark hover:bg-bg-secondary/80"}
+                  ${
+                    isSelected
+                      ? "bg-frost text-sovereign-blue font-medium"
+                      : "text-mono-dark hover:bg-frost"
+                  }
                 `}
               >
                 <span className="tabular-nums">{year}</span>
                 {isSelected && (
-                  <span className="material-symbols-rounded text-[18px]">check</span>
+                  <span
+                    className="material-symbols-rounded text-sovereign-blue leading-none"
+                    style={{ fontSize: "14px", lineHeight: "14px" }}
+                  >
+                    check
+                  </span>
                 )}
                 {isFuture && !isSelected && (
                   <span className="text-[10px] uppercase tracking-wide text-mono-light">Upcoming</span>
