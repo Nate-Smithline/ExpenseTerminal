@@ -24,7 +24,8 @@ export async function GET(req: Request) {
   }
   const supabase = authClient;
 
-  const cols = "id,user_id,business_name,ein,business_address,filing_type,created_at,updated_at";
+  const cols =
+    "id,user_id,business_name,ein,business_address,business_address_line1,business_address_line2,business_city,business_state,business_zip,filing_type,created_at,updated_at";
   const { data, error } = await (supabase as any)
     .from("org_settings")
     .select(cols)
@@ -68,6 +69,11 @@ export async function PUT(req: Request) {
     business_name?: string;
     ein?: string;
     business_address?: string;
+    business_address_line1?: string;
+    business_address_line2?: string;
+    business_city?: string;
+    business_state?: string;
+    business_zip?: string;
     filing_type?: string;
   };
   try {
@@ -78,7 +84,8 @@ export async function PUT(req: Request) {
     });
   }
 
-  const cols = "id,user_id,business_name,ein,business_address,filing_type,created_at,updated_at";
+  const cols =
+    "id,user_id,business_name,ein,business_address,business_address_line1,business_address_line2,business_city,business_state,business_zip,filing_type,created_at,updated_at";
   const { data, error } = await (supabase as any)
     .from("org_settings")
     .upsert({
@@ -86,6 +93,11 @@ export async function PUT(req: Request) {
       business_name: body.business_name ?? null,
       ein: body.ein ?? null,
       business_address: body.business_address ?? null,
+      business_address_line1: body.business_address_line1 ?? null,
+      business_address_line2: body.business_address_line2 ?? null,
+      business_city: body.business_city ?? null,
+      business_state: body.business_state ?? null,
+      business_zip: body.business_zip ?? null,
       filing_type: body.filing_type ?? null,
       updated_at: new Date().toISOString(),
     }, { onConflict: "user_id" })

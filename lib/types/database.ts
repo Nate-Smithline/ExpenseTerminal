@@ -23,6 +23,7 @@ export interface Database {
           notification_group: boolean;
           onboarding_progress: Json | null;
           terms_accepted_at: string | null;
+          password_changed_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -39,6 +40,7 @@ export interface Database {
           notification_group?: boolean;
           onboarding_progress?: Json | null;
           terms_accepted_at?: string | null;
+          password_changed_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -272,6 +274,11 @@ export interface Database {
           business_name: string | null;
           ein: string | null;
           business_address: string | null;
+          business_address_line1: string | null;
+          business_address_line2: string | null;
+          business_city: string | null;
+          business_state: string | null;
+          business_zip: string | null;
           filing_type: string | null;
           created_at: string;
           updated_at: string;
@@ -282,6 +289,11 @@ export interface Database {
           business_name?: string | null;
           ein?: string | null;
           business_address?: string | null;
+          business_address_line1?: string | null;
+          business_address_line2?: string | null;
+          business_city?: string | null;
+          business_state?: string | null;
+          business_zip?: string | null;
           filing_type?: string | null;
           created_at?: string;
           updated_at?: string;

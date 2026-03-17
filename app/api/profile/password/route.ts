@@ -68,5 +68,16 @@ export async function POST(req: Request) {
     return Response.json({ error: safeErrorMessage(error.message, "Failed to update password") }, { status: 500 });
   }
 
+  // Record password change timestamp on profile
+  const { error: profileError } = await (authClient as any)
+    .from("profiles")
+    .update({ password_changed_at: new Date().toISOString() })
+    .eq("id", userId);
+
+  if (profileError) {
+    // Don't block password change on this, but surface a generic warning
+    return Response.json({ ok: true, warning: "Password changed, but could not record timestamp." });
+  }
+
   return Response.json({ ok: true });
 }

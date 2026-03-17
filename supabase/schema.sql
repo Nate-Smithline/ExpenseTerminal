@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   notification_group BOOLEAN DEFAULT false,
   onboarding_progress JSONB DEFAULT '{}',
   terms_accepted_at TIMESTAMPTZ,
+  password_changed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -36,6 +37,7 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS notification_email_updates BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS notification_group BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS onboarding_progress JSONB DEFAULT '{}';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
@@ -219,10 +221,22 @@ CREATE TABLE IF NOT EXISTS public.org_settings (
   business_name TEXT,
   ein TEXT,
   business_address TEXT,
+  business_address_line1 TEXT,
+  business_address_line2 TEXT,
+  business_city TEXT,
+  business_state TEXT,
+  business_zip TEXT,
   filing_type TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Backwards-compatible column adds for existing databases
+ALTER TABLE public.org_settings ADD COLUMN IF NOT EXISTS business_address_line1 TEXT;
+ALTER TABLE public.org_settings ADD COLUMN IF NOT EXISTS business_address_line2 TEXT;
+ALTER TABLE public.org_settings ADD COLUMN IF NOT EXISTS business_city TEXT;
+ALTER TABLE public.org_settings ADD COLUMN IF NOT EXISTS business_state TEXT;
+ALTER TABLE public.org_settings ADD COLUMN IF NOT EXISTS business_zip TEXT;
 
 -- Tax year settings (per-year tax rate)
 CREATE TABLE IF NOT EXISTS public.tax_year_settings (

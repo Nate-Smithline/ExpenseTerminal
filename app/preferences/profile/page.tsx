@@ -12,11 +12,11 @@ export default async function PreferencesProfilePage() {
 
   const supabase = authClient as any;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .single();
+              const { data: profile } = await supabase
+                .from("profiles")
+                .select("*")
+                .eq("id", userId)
+                .single();
 
   type OrgSettings = Database["public"]["Tables"]["org_settings"]["Row"];
   const { data: orgData } = await supabase

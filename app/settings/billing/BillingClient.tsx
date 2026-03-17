@@ -180,9 +180,12 @@ export function BillingClient({
     );
   }
 
+  const isPro = usage?.plan === "plus" || usage?.plan === "starter";
+  const isFreeUi = !isPro;
+
   return (
-    <div className="space-y-4">
-      <div className="space-y-4">
+    <div className="space-y-6">
+      <div className="space-y-3">
         <div>
           <div
             role="heading"
@@ -212,97 +215,148 @@ export function BillingClient({
         <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
       )}
 
-      <div className="mt-6 space-y-4">
-        <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
-          <p className="font-medium text-neutral-900 dark:text-neutral-100">
+      {/* Current plan summary in flat card */}
+      <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
+        <div className="px-4 py-3">
+          <div
+            role="heading"
+            aria-level={2}
+            className="text-base md:text-lg font-normal font-sans text-mono-dark"
+          >
             Current plan
+          </div>
+          <p className="mt-1 text-xs text-mono-medium font-sans">
+            Your active subscription and renewal dates.
           </p>
-          <p className="text-neutral-600 dark:text-neutral-400 capitalize">
-            {usage?.plan === "plus" || usage?.plan === "starter" ? "Pro" : usage?.plan ?? "—"}
-            {usage?.subscriptionStatus && usage.plan !== "free" ? ` (${usage.subscriptionStatus})` : ""}
-          </p>
+        </div>
+        <div className="px-4 py-3 space-y-2 text-xs font-sans text-mono-medium">
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <span className="font-semibold text-mono-dark min-w-[110px]">Plan</span>
+            <span className="capitalize">
+              {isFreeUi ? "Free plan" : isPro ? "Pro" : usage?.plan ?? "—"}
+              {usage?.subscriptionStatus && usage.plan !== "free" ? ` (${usage.subscriptionStatus})` : ""}
+            </span>
+          </div>
+          {!isFreeUi && usage?.currentPeriodEnd && (usage.plan === "starter" || usage.plan === "plus") && !usage?.cancelAtPeriodEnd && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span className="font-semibold text-mono-dark min-w-[110px]">Next payment</span>
+              <span>
+                {formatNextPayment(usage.currentPeriodEnd) ?? usage.currentPeriodEnd}
+              </span>
+            </div>
+          )}
+          {!isFreeUi && usage?.cancelAtPeriodEnd && (usage.plan === "starter" || usage.plan === "plus") && usage?.currentPeriodEnd && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span className="font-semibold text-mono-dark min-w-[110px]">Ends</span>
+              <span>
+                {formatNextPayment(usage.currentPeriodEnd) ?? usage.currentPeriodEnd} — then you’ll switch to Free.
+              </span>
+            </div>
+          )}
           {usage?.subscriptionStatus === "canceled" && (
-            <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
+            <p className="text-xs text-mono-medium">
               No longer recurring — you’re on the Free plan.
             </p>
           )}
-          {usage?.cancelAtPeriodEnd && (usage.plan === "starter" || usage.plan === "plus") && usage?.currentPeriodEnd && (
-            <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
-              No longer recurring. Access until {formatNextPayment(usage.currentPeriodEnd) ?? usage.currentPeriodEnd} — then you’ll switch to Free.
-            </p>
-          )}
-          {usage?.currentPeriodEnd && (usage.plan === "starter" || usage.plan === "plus") && !usage?.cancelAtPeriodEnd && (
-            <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
-              Next payment: {formatNextPayment(usage.currentPeriodEnd) ?? usage.currentPeriodEnd}
-            </p>
-          )}
         </div>
+      </section>
 
-        {usage && (usage.plan === "starter" || usage.plan === "plus") && (
-          <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
-            <p className="font-medium text-neutral-900 dark:text-neutral-100">
+      {/* Subscription management in flat card */}
+      {usage && isPro && (
+        <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
+          <div className="px-4 py-3">
+            <div
+              role="heading"
+              aria-level={2}
+              className="text-base md:text-lg font-normal font-sans text-mono-dark"
+            >
               Subscription
-            </p>
-            <p className="text-neutral-600 dark:text-neutral-400 text-sm mb-3">
+            </div>
+            <p className="mt-1 text-xs text-mono-medium font-sans">
               Cancel or change your plan. You’ll keep access until the end of your billing period, then switch to Free.
             </p>
+          </div>
+          <div className="px-4 py-3">
             <button
               type="button"
               onClick={openPortal}
               disabled={portalLoading}
-              className="px-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md text-sm font-medium hover:bg-neutral-50 dark:hover:bg-neutral-800 disabled:opacity-50"
+              className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 disabled:opacity-50 transition-colors"
             >
               {portalLoading ? "Opening…" : "Manage subscription / Downgrade"}
             </button>
           </div>
-        )}
+        </section>
+      )}
 
-        {usage && (
-          <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
-            <p className="font-medium text-neutral-900 dark:text-neutral-100">
-              CSV AI usage
+      {/* Usage summary in flat card */}
+      {usage && isFreeUi && (
+        <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
+          <div className="px-4 py-3">
+            <div
+              role="heading"
+              aria-level={2}
+              className="text-base md:text-lg font-normal font-sans text-mono-dark"
+            >
+              AI usage
+            </div>
+            <p className="mt-1 text-xs text-mono-medium font-sans">
+              How many CSV transactions are eligible for automated review.
             </p>
-            <p className="text-neutral-600 dark:text-neutral-400">
-              {usage.csvTransactions.eligibleForAi} of{" "}
-              {usage.maxCsvTransactionsForAi == null
-                ? "unlimited"
-                : usage.maxCsvTransactionsForAi}{" "}
-              transactions eligible for AI review
-            </p>
+          </div>
+          <div className="px-4 py-3 space-y-3 text-xs font-sans text-mono-medium">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span className="font-semibold text-mono-dark min-w-[110px]">Eligible</span>
+              <span>
+                {usage.csvTransactions.eligibleForAi} of{" "}
+                {usage.maxCsvTransactionsForAi == null ? "unlimited" : usage.maxCsvTransactionsForAi}{" "}
+                transactions
+              </span>
+            </div>
             {usage.overLimit && (
-              <p className="text-amber-600 dark:text-amber-400 text-sm mt-1">
-                Over limit by {usage.csvTransactions.overLimitCount}. Upgrade for
-                unlimited.
+              <p className="text-amber-600 text-xs">
+                Over limit by {usage.csvTransactions.overLimitCount}. Upgrade for unlimited.
               </p>
             )}
+            <div>
+              <button
+                type="button"
+                onClick={() => startCheckout()}
+                disabled={!!checkoutLoading}
+                className="mt-1 px-4 py-2.5 bg-black text-white rounded-none text-sm font-medium font-sans hover:bg-black/85 disabled:opacity-50 transition-colors"
+              >
+                {checkoutLoading === "plus"
+                  ? "Redirecting…"
+                  : `Upgrade to Pro (${getPlanDefinition("plus").priceHuman}/year)`}
+              </button>
+            </div>
           </div>
-        )}
+        </section>
+      )}
 
-        {usage?.plan === "free" && (
-          <div className="flex flex-wrap gap-2 mt-4">
-            <button
-              type="button"
-              onClick={() => startCheckout()}
-              disabled={!!checkoutLoading}
-              className="px-4 py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50"
+      {/* Past receipts in flat card */}
+      {invoices.length > 0 && (
+        <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
+          <div className="px-4 py-3">
+            <div
+              role="heading"
+              aria-level={2}
+              className="text-base md:text-lg font-normal font-sans text-mono-dark"
             >
-              {checkoutLoading === "plus" ? "Redirecting…" : `Upgrade to Pro (${getPlanDefinition("plus").priceHuman}/year)`}
-            </button>
-          </div>
-        )}
-
-        {invoices.length > 0 && (
-          <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-4">
-            <p className="font-medium text-neutral-900 dark:text-neutral-100">
               Past receipts
+            </div>
+            <p className="mt-1 text-xs text-mono-medium font-sans">
+              Download invoices for your records.
             </p>
-            <ul className="mt-3 space-y-2">
+          </div>
+          <div className="px-4 py-3">
+            <ul className="space-y-2 text-xs font-sans text-mono-medium">
               {invoices.map((inv) => (
                 <li
                   key={inv.id}
-                  className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                  className="flex flex-wrap items-center justify-between gap-2"
                 >
-                  <span className="text-neutral-600 dark:text-neutral-400">
+                  <span>
                     {inv.date}
                     {inv.number ? ` · ${inv.number}` : ""}
                     {" — "}
@@ -313,7 +367,7 @@ export function BillingClient({
                       href={inv.hostedInvoiceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-neutral-700 dark:text-neutral-300 underline hover:no-underline"
+                      className="text-mono-dark underline hover:no-underline"
                     >
                       View receipt
                     </a>
@@ -322,14 +376,16 @@ export function BillingClient({
               ))}
             </ul>
           </div>
-        )}
-      </div>
+        </section>
+      )}
 
-      <p className="mt-6 text-sm text-neutral-500">
-        <Link href="/pricing" className="underline hover:no-underline">
-          View plans and pricing
-        </Link>
-      </p>
+      {isFreeUi && (
+        <p className="text-sm text-neutral-500">
+          <Link href="/pricing" className="underline hover:no-underline">
+            View plans and pricing
+          </Link>
+        </p>
+      )}
     </div>
   );
 }
