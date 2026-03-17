@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getPlanDefinition } from "@/lib/billing/plans";
+import { PreferencesTabs } from "@/app/preferences/PreferencesTabs";
 
 type Usage = {
   plan: string;
@@ -28,6 +29,13 @@ type InvoiceItem = {
   hostedInvoiceUrl: string | null;
   number: string | null;
 };
+
+const PREF_TABS = [
+  { href: "/preferences/automations", label: "Automations" },
+  { href: "/preferences/profile", label: "Profile" },
+  { href: "/preferences/billing", label: "Billing" },
+  { href: "/preferences/org", label: "Org" },
+] as const;
 
 export function BillingClient({
   checkoutSessionId,
@@ -174,10 +182,13 @@ export function BillingClient({
   }
 
   return (
-    <div className="p-6 max-w-2xl">
-      <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-        Billing
-      </h1>
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+          Billing
+        </h1>
+        <PreferencesTabs tabs={PREF_TABS} />
+      </div>
 
       {syncing && (
         <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">

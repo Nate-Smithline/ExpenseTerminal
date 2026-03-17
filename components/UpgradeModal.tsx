@@ -43,33 +43,26 @@ export function UpgradeModal({
 
   return (
     <div
-      className="fixed inset-0 min-h-[100dvh] z-[100] flex items-center justify-center p-4 bg-black/30 backdrop-blur-[2px]"
+      className="fixed inset-0 min-h-[100dvh] z-[100] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="upgrade-modal-title"
     >
-      <div className="rounded-xl bg-white shadow-xl max-w-md w-full overflow-hidden border border-bg-tertiary/40">
-        <div className="bg-[#2d3748] px-6 pt-6 pb-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 id="upgrade-modal-title" className="text-xl font-bold text-white tracking-tight">
-                Upgrade to Pro
-              </h2>
-              <p className="text-sm text-white/85 mt-1.5">
-                Your Free plan has limits. Pro is {PRO_PRICE} and unlocks the full power of ExpenseTerminal.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-8 w-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition shrink-0"
-              aria-label="Close"
-            >
-              <span className="material-symbols-rounded text-[18px]">close</span>
-            </button>
+      <div className="bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden rounded-none border border-bg-tertiary/40">
+        <div className="px-6 pt-4 pb-2">
+          <div
+            id="upgrade-modal-title"
+            role="heading"
+            aria-level={2}
+            className="text-xl font-normal font-sans text-mono-dark"
+          >
+            Upgrade to Pro
           </div>
+          <p className="text-sm text-mono-medium mt-1.5 font-sans">
+            Your Free plan has limits. Pro is {PRO_PRICE} and unlocks the full power of ExpenseTerminal.
+          </p>
         </div>
-        <div className="px-6 py-5 space-y-4">
+        <div className="px-6 pb-4 pt-2 space-y-4">
           <p className="text-sm text-mono-medium">
             On average, organized businesses save time and avoid missed deductions at tax time. Pro helps you stay on top of expenses year-round.
           </p>
@@ -82,11 +75,11 @@ export function UpgradeModal({
             ))}
           </ul>
         </div>
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-bg-tertiary/40">
+        <div className="flex justify-end gap-3 px-6 pt-1 pb-3 border-t border-bg-tertiary/40">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition"
+            className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#F5F0E8] transition"
           >
             Maybe later
           </button>
@@ -94,7 +87,7 @@ export function UpgradeModal({
             type="button"
             onClick={handleUpgrade}
             disabled={loading}
-            className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition disabled:opacity-60"
+            className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/80 transition disabled:opacity-60"
           >
             {loading ? "Redirecting…" : "Upgrade to Pro"}
           </button>

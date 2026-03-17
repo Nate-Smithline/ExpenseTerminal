@@ -45,13 +45,6 @@ const STEPS = [
     icon: "savings",
   },
   {
-    id: "business_type" as const,
-    label: "Set your business type",
-    description: "Tell us how your business is structured for taxes",
-    href: "/org-profile",
-    icon: "badge",
-  },
-  {
     id: "what_can_i_deduct" as const,
     label: "Learn what you can deduct",
     description: "Walk through common deductions and IRS rules",
@@ -59,10 +52,17 @@ const STEPS = [
     icon: "school",
   },
   {
+    id: "business_type" as const,
+    label: "Set your business type",
+    description: "Tell us how your business is structured for taxes",
+    href: "/preferences/org",
+    icon: "badge",
+  },
+  {
     id: "org_profile" as const,
     label: "Configure org profile",
     description: "Add your business name and address",
-    href: "/org-profile",
+    href: "/preferences/org",
     icon: "business",
   },
 ];

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Database } from "@/lib/types/database";
+import { PreferencesTabs } from "@/app/preferences/PreferencesTabs";
 
 type OrgSettings = Database["public"]["Tables"]["org_settings"]["Row"];
 type TaxYearSetting = Database["public"]["Tables"]["tax_year_settings"]["Row"];
@@ -18,6 +19,13 @@ const FILING_TYPES = [
 function filingLabel(value: string | null | undefined): string {
   return FILING_TYPES.find((t) => t.value === value)?.label ?? "Not set";
 }
+
+const PREF_TABS = [
+  { href: "/preferences/automations", label: "Automations" },
+  { href: "/preferences/profile", label: "Profile" },
+  { href: "/preferences/billing", label: "Billing" },
+  { href: "/preferences/org", label: "Org" },
+] as const;
 
 export function OrgProfileClient({
   initialOrg,
@@ -85,19 +93,14 @@ export function OrgProfileClient({
 
   return (
     <div className="space-y-10">
-      <div>
-        <h1 className="text-3xl text-mono-dark">Org Profile</h1>
-        <p className="text-sm text-mono-medium mt-1">
-          Business information and tax settings
-        </p>
-      </div>
-
-      {/* Account */}
-      <div className="card p-6">
-        <h2 className="text-lg font-semibold text-mono-dark mb-4">Account</h2>
-        <p className="text-sm text-mono-medium">
-          Signed in as <span className="font-medium">{userEmail ?? "—"}</span>
-        </p>
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-3xl text-mono-dark">Org Profile</h1>
+          <p className="text-sm text-mono-medium mt-1">
+            Business information and tax settings
+          </p>
+        </div>
+        <PreferencesTabs tabs={PREF_TABS} />
       </div>
 
       {/* Business Information — view / edit */}

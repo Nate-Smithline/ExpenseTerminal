@@ -159,7 +159,7 @@ export function PricingClient({
                 <>
                   {isPro ? (
                     <Link
-                      href="/settings/billing"
+                      href="/preferences/billing"
                       className="mt-4 inline-block text-center w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8]"
                     >
                       You&apos;re on Pro · Manage plan
@@ -181,7 +181,7 @@ export function PricingClient({
         })}
       </div>
 
-      {downgradeModalOpen && (
+              {downgradeModalOpen && (
         <div
           className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center p-4 bg-black/50"
           onClick={() => setDowngradeModalOpen(false)}
@@ -213,7 +213,7 @@ export function PricingClient({
                 Cancel
               </button>
               <Link
-                href="/settings/billing"
+                href="/preferences/billing"
                 className="px-4 py-2 text-sm font-medium bg-[#2563EB] text-white rounded-none hover:bg-[#1D4ED8]"
               >
                 Go to Billing
@@ -224,7 +224,7 @@ export function PricingClient({
       )}
 
       <p className="mt-8 text-sm text-mono-medium">
-        <Link href="/settings/billing" className="text-accent-navy underline hover:no-underline">
+        <Link href="/preferences/billing" className="text-accent-navy underline hover:no-underline">
           Manage billing
         </Link>{" "}
         · <Link href="/" className="text-accent-navy underline hover:no-underline">Home</Link>{" "}

@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import type { NormalizedRule, RuleConditions, RuleAction } from "@/lib/rules/types";
 import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
+import { PreferencesTabs } from "@/app/preferences/PreferencesTabs";
 
 type NotificationPrefs = {
   user_id: string;
@@ -50,6 +51,13 @@ interface RulesPageClientProps {
   initialNotificationPreferences: NotificationPrefs;
 }
 
+const PREF_TABS = [
+  { href: "/preferences/automations", label: "Automations" },
+  { href: "/preferences/profile", label: "Profile" },
+  { href: "/preferences/billing", label: "Billing" },
+  { href: "/preferences/org", label: "Org" },
+] as const;
+
 export function RulesPageClient({
   initialRules,
   initialNotificationPreferences,
@@ -78,17 +86,20 @@ export function RulesPageClient({
 
   return (
     <div className="space-y-8">
-      <div>
-        <div
-          role="heading"
-          aria-level={1}
-          className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
-        >
-          Rules &amp; Notifications
+      <div className="space-y-4">
+        <div>
+          <div
+            role="heading"
+            aria-level={1}
+            className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
+          >
+            Automations
+          </div>
+          <p className="text-base text-mono-medium mt-1 font-sans">
+            Set policies to help automate decisions and save even more time.
+          </p>
         </div>
-        <p className="text-base text-mono-medium mt-1 font-sans">
-          Set policies to help automate decisions and save even more time.
-        </p>
+        <PreferencesTabs tabs={PREF_TABS} />
       </div>
 
       {/* Notifications header + summary */}

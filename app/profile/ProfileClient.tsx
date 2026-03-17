@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createSupabaseClient } from "@/lib/supabase/client";
 import { validatePassword, getPasswordStrength } from "@/lib/validation/password";
 import { formatUSPhone, parseUSPhone, displayUSPhone } from "@/lib/format-us-phone";
+import { PreferencesTabs } from "@/app/preferences/PreferencesTabs";
 
 const NAME_PREFIXES = [
   { value: "", label: "" },
@@ -23,6 +24,13 @@ interface Profile {
   email: string | null;
   phone: string | null;
 }
+
+const PREF_TABS = [
+  { href: "/preferences/automations", label: "Automations" },
+  { href: "/preferences/profile", label: "Profile" },
+  { href: "/preferences/billing", label: "Billing" },
+  { href: "/preferences/org", label: "Org" },
+] as const;
 
 export function ProfileClient({
   initialProfile,
@@ -177,9 +185,12 @@ export function ProfileClient({
 
   return (
     <div className="space-y-10">
-      <div>
-        <h1 className="text-3xl text-mono-dark">My Account</h1>
-        <p className="text-sm text-mono-medium mt-1">Manage your profile and password</p>
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-3xl text-mono-dark">My Account</h1>
+          <p className="text-sm text-mono-medium mt-1">Manage your profile and password</p>
+        </div>
+        <PreferencesTabs tabs={PREF_TABS} />
       </div>
 
       {/* My Profile card */}

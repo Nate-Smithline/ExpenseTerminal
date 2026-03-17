@@ -1,9 +1,8 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useState, useRef, useEffect, useCallback } from "react";
-import { createSupabaseClient } from "@/lib/supabase/client";
+import { useState, useEffect } from "react";
 
 const mainNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
@@ -14,75 +13,29 @@ const mainNav = [
 
 const bottomNav = [
   { href: "/activity", label: "All Activity", icon: "history" },
-  { href: "/rules", label: "Rules & Notifications", icon: "tune" },
+  { href: "/preferences/automations", label: "Preferences", icon: "tune" },
   { href: "/other-deductions", label: "Other Deductions", icon: "calculate" },
 ];
 
-function getGreeting(profile: { name_prefix?: string | null; first_name?: string | null; last_name?: string | null } | null): string {
-  if (!profile) return "Hi";
-  const { name_prefix, first_name, last_name } = profile;
-  const prefix = (name_prefix ?? "").trim();
-  const first = (first_name ?? "").trim();
-  const last = (last_name ?? "").trim();
-  if (prefix && last) return `Hi ${prefix} ${last}`;
-  if (prefix && first) return `Hi ${prefix} ${first}`;
-  if (prefix) return `Hi ${prefix}`;
-  if (first) return `Hi ${first}`;
-  if (last) return `Hi ${last}`;
-  return "Hi";
-}
-
 export function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
-  const [isEntering, setIsEntering] = useState(false);
   const [inboxCount, setInboxCount] = useState<number | null>(null);
-  const [profile, setProfile] = useState<{ name_prefix?: string | null; first_name?: string | null; last_name?: string | null } | null>(null);
   const [plan, setPlan] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
-  const greeting = getGreeting(profile);
-
-  const loadProfile = useCallback(() => {
-    fetch("/api/profile")
-      .then((r) => r.ok ? r.json() : null)
-      .then((body) => setProfile(body?.data ?? null))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
-
-  useEffect(() => {
-    function handleProfileUpdated(e: Event) {
-      const ev = e as CustomEvent<{ name_prefix?: string | null; first_name?: string | null; last_name?: string | null }>;
-      if (ev.detail) {
-        setProfile((prev) => ({ ...(prev ?? {}), ...ev.detail }));
-      } else {
-        loadProfile();
-      }
-    }
-    window.addEventListener("profile-updated", handleProfileUpdated);
-    return () => window.removeEventListener("profile-updated", handleProfileUpdated);
-  }, [loadProfile]);
-
-  const loadInboxCount = useCallback(() => {
+  const loadInboxCount = () => {
     // Count pending across all tax years so sync'd transactions show up regardless of date
     fetch(`/api/transactions?status=pending&count_only=true`)
       .then((r) => r.json())
       .then((d) => setInboxCount(d.count ?? 0))
       .catch(() => {});
-  }, []);
+  };
 
   useEffect(() => {
     loadInboxCount();
-  }, [pathname, loadInboxCount]);
+  }, [pathname]);
 
   useEffect(() => {
     fetch("/api/billing/usage")
@@ -97,130 +50,12 @@ export function Sidebar() {
     }
     window.addEventListener("inbox-count-changed", handleInboxChanged);
     return () => window.removeEventListener("inbox-count-changed", handleInboxChanged);
-  }, [loadInboxCount]);
-
-  const closeProfile = useCallback(() => {
-    setIsClosing(true);
-    const t = setTimeout(() => {
-      setProfileOpen(false);
-      setIsClosing(false);
-    }, 400);
-    return () => clearTimeout(t);
   }, []);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        closeProfile();
-      }
-    }
-    if (profileOpen && !isClosing) {
-      document.addEventListener("mousedown", handleClick);
-      return () => document.removeEventListener("mousedown", handleClick);
-    }
-  }, [profileOpen, isClosing, closeProfile]);
-
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") closeProfile();
-    }
-    if (profileOpen && !isClosing) {
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [profileOpen, isClosing, closeProfile]);
-
-  /* After mounting with opacity:0, wait for a painted frame then transition to open (fade-in) */
-  useEffect(() => {
-    if (!profileOpen || !isEntering || isClosing) return;
-    let raf2: number;
-    const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => setIsEntering(false));
-    });
-    return () => {
-      cancelAnimationFrame(raf1);
-      if (raf2 != null) cancelAnimationFrame(raf2);
-    };
-  }, [profileOpen, isEntering, isClosing]);
-
-  const handleLogout = useCallback(async () => {
-    const supabase = createSupabaseClient();
-    await supabase.auth.signOut();
-    router.push("/");
-    router.refresh();
-  }, [router]);
 
   return (
     <aside className="sticky top-0 h-screen w-[260px] shrink-0 bg-white flex flex-col">
-      {/* Profile dropdown — same width as main nav (pl-0 pr-5); gap below before Home */}
-      <div className="pl-0 pr-5 pt-6 pb-4 relative" ref={dropdownRef}>
-        <button
-          onClick={() => {
-            if (profileOpen) {
-              closeProfile();
-            } else {
-              setIsEntering(true);
-              setProfileOpen(true);
-              loadProfile();
-            }
-          }}
-          className={`w-full text-left rounded-none py-2 pl-8 pr-2 transition-all ${
-            profileOpen
-              ? "text-sovereign-blue bg-sovereign-blue/10"
-              : "text-mono-dark hover:text-mono-dark hover:bg-sovereign-blue/10"
-          }`}
-        >
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <span className="font-sans text-lg tracking-tight truncate">
-              {greeting}
-            </span>
-            <span className={`material-symbols-rounded text-[18px] font-light shrink-0 ${profileOpen ? "text-sovereign-blue" : "text-black"}`}>
-              {profileOpen ? "expand_less" : "expand_more"}
-            </span>
-          </div>
-        </button>
-
-        {(profileOpen || isClosing) && (
-          <div
-            className={`profile-dropdown-panel absolute left-0 right-5 top-full bg-white rounded-none shadow-lg border border-bg-tertiary/40 border-t-0 py-1.5 z-50 ${
-              isClosing ? "profile-dropdown-panel--closing" : isEntering ? "profile-dropdown-panel--entering" : "profile-dropdown-panel--open"
-            }`}
-          >
-            <Link
-              href="/profile"
-              onClick={() => closeProfile()}
-              className="flex items-center gap-2.5 px-4 py-2.5 text-base text-mono-medium hover:bg-sovereign-blue/10 hover:text-mono-dark transition-colors"
-            >
-              <span className="material-symbols-rounded shrink-0" style={{ fontSize: 18 }}>person</span>
-              Profile Settings
-            </Link>
-            <Link
-              href="/org-profile"
-              onClick={() => closeProfile()}
-              className="flex items-center gap-2.5 px-4 py-2.5 text-base text-mono-medium hover:bg-sovereign-blue/10 hover:text-mono-dark transition-colors"
-            >
-              <span className="material-symbols-rounded shrink-0" style={{ fontSize: 18 }}>business</span>
-              Org Profile
-            </Link>
-            <Link
-              href="/settings/billing"
-              onClick={() => closeProfile()}
-              className="flex items-center gap-2.5 px-4 py-2.5 text-base text-mono-medium hover:bg-sovereign-blue/10 hover:text-mono-dark transition-colors"
-            >
-              <span className="material-symbols-rounded shrink-0" style={{ fontSize: 18 }}>credit_card</span>
-              Billing
-            </Link>
-            <div className="border-t border-bg-tertiary/30 my-1" />
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2.5 w-full px-4 py-2.5 text-base text-mono-medium hover:bg-sovereign-blue/10 hover:text-mono-dark transition-colors text-left"
-            >
-              <span className="material-symbols-rounded shrink-0" style={{ fontSize: 18 }}>logout</span>
-              Log Out
-            </button>
-          </div>
-        )}
-      </div>
+      {/* Simple header spacing to align with main nav */}
+      <div className="pl-8 pr-5 pt-6 pb-4" />
 
       {/* Main nav - block extends to left edge; content stays aligned (pl-8 = 5+3) */}
       <nav className="flex-1 pl-0 pr-5 space-y-1">

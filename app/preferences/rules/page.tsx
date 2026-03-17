@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
-export default function RulesPage() {
+export default function PreferencesRulesPage() {
   redirect("/preferences/automations");
 }
+

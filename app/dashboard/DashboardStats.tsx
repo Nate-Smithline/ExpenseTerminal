@@ -161,7 +161,7 @@ export function DashboardStats({
         </div>
         <p className="text-xs text-mono-medium max-w-xl">
           Savings: transaction deductions × {(taxRate * 100).toFixed(0)}% rate, plus additional deductions (QBI, home office, etc.) not multiplied by rate.
-          <Link href="/org-profile" className="text-accent-sage ml-1 hover:underline font-medium">Edit rate</Link>
+          <Link href="/preferences/org" className="text-accent-sage ml-1 hover:underline font-medium">Edit rate</Link>
         </p>
         <p className="text-xs text-mono-medium mt-2 pt-2 border-t border-bg-tertiary/40">
           {comparisonNote}
