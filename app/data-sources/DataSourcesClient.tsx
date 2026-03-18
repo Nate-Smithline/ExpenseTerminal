@@ -65,6 +65,7 @@ export function DataSourcesClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const { openUpgradeModal } = useUpgradeModal();
+  const debugCallouts = searchParams.get("debug_callouts") === "1";
   const [sources, setSources] = useState<DataSource[]>(initialSources);
   const [stats, setStats] = useState<Record<string, DataSourceStats>>(initialStats);
 
@@ -313,8 +314,24 @@ export function DataSourcesClient({
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        if (showAdd) closeAdd();
+        if (showAdd) {
+          // In the Add Account flow, Esc goes "back" to step 1
+          // (only closes the modal if already on step 1).
+          if (addStep !== "1") {
+            setAddStep("1");
+            setStripeConnectError(null);
+          } else {
+            closeAdd();
+          }
+        }
         if (editSource) closeEdit();
+        if (pullModalSource) setPullModalSource(null);
+        if (deleteConfirmSource) setDeleteConfirmSource(null);
+        if (uploadSourceId) setUploadSourceId(null);
+        if (showPostConnectDateModal) {
+          setShowPostConnectDateModal(false);
+          setPostConnectError(null);
+        }
       }
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
@@ -343,7 +360,20 @@ export function DataSourcesClient({
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [showAdd, editSource, addStep, isFree, stripeSourceCount, openUpgradeModal, closeAdd, closeEdit]);
+  }, [
+    showAdd,
+    editSource,
+    pullModalSource,
+    deleteConfirmSource,
+    uploadSourceId,
+    showPostConnectDateModal,
+    addStep,
+    isFree,
+    stripeSourceCount,
+    openUpgradeModal,
+    closeAdd,
+    closeEdit,
+  ]);
 
   useEffect(() => {
     if (showAdd) {
@@ -362,44 +392,61 @@ export function DataSourcesClient({
               aria-level={1}
               className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
             >
-              Accounts
+              Accounts &amp; Data
             </div>
             <p className="text-base text-mono-medium mt-1 font-sans">
-              Accounts you upload transactions from
+              Link your accounts and upload transactions
             </p>
           </div>
         </div>
-        <button onClick={() => setShowAdd(true)} className="btn-primary">
-          <kbd className="kbd-hint kbd-on-primary mr-2.5">a</kbd>
-          New account
+        <button
+          onClick={() => setShowAdd(true)}
+          className="inline-flex items-center px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors"
+        >
+          <kbd className="mr-2.5 inline-flex items-center justify-center border border-mono-medium bg-white/30 px-1.5 py-0.5 text-[10px] font-mono text-white">
+            a
+          </kbd>
+          Add Account
         </button>
       </div>
 
-      {syncStatusBar && (
+      {(syncStatusBar || debugCallouts) && (
         <div
           role="status"
-          className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm ${
-            syncStatusBar.type === "syncing"
-              ? "border-[#635bff]/30 bg-[#635bff]/5 text-mono-dark"
-              : syncStatusBar.type === "success"
-                ? "border-accent-sage/40 bg-accent-sage/10 text-mono-dark"
-                : "border-amber-200 bg-amber-50 text-amber-800"
+          className={`flex items-center gap-3 rounded-none border px-4 py-3 text-sm ${
+            (syncStatusBar ?? { type: "syncing" }).type === "syncing"
+              ? "border-[#8A9BB0]/40 bg-[#E8EEF5] text-mono-dark"
+              : (syncStatusBar ?? { type: "syncing" }).type === "success"
+                ? "border-[#16A34A]/30 bg-[#DCFCE7] text-mono-dark"
+                : "border-[#D97706]/30 bg-[#FEF3C7] text-mono-dark"
           }`}
         >
-          {syncStatusBar.type === "syncing" && (
-            <span className="material-symbols-rounded animate-spin text-lg text-[#635bff]">progress_activity</span>
+          {(syncStatusBar ?? { type: "syncing" }).type === "syncing" && (
+            <span className="material-symbols-rounded animate-spin text-lg text-[#8A9BB0]">progress_activity</span>
           )}
-          {syncStatusBar.type === "success" && (
-            <span className="material-symbols-rounded text-lg text-accent-sage">check_circle</span>
+          {(syncStatusBar ?? { type: "syncing" }).type === "success" && (
+            <span className="material-symbols-rounded text-lg text-[#16A34A]">check_circle</span>
           )}
-          {syncStatusBar.type === "error" && (
-            <span className="material-symbols-rounded text-lg text-amber-600">error</span>
+          {(syncStatusBar ?? { type: "syncing" }).type === "error" && (
+            <span className="material-symbols-rounded text-lg text-[#D97706]">error</span>
           )}
-          <span className="font-medium">{syncStatusBar.message}</span>
+          <span className="font-medium">
+            {(syncStatusBar ?? { message: "Syncing transactions…", type: "syncing" }).message}
+          </span>
         </div>
       )}
 
-      {/* Add account modal - multi-step */}
+      {debugCallouts && (
+        <div
+          role="status"
+          className="flex items-center gap-3 rounded-none border px-4 py-3 text-sm border-[#16A34A]/30 bg-[#DCFCE7] text-mono-dark"
+        >
+          <span className="material-symbols-rounded text-lg text-[#16A34A]">check_circle</span>
+          <span className="font-medium">Saved</span>
+        </div>
+      )}
+
+      {/* Add account modal - multi-step (styled like notification preferences modal) */}
       {showAdd && (
         <div
           className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
@@ -407,49 +454,43 @@ export function DataSourcesClient({
           aria-modal="true"
           aria-labelledby="add-account-title"
         >
-          <div className="rounded-xl bg-white shadow-[0_8px_30px_-6px_rgba(0,0,0,0.14)] max-w-[560px] w-full mx-4 overflow-hidden relative">
+          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden relative">
             {addModalLoading && (
-              <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10 rounded-xl">
+              <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
                 <span className="material-symbols-rounded animate-spin text-3xl text-mono-medium">progress_activity</span>
               </div>
             )}
-            <div className="rounded-t-xl bg-[#2d3748] px-6 pt-6 pb-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 id="add-account-title" className="text-xl font-bold text-white tracking-tight">
-                    {addStep === "1" && "Add account"}
-                    {addStep === "2a" && "Manual account"}
-                    {addStep === "2b" && "Direct Feed"}
-                  </h2>
-                  <p className="text-sm text-white/80 mt-1.5 leading-relaxed">
-                    {addStep === "1" && "Choose how you want to add transactions."}
-                    {addStep === "2a" && "Add an account for CSV uploads and manual entry."}
-                    {addStep === "2b" && "Connect your bank in Stripe; after accounts load you’ll choose a date range and we’ll pull transactions."}
-                  </p>
-                </div>
-                <button
-                  onClick={closeAdd}
-                  className="h-8 w-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition shrink-0"
-                  aria-label="Close"
-                >
-                  <span className="material-symbols-rounded text-[18px]">close</span>
-                </button>
-              </div>
+            <div className="bg-white px-6 pt-6 pb-0 flex items-start">
+              <h2
+                id="add-account-title"
+                className="text-xl text-mono-dark font-medium"
+                style={{ fontFamily: "var(--font-sans)" }}
+              >
+                {addStep === "1" && "Add account"}
+                {addStep === "2a" && "Manual account"}
+                {addStep === "2b" && "Direct Feed"}
+              </h2>
             </div>
 
             {addStep === "1" && (
-              <div className="px-6 py-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="px-6 pt-1 pb-6 space-y-2">
+                <p className="text-xs text-mono-medium">
+                  Choose how you want to add accounts and transactions.
+                </p>
+                <div className="space-y-2">
                   <button
                     type="button"
                     onClick={() => setAddStep("2a")}
-                    className="rounded-xl border-2 border-bg-tertiary p-5 text-left hover:border-accent-sage/50 hover:bg-bg-secondary/50 transition"
+                    className="border border-bg-tertiary/60 px-4 py-3 text-left hover:bg-bg-secondary/60 transition"
                   >
-                    <span className="material-symbols-rounded text-4xl text-mono-medium">edit_note</span>
-                    <p className="font-semibold text-mono-dark mt-3 text-lg">Manual</p>
-                    <p className="text-sm text-mono-light mt-1">Add accounts manually; transactions come via CSV uploads or manual entry.</p>
-                    <p className="text-xs text-mono-light mt-2">
-                      <kbd className="kbd-hint">m</kbd>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-mono-dark">Manual</p>
+                      <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[10px] font-mono text-mono-dark">
+                        m
+                      </kbd>
+                    </div>
+                    <p className="text-xs text-mono-light mt-1.5">
+                      Add accounts manually; transactions come via CSV uploads or manual entry.
                     </p>
                   </button>
                   <button
@@ -461,25 +502,26 @@ export function DataSourcesClient({
                         setAddStep("2b");
                       }
                     }}
-                    className={`rounded-xl border-2 p-5 text-left transition ${
+                    className={`border border-bg-tertiary/60 px-4 py-3 text-left transition ${
                       isFree && stripeSourceCount >= 1
-                        ? "border-bg-tertiary bg-bg-secondary/50 opacity-90 relative"
-                        : "border-bg-tertiary hover:border-[#635bff]/50 hover:bg-[#635bff]/5"
+                        ? "bg-bg-secondary/50 opacity-90 relative"
+                        : "hover:bg-[#635bff]/5"
                     }`}
                   >
                     {isFree && stripeSourceCount >= 1 && (
-                      <span className="absolute top-3 right-3 rounded bg-amber-100 text-amber-800 text-xs font-medium px-2 py-0.5 flex items-center gap-1">
+                      <span className="absolute top-3 right-3 bg-amber-100 text-amber-800 text-xs font-medium px-2 py-0.5 flex items-center gap-1">
                         <span className="material-symbols-rounded text-[14px]">lock</span>
                         Pro
                       </span>
                     )}
-                    <span className="material-symbols-rounded text-4xl" style={{ color: "#635bff" }}>account_balance</span>
-                    <p className="font-semibold text-mono-dark mt-3 text-lg">Direct Feed</p>
-                    <p className="text-sm text-mono-light mt-1">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-mono-dark">Direct Feed</p>
+                      <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[10px] font-mono text-mono-dark">
+                        d
+                      </kbd>
+                    </div>
+                    <p className="text-xs text-mono-light mt-1.5">
                       Connect a bank via Stripe Financial Connections. After connecting, choose a date range and we’ll load transactions.
-                    </p>
-                    <p className="text-xs text-mono-light mt-2">
-                      <kbd className="kbd-hint">d</kbd>
                     </p>
                   </button>
                 </div>
@@ -487,10 +529,10 @@ export function DataSourcesClient({
                   href="https://stripe.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-4 flex items-center justify-center gap-2 w-full py-3 rounded-lg border border-bg-tertiary/60 text-sm font-medium text-mono-medium hover:text-mono-dark hover:bg-bg-secondary/50 transition"
-                  style={{ color: "#635bff" }}
+                  className="mt-2 flex items-center justify-center gap-2 w-full py-3 text-sm font-medium text-mono-medium hover:text-mono-dark transition"
+                  style={{ color: "#2563EB" }}
                 >
-                  <span className="inline-flex items-center justify-center" style={{ color: "#635bff", transform: "scale(0.6)", transformOrigin: "center" }}>
+                  <span className="inline-flex items-center justify-center" style={{ color: "#2563EB", transform: "scale(0.75)", transformOrigin: "center" }}>
                     <span className="material-symbols-rounded text-[20px]">open_in_new</span>
                   </span>
                   Learn about Stripe
@@ -500,17 +542,19 @@ export function DataSourcesClient({
 
             {addStep === "2a" && (
               <>
-                <div className="px-6 py-4 border-b border-bg-tertiary/40">
+                <div className="px-6 pt-3 pb-1">
                   <button
                     type="button"
-                    onClick={() => setAddStep("1")}
-                    className="text-sm font-medium text-mono-medium hover:text-mono-dark flex items-center gap-1"
+                    onClick={closeAdd}
+                    className="text-sm font-medium text-mono-medium hover:text-mono-dark inline-flex items-center gap-2"
                   >
-                    <span className="material-symbols-rounded text-[18px]">arrow_back</span>
-                    Back
+                    <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[10px] font-mono text-mono-dark">
+                      esc
+                    </kbd>
+                    Return
                   </button>
                 </div>
-                <div className="px-6 py-6 space-y-5">
+                <div className="px-6 py-3 space-y-3">
                   <div>
                     <label className="text-sm font-medium text-mono-dark block mb-2">
                       Account Name *
@@ -521,7 +565,7 @@ export function DataSourcesClient({
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="e.g. Chase Business Checking"
-                      className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white placeholder:text-mono-light focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
+                      className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
                     />
                   </div>
                   <div>
@@ -533,24 +577,24 @@ export function DataSourcesClient({
                       value={institution}
                       onChange={(e) => setInstitution(e.target.value)}
                       placeholder="e.g. Chase, Amex"
-                      className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white placeholder:text-mono-light focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
+                      className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
                     />
                   </div>
                 </div>
-                <div className="flex justify-end gap-3 px-6 py-4 border-t border-bg-tertiary/40">
+                <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
                   <button
-                    onClick={() => setAddStep("1")}
+                    onClick={closeAdd}
                     disabled={saving}
-                    className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
+                    className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
                   >
-                    Back
+                    Close
                   </button>
                   <button
                     onClick={handleCreate}
                     disabled={saving || !name.trim()}
-                    className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition disabled:opacity-40"
+                    className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors disabled:opacity-40"
                   >
-                    {saving ? "Creating..." : "Create account"}
+                    {saving ? "Adding..." : "Add account"}
                   </button>
                 </div>
               </>
@@ -558,15 +602,17 @@ export function DataSourcesClient({
 
             {addStep === "2b" && (
               <>
-                <div className="px-6 py-4 border-b border-bg-tertiary/40">
+                <div className="px-6 pt-3 pb-1">
                   <button
                     type="button"
-                    onClick={() => { setAddStep("1"); setStripeConnectError(null); }}
+                    onClick={closeAdd}
                     disabled={stripeConnectLoading}
-                    className="text-sm font-medium text-mono-medium hover:text-mono-dark flex items-center gap-1 disabled:opacity-50"
+                    className="text-sm font-medium text-mono-medium hover:text-mono-dark inline-flex items-center gap-2 disabled:opacity-50"
                   >
-                    <span className="material-symbols-rounded text-[18px]">arrow_back</span>
-                    Back
+                    <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[10px] font-mono text-mono-dark">
+                      esc
+                    </kbd>
+                    Return
                   </button>
                 </div>
                 {stripeConnectLoading ? (
@@ -576,7 +622,7 @@ export function DataSourcesClient({
                     <p className="text-xs text-mono-light">Select your bank and accounts in the window that opened.</p>
                   </div>
                 ) : (
-                  <div className="px-6 py-6 space-y-5">
+                  <div className="px-6 py-3 space-y-3">
                     <p className="text-sm text-mono-medium">
                       You’ll choose your bank and accounts in Stripe. After they’re connected, you’ll pick how much history to pull and we’ll load transactions.
                     </p>
@@ -585,13 +631,13 @@ export function DataSourcesClient({
                     )}
                   </div>
                 )}
-                <div className="flex justify-end gap-3 px-6 py-4 border-t border-bg-tertiary/40">
+                <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
                   <button
-                    onClick={() => setAddStep("1")}
+                    onClick={closeAdd}
                     disabled={stripeConnectLoading}
-                    className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
+                    className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
                   >
-                    Back
+                    Close
                   </button>
                   <button
                     onClick={async () => {
@@ -696,8 +742,7 @@ export function DataSourcesClient({
                       }
                     }}
                     disabled={stripeConnectLoading}
-                    className="rounded-md px-4 py-2.5 text-sm font-semibold text-white transition disabled:opacity-40"
-                    style={{ backgroundColor: "#635bff" }}
+                    className="px-4 py-2.5 text-sm font-medium font-sans bg-[#2563EB] text-white rounded-none hover:bg-[#1D4ED8] transition-colors disabled:opacity-40"
                   >
                     {stripeConnectLoading ? "Connecting…" : "Connect with Stripe"}
                   </button>
@@ -716,26 +761,15 @@ export function DataSourcesClient({
           aria-modal="true"
           aria-labelledby="edit-account-title"
         >
-          <div className="rounded-xl bg-white shadow-[0_8px_30px_-6px_rgba(0,0,0,0.14)] max-w-[500px] w-full mx-4 overflow-hidden">
-            <div className="rounded-t-xl bg-[#2d3748] px-6 pt-6 pb-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 id="edit-account-title" className="text-xl font-bold text-white tracking-tight">
-                    Edit account
-                  </h2>
-                  <p className="text-sm text-white/80 mt-1.5">
-                    Update name and institution for this account.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditSource(null)}
-                  className="h-8 w-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition shrink-0"
-                  aria-label="Close"
-                >
-                  <span className="material-symbols-rounded text-[18px]">close</span>
-                </button>
-              </div>
+          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-white px-6 pt-6 pb-1 flex items-start">
+              <h2
+                id="edit-account-title"
+                className="text-xl text-mono-dark font-medium"
+                style={{ fontFamily: "var(--font-sans)" }}
+              >
+                Edit account
+              </h2>
             </div>
             <form
               onSubmit={(e) => {
@@ -743,7 +777,7 @@ export function DataSourcesClient({
                 if (editName.trim() && !editSaving) handleSaveEdit();
               }}
             >
-              <div className="px-6 py-6 space-y-5">
+              <div className="px-6 py-3 space-y-3">
                 <div>
                   <label className="text-sm font-medium text-mono-dark block mb-2">
                     Name *
@@ -753,7 +787,7 @@ export function DataSourcesClient({
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     placeholder="e.g. Chase Business Checking"
-                    className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white placeholder:text-mono-light focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
+                    className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
                   />
                 </div>
                 <div>
@@ -766,16 +800,16 @@ export function DataSourcesClient({
                     onChange={(e) => setEditInstitution(e.target.value)}
                     placeholder="e.g. Chase, Amex"
                     disabled={editSource?.source_type === "stripe"}
-                    className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white placeholder:text-mono-light focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition disabled:bg-bg-secondary disabled:text-mono-light disabled:cursor-not-allowed"
+                    className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60 disabled:bg-[#F0F1F7] disabled:text-mono-light disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-bg-tertiary/40">
+              <div className="px-6 pt-2 pb-6 flex flex-wrap items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => setDeleteConfirmSource(editSource)}
                   disabled={editSaving}
-                  className="rounded-md bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition disabled:opacity-40"
+                  className="px-4 py-2.5 text-sm font-medium font-sans bg-[#FEE2E2] text-[#DC2626] rounded-none hover:bg-[#FECACA] transition-colors disabled:opacity-40"
                 >
                   Delete
                 </button>
@@ -784,14 +818,14 @@ export function DataSourcesClient({
                     type="button"
                     onClick={() => setEditSource(null)}
                     disabled={editSaving}
-                    className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
+                    className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={editSaving || !editName.trim()}
-                    className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition disabled:opacity-40"
+                    className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 disabled:opacity-50 transition-colors"
                   >
                     {editSaving ? "Saving…" : "Save"}
                   </button>
@@ -810,42 +844,44 @@ export function DataSourcesClient({
           aria-modal="true"
           aria-labelledby="pull-transactions-title"
         >
-          <div className="rounded-xl bg-white shadow-xl max-w-[420px] w-full mx-4 overflow-hidden">
-            <div className="px-6 pt-6 pb-4">
-              <h2 id="pull-transactions-title" className="text-lg font-bold text-mono-dark">
+          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-white px-6 pt-6 pb-1 flex items-start">
+              <h2 id="pull-transactions-title" className="text-xl text-mono-dark font-medium" style={{ fontFamily: "var(--font-sans)" }}>
                 Pull transactions
               </h2>
-              <p className="text-sm text-mono-medium mt-1.5">
+            </div>
+            <div className="px-6 py-3 space-y-3">
+              <p className="text-xs text-mono-medium">
                 {pullModalSource.name}
               </p>
-              <div className="mt-4 space-y-3">
+              <div className="space-y-3">
                 <div>
-                  <label className="text-sm font-medium text-mono-dark block mb-1.5">From date</label>
+                  <label className="block text-xs text-mono-medium mb-1">From date</label>
                   <input
                     type="date"
                     value={pullDatesBySource[pullModalSource.id]?.start ?? ""}
                     onChange={(e) => setPullDatesBySource((prev) => ({ ...prev, [pullModalSource.id]: { ...(prev[pullModalSource.id] ?? { start: "", end: "" }), start: e.target.value } }))}
-                    className="w-full rounded border border-bg-tertiary px-3 py-2 text-sm bg-white"
+                    className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-mono-dark block mb-1.5">To date</label>
+                  <label className="block text-xs text-mono-medium mb-1">To date</label>
                   <input
                     type="date"
                     value={pullDatesBySource[pullModalSource.id]?.end ?? ""}
                     onChange={(e) => setPullDatesBySource((prev) => ({ ...prev, [pullModalSource.id]: { ...(prev[pullModalSource.id] ?? { start: "", end: "" }), end: e.target.value } }))}
-                    className="w-full rounded border border-bg-tertiary px-3 py-2 text-sm bg-white"
+                    className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
                   />
                 </div>
               </div>
-              <p className="text-xs text-mono-light mt-3">Leave dates empty to use default range. Duplicates are not added.</p>
+              <p className="text-xs text-mono-light">Leave dates empty to use default range. Duplicates are not added.</p>
             </div>
-            <div className="flex justify-end gap-3 px-6 py-4 border-t border-bg-tertiary/40">
+            <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setPullModalSource(null)}
                 disabled={syncingId === pullModalSource.id}
-                className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
+                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -886,7 +922,7 @@ export function DataSourcesClient({
                   }
                 }}
                 disabled={syncingId === pullModalSource.id}
-                className="rounded-md bg-accent-terracotta px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-terracotta-dark transition disabled:opacity-40"
+                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#2563EB] text-white rounded-none hover:bg-[#1D4ED8] transition-colors disabled:opacity-40"
               >
                 {syncingId === pullModalSource.id ? "Pulling…" : "Pull transactions"}
               </button>
@@ -903,37 +939,41 @@ export function DataSourcesClient({
           aria-modal="true"
           aria-labelledby="delete-confirm-title"
         >
-          <div className="rounded-xl bg-white shadow-xl max-w-[400px] w-full mx-4 overflow-hidden">
-            <div className="px-6 pt-6 pb-4">
-              <h2 id="delete-confirm-title" className="text-lg font-bold text-mono-dark">
+          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-white px-6 pt-6 pb-1 flex items-start">
+              <h2 id="delete-confirm-title" className="text-xl text-mono-dark font-medium" style={{ fontFamily: "var(--font-sans)" }}>
                 Delete account?
               </h2>
-              <p className="text-sm text-mono-medium mt-2">
+            </div>
+            <div className="px-6 py-3 space-y-3">
+              <p className="text-xs text-mono-medium">
                 Are you sure you want to delete <strong>{deleteConfirmSource.name}</strong>? This cannot be undone.
               </p>
-              <div className="mt-4">
+              <div>
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={deleteAlsoTransactions}
                     onChange={(e) => setDeleteAlsoTransactions(e.target.checked)}
-                    className="mt-1 rounded border-bg-tertiary"
+                    className="mt-1 rounded-none border-bg-tertiary"
                   />
                   <span className="text-sm text-mono-dark">
                     Also delete all transactions from this account
                   </span>
                 </label>
                 <p className="text-xs text-mono-light mt-1 ml-6">
-                  {deleteAlsoTransactions ? "Transactions will be permanently removed." : "Transactions will be kept but unlinked from this account."}
+                  {deleteAlsoTransactions
+                    ? "Transactions will be permanently removed."
+                    : "Transactions will be kept but unlinked from this account."}
                 </p>
               </div>
             </div>
-            <div className="flex justify-end gap-3 px-6 py-4 border-t border-bg-tertiary/40">
+            <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => { setDeleteConfirmSource(null); }}
                 disabled={deleteLoading}
-                className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
+                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -964,7 +1004,7 @@ export function DataSourcesClient({
                   }
                 }}
                 disabled={deleteLoading}
-                className="rounded-md bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition disabled:opacity-40"
+                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#FEE2E2] text-[#DC2626] rounded-none hover:bg-[#FECACA] transition-colors disabled:opacity-40"
               >
                 {deleteLoading ? "Deleting…" : "Delete"}
               </button>
@@ -999,83 +1039,99 @@ export function DataSourcesClient({
             aria-modal="true"
             aria-labelledby="post-connect-date-title"
           >
-            <div className="rounded-xl bg-white shadow-xl max-w-[480px] w-full mx-4 overflow-hidden">
+            <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
               {postConnectPulling ? (
                 <div className="px-6 py-12 flex flex-col items-center justify-center gap-4">
-                  <span className="material-symbols-rounded animate-spin text-4xl text-accent-terracotta">progress_activity</span>
-                  <h2 id="post-connect-date-title" className="text-lg font-bold text-mono-dark text-center">
+                  <span className="material-symbols-rounded animate-spin text-4xl text-mono-medium">progress_activity</span>
+                  <h2 id="post-connect-date-title" className="text-xl text-mono-dark font-medium text-center" style={{ fontFamily: "var(--font-sans)" }}>
                     Loading transactions
                   </h2>
-                  <p className="text-sm text-mono-medium text-center">
+                  <p className="text-xs text-mono-medium text-center">
                     Pulling from {unsyncedStripeSources.length > 1 ? "your accounts" : accountNames}… This may take a minute.
                   </p>
                 </div>
               ) : (
                 <>
-                  <div className="px-6 pt-6 pb-4">
-                    <h2 id="post-connect-date-title" className="text-lg font-bold text-mono-dark">
-                      Choose how much history to pull
+                  <div className="bg-white px-6 pt-6 pb-0 flex items-start">
+                    <h2 id="post-connect-date-title" className="text-xl text-mono-dark font-medium" style={{ fontFamily: "var(--font-sans)" }}>
+                      Choose history to pull
                     </h2>
-                    <p className="text-sm text-mono-medium mt-1">
-                      Your account{unsyncedStripeSources.length > 1 ? "s are" : " is"} connected and appear in your list below. Select a date range and we’ll load transactions.
+                  </div>
+                  <div className="px-6 py-3 space-y-3">
+                    <p className="text-xs text-mono-medium">
+                      Select a date range and we’ll pull transactions for the connected accounts.
                     </p>
-                    <ul className="mt-3 text-sm text-mono-medium list-disc list-inside">
+
+                    <div className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
                       {unsyncedStripeSources.map((s) => (
-                        <li key={s.id}>{s.name}</li>
+                        <div key={s.id} className="px-4 py-3 text-sm text-mono-dark">
+                          {s.name}
+                        </div>
                       ))}
-                    </ul>
+                    </div>
+
                     {postConnectError && (
-                      <p className="mt-3 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{postConnectError}</p>
+                      <p className="text-xs text-[#DC2626] bg-[#FEE2E2] px-3 py-2">{postConnectError}</p>
                     )}
-                    <div className="mt-5 space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
+
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => { setPostConnectLookback("2years"); setPostConnectError(null); }}
-                          className={`rounded-lg border-2 px-4 py-3 text-left text-sm ${postConnectLookback === "2years" ? "border-bg-tertiary bg-bg-secondary" : "border-bg-tertiary"}`}
+                          className={`py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border ${
+                            postConnectLookback === "2years"
+                              ? "border-[#F0F1F7] bg-[#F0F1F7] text-mono-dark"
+                              : "border-[#F0F1F7] bg-white text-mono-medium hover:bg-[#F0F1F7]"
+                          }`}
                         >
-                          <span className="font-semibold text-mono-dark">Last 2 years</span>
-                          <p className="text-mono-light mt-0.5">Maximum supported</p>
+                          Last 2 years
                         </button>
                         <button
                           type="button"
                           onClick={() => { setPostConnectLookback("forward"); setPostConnectError(null); }}
-                          className={`rounded-lg border-2 px-4 py-3 text-left text-sm ${postConnectLookback === "forward" ? "border-bg-tertiary bg-bg-secondary" : "border-bg-tertiary"}`}
+                          className={`py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border ${
+                            postConnectLookback === "forward"
+                              ? "border-[#F0F1F7] bg-[#F0F1F7] text-mono-dark"
+                              : "border-[#F0F1F7] bg-white text-mono-medium hover:bg-[#F0F1F7]"
+                          }`}
                         >
-                          <span className="font-semibold text-mono-dark">Going forward only</span>
-                          <p className="text-mono-light mt-0.5">No history</p>
+                          Going forward
                         </button>
                       </div>
                       <button
                         type="button"
                         onClick={() => { setPostConnectLookback("custom"); setPostConnectError(null); }}
-                        className={`w-full rounded-lg border-2 px-4 py-3 text-left text-sm ${postConnectLookback === "custom" ? "border-bg-tertiary bg-bg-secondary" : "border-bg-tertiary"}`}
+                        className={`w-full py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border ${
+                          postConnectLookback === "custom"
+                            ? "border-[#F0F1F7] bg-[#F0F1F7] text-mono-dark"
+                            : "border-[#F0F1F7] bg-white text-mono-medium hover:bg-[#F0F1F7]"
+                        }`}
                       >
-                        <span className="font-semibold text-mono-dark">Custom start date</span>
-                        <p className="text-mono-light mt-0.5">Pick a date (max 2 years ago)</p>
+                        Custom start date
                       </button>
                       {postConnectLookback === "custom" && (
                         <div>
-                          <label className="text-sm font-medium text-mono-dark block mb-2">Start date</label>
+                          <label className="block text-xs text-mono-medium mb-1">Start date</label>
                           <input
                             type="date"
                             value={postConnectCustomStartDate}
                             onChange={(e) => setPostConnectCustomStartDate(e.target.value)}
-                            className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm"
+                            className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
                           />
                           {postConnectCustomStartDate && new Date(postConnectCustomStartDate) < new Date(twoYearsAgo) && (
-                            <p className="text-xs text-red-600 mt-1">Date must be within the last 2 years</p>
+                            <p className="text-xs text-[#DC2626] mt-1">Date must be within the last 2 years</p>
                           )}
                         </div>
                       )}
                     </div>
                   </div>
-                  <div className="flex justify-end gap-3 px-6 py-4 border-t border-bg-tertiary/40">
+                  <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
                     <button
                       type="button"
                       onClick={() => { setShowPostConnectDateModal(false); setPostConnectError(null); }}
                       disabled={postConnectPulling}
-                      className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
+                      className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
                     >
                       Skip for now
                     </button>
@@ -1142,7 +1198,7 @@ export function DataSourcesClient({
                           setPostConnectPulling(false);
                         }
                       }}
-                      className="rounded-md bg-accent-terracotta px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent-terracotta-dark transition disabled:opacity-40"
+                      className="px-4 py-2.5 text-sm font-medium font-sans bg-[#2563EB] text-white rounded-none hover:bg-[#1D4ED8] transition-colors disabled:opacity-40"
                     >
                       Pull transactions
                     </button>
@@ -1180,23 +1236,27 @@ export function DataSourcesClient({
               pctReviewed: 0,
               totalSavings: 0,
             };
-            const txCount = source.source_type === "stripe" ? (source.transaction_count ?? 0) : s.transactionCount;
+            const totalTxCount = s.transactionCount ?? 0;
+            const reviewedTxCount =
+              totalTxCount > 0
+                ? Math.round((Math.min(100, Math.max(0, s.pctReviewed ?? 0)) / 100) * totalTxCount)
+                : 0;
             const hasSyncFailure = !!source.last_failed_sync_at;
             return (
-              <li key={source.id} className="card overflow-hidden">
+              <li
+                key={source.id}
+                className="border border-[#F0F1F7] bg-white"
+              >
                 <div className="p-4">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
                     <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                      className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium ${
                         source.source_type === "stripe"
-                          ? "bg-[#635bff]/10 text-[#635bff]"
+                          ? "bg-[#2563EB]/15 text-[#2563EB]"
                           : "bg-bg-tertiary text-mono-medium"
                       }`}
                     >
                       {sourceTypeLabel(source.source_type)}
-                    </span>
-                    <span className="text-xs text-mono-light">
-                      {accountTypeLabel(source.account_type)}
                     </span>
                   </div>
                   <p className="text-lg font-semibold text-mono-dark">{source.name}</p>
@@ -1205,18 +1265,12 @@ export function DataSourcesClient({
                   )}
                   {source.source_type === "stripe" && (
                     <div className="text-xs text-mono-light mt-1 space-y-0.5">
-                      <p className="tabular-nums">
-                        Last pulled: {formatLastPulled(source)}
-                        <span className="font-medium text-mono-dark ml-1">
-                          · {txCount === 0 ? "0 transactions" : `${txCount} transactions`}
-                        </span>
-                      </p>
-                      {!source.last_successful_sync_at && txCount === 0 && (
+                      {!source.last_successful_sync_at && totalTxCount === 0 && (
                         <p className="text-mono-medium">
                           Pull transactions to load activity from your bank.
                         </p>
                       )}
-                      {source.last_successful_sync_at && txCount === 0 && (
+                      {source.last_successful_sync_at && totalTxCount === 0 && (
                         <p className="text-mono-medium">
                           Sync completed; no posted transactions in the selected date range.
                         </p>
@@ -1261,15 +1315,22 @@ export function DataSourcesClient({
                   )}
                   {s.transactionCount > 0 && !hasSyncFailure && (
                     <>
-                  <div className="mt-3">
+                  <div className="mt-2">
                     <p className="text-xs text-mono-light mb-1.5">
-                      <span className="tabular-nums font-medium text-mono-dark">{s.transactionCount}</span>
+                      <span className="tabular-nums font-medium text-mono-dark">{reviewedTxCount}</span>
+                      <span className="tabular-nums"> / {totalTxCount}</span>
                       {" transactions"}
+                      {source.source_type === "stripe" && (
+                        <>
+                          <span className="mx-2">·</span>
+                          <span className="tabular-nums">Synced: {formatLastPulled(source)}</span>
+                        </>
+                      )}
                     </p>
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 rounded-full bg-bg-tertiary overflow-hidden">
+                      <div className="flex-1 h-1.5 rounded-none bg-[#F0F1F7] overflow-hidden">
                         <div
-                          className="h-full rounded-full bg-accent-sage transition-all duration-300"
+                          className="h-full rounded-none bg-[#8A9BB0] transition-all duration-300"
                           style={{ width: `${Math.min(100, Math.max(0, s.pctReviewed))}%` }}
                         />
                       </div>
@@ -1291,27 +1352,42 @@ export function DataSourcesClient({
                       <button
                         type="button"
                         onClick={() => setPullModalSource(source)}
-                        className="inline-flex items-center gap-2 rounded-md bg-accent-terracotta px-3 py-2 text-sm font-medium text-white hover:bg-accent-terracotta-dark transition"
+                        className="inline-flex items-center gap-2 rounded-none bg-[#2563EB] px-3 py-2 text-sm font-medium text-white hover:opacity-90 transition"
                       >
-                        <span className="material-symbols-rounded text-[6px]">sync</span>
+                        <span
+                          className="material-symbols-rounded leading-none"
+                          style={{ fontSize: 16 }}
+                        >
+                          sync
+                        </span>
                         Pull Transactions
                       </button>
                     )}
                     {source.source_type !== "stripe" && (
                     <button
                       onClick={() => setUploadSourceId(source.id)}
-                      className="inline-flex items-center gap-2 rounded-md bg-accent-terracotta px-3 py-2 text-sm font-medium text-white hover:bg-accent-terracotta-dark transition"
+                      className="inline-flex items-center gap-2 rounded-none bg-[#2563EB] px-3 py-2 text-sm font-medium text-white hover:opacity-90 transition"
                     >
-                      <span className="material-symbols-rounded text-[6px]">upload_file</span>
+                      <span
+                        className="material-symbols-rounded leading-none"
+                        style={{ fontSize: 16 }}
+                      >
+                        upload_file
+                      </span>
                       Upload CSV
                     </button>
                     )}
                     <button
                       onClick={() => openEdit(source)}
-                      className="inline-flex items-center gap-2 rounded-md border border-bg-tertiary/60 px-3 py-2 text-sm font-medium text-mono-medium hover:bg-bg-secondary/60 transition"
+                      className="inline-flex items-center gap-2 rounded-none border border-bg-tertiary/60 px-3 py-2 text-sm font-medium text-mono-medium hover:bg-bg-secondary/60 transition"
                       aria-label="Edit account"
                     >
-                      <span className="material-symbols-rounded text-[6px]">edit</span>
+                      <span
+                        className="material-symbols-rounded leading-none"
+                        style={{ fontSize: 16 }}
+                      >
+                        edit
+                      </span>
                       Edit
                     </button>
                   </div>
@@ -1322,9 +1398,9 @@ export function DataSourcesClient({
         </ul>
       )}
 
-      {toast && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-mono-dark text-white px-4 py-2.5 text-sm shadow-lg flex items-center gap-2">
-          {toast}
+      {(toast || debugCallouts) && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded-none bg-[#5B82B4] text-black px-4 py-2.5 text-sm shadow-lg flex items-center gap-2">
+          {toast ?? "Account deleted."}
           <Link href="/inbox" className="font-medium underline underline-offset-2 hover:no-underline">
             Open Inbox
           </Link>

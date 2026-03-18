@@ -141,6 +141,142 @@ function parseCsvToRows(content: string): ParsedRow[] {
     .filter((r) => r.date && r.vendor && !Number.isNaN(r.amount));
 }
 
+const CSV_DATE_HEADERS = ["date", "posting date", "transaction date", "trans date", "postingdate"] as const;
+const CSV_VENDOR_HEADERS = ["vendor", "merchant", "payee", "name", "description", "memo"] as const;
+const CSV_AMOUNT_HEADERS = ["amount", "total", "debit", "credit"] as const;
+
+function normalizeHeader(h: string): string {
+  return h.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function validateAndParseCsv(content: string): { rows: ParsedRow[]; error?: string } {
+  function parseWithHeader(text: string) {
+    const delimiter = detectDelimiter(text);
+    const preprocessed = preprocessDelimitedText(text, delimiter);
+    return Papa.parse<Record<string, string>>(preprocessed, {
+      header: true,
+      skipEmptyLines: true,
+      delimiter,
+    });
+  }
+
+  function detectDelimiter(text: string): string {
+    const sample = text
+      .replace(/^\uFEFF/, "")
+      .slice(0, 50_000);
+    const comma = (sample.match(/,/g) ?? []).length;
+    const tab = (sample.match(/\t/g) ?? []).length;
+    const semi = (sample.match(/;/g) ?? []).length;
+    // Chase commonly exports tab-delimited "CSV" (TSV). Prefer tabs when they dominate.
+    if (tab > comma && tab > semi) return "\t";
+    if (semi > comma && semi > tab) return ";";
+    return ",";
+  }
+
+  function preprocessDelimitedText(text: string, delimiter: string): string {
+    const normalized = text
+      .replace(/^\uFEFF/, "") // strip BOM
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n");
+
+    // Many bank exports (including Chase) include a trailing delimiter (e.g. a final tab),
+    // which triggers column count mismatch. We can safely trim trailing delimiters.
+    const delimRe = delimiter === "\t" ? /\t+$/ : delimiter === ";" ? /;+$/ : /,+$/;
+    return normalized
+      .split("\n")
+      .map((line) => line.replace(delimRe, ""))
+      .join("\n");
+  }
+
+  function looksLikeHeaderLine(line: string): boolean {
+    const norm = normalizeHeader(line);
+    const hasDate = norm.includes("date");
+    const hasDesc = norm.includes("description") || norm.includes("details") || norm.includes("memo") || norm.includes("merchant") || norm.includes("payee") || norm.includes("name");
+    const hasAmt = norm.includes("amount") || norm.includes("debit") || norm.includes("credit");
+    return hasDate && hasDesc && hasAmt;
+  }
+
+  function sliceFromHeaderRow(text: string): string | null {
+    const lines = text
+      .replace(/^\uFEFF/, "") // strip BOM
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .split("\n");
+    for (let i = 0; i < Math.min(30, lines.length); i++) {
+      if (looksLikeHeaderLine(lines[i] ?? "")) {
+        return lines.slice(i).join("\n");
+      }
+    }
+    return null;
+  }
+
+  let parseText = content;
+  let result = parseWithHeader(parseText);
+
+  // Common bank exports (e.g. Chase) sometimes include preamble lines before the real header.
+  // If parsing fails, try to auto-detect the header row and retry from there.
+  if (result.errors?.length) {
+    const headerSliced = sliceFromHeaderRow(content);
+    if (headerSliced) {
+      parseText = headerSliced;
+      result = parseWithHeader(parseText);
+    }
+  }
+
+  const hasFatalCsvError = (result.errors ?? []).some((e) => {
+    // Treat column count mismatches as non-fatal; PapaParse will still provide row data,
+    // and extra fields end up in __parsed_extra.
+    if (e.code === "TooManyFields" || e.code === "TooFewFields") return false;
+    return true;
+  });
+
+  if (hasFatalCsvError) {
+    const first = result.errors[0];
+    const rowPart = first.row != null ? ` (row ${first.row + 1})` : "";
+    return {
+      rows: [],
+      error:
+        `We couldn’t read this CSV (parse error). Details: ${first.message}${rowPart}. ` +
+        "If this is a bank export, try re-downloading as CSV, and make sure any fields containing commas are quoted (e.g. \"ACME, INC\"). " +
+        "If your file has extra lines above the header, remove them and keep the first row as the column headers.",
+    };
+  }
+
+  const fields = (result.meta?.fields ?? []).map(normalizeHeader);
+  const hasDate = CSV_DATE_HEADERS.some((h) => fields.includes(normalizeHeader(h)));
+  const hasVendor = CSV_VENDOR_HEADERS.some((h) => fields.includes(normalizeHeader(h)));
+  const hasAmount = CSV_AMOUNT_HEADERS.some((h) => fields.includes(normalizeHeader(h)));
+
+  const delimiter = detectDelimiter(parseText);
+  const rows = parseCsvToRows(preprocessDelimitedText(parseText, delimiter));
+  if (rows.length === 0) {
+    const missing: string[] = [];
+    if (!hasDate) missing.push("date");
+    if (!hasVendor) missing.push("vendor/merchant");
+    if (!hasAmount) missing.push("amount (or debit/credit)");
+
+    const missingPart =
+      missing.length > 0
+        ? ` Missing: ${missing.join(", ")}.`
+        : "";
+
+    return {
+      rows: [],
+      error:
+        "We couldn’t import any rows from this CSV." +
+        missingPart +
+        " Make sure your file has a single header row and columns for date, vendor/merchant, and amount. " +
+        "Accepted headers include: " +
+        `date (${CSV_DATE_HEADERS.join(", ")}), ` +
+        `vendor (${CSV_VENDOR_HEADERS.join(", ")}), ` +
+        `amount (${CSV_AMOUNT_HEADERS.join(", ")}). ` +
+        "Dates should look like 2026-03-17 (or similar), and amounts should be numbers (e.g. -12.34).",
+    };
+  }
+
+  return { rows };
+}
+
 export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdProp }: UploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [previewRows, setPreviewRows] = useState<ParsedRow[]>([]);
@@ -213,7 +349,13 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
   }
 
   function parseCsv(content: string) {
-    setPreviewRows(parseCsvToRows(content).slice(0, 8));
+    const { rows, error } = validateAndParseCsv(content);
+    if (error) {
+      setPreviewRows([]);
+      setError(error);
+      return;
+    }
+    setPreviewRows(rows.slice(0, 8));
   }
 
   async function parseExcel(file: File) {
@@ -293,7 +435,15 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
       const ext = file.name.toLowerCase().split(".").pop();
 
       if (ext === "csv") {
-        rows = parseCsvToRows(await file.text());
+        const content = await file.text();
+        const parsed = validateAndParseCsv(content);
+        if (parsed.error) {
+          setStage("error");
+          setError(parsed.error);
+          setLoading(false);
+          return;
+        }
+        rows = parsed.rows;
       } else if (ext === "xlsx" || ext === "xls") {
         const data = await file.arrayBuffer();
         const workbook = new ExcelJS.Workbook();
@@ -415,46 +565,36 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
       aria-modal="true"
       aria-labelledby="upload-modal-title"
     >
-      <div className="rounded-xl bg-white shadow-[0_8px_30px_-6px_rgba(0,0,0,0.14)] max-w-lg w-full mx-4 overflow-hidden">
-        {/* Header */}
-        <div className="rounded-t-xl bg-[#2d3748] px-6 pt-6 pb-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 id="upload-modal-title" className="text-xl font-bold text-white tracking-tight">
-                {step === "choose_source" ? "Choose account" : "Upload Transactions"}
-              </h2>
-              <p className="text-sm text-white/80 mt-1.5">
-                {step === "choose_source"
-                  ? "Select an account for this upload, or create one."
-                  : "CSV or Excel. AI categorization runs in the background."}
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              className="h-8 w-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition shrink-0"
-              aria-label="Close"
-            >
-              <span className="material-symbols-rounded text-[18px]">close</span>
-            </button>
-          </div>
+      <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
+        <div className="bg-white px-6 pt-6 pb-1 flex items-start">
+          <h2
+            id="upload-modal-title"
+            className="text-xl text-mono-dark font-medium"
+            style={{ fontFamily: "var(--font-sans)" }}
+          >
+            {step === "choose_source" ? "Choose account" : "Upload transactions"}
+          </h2>
         </div>
 
-        <div className="px-6 py-6 space-y-5">
+        <div className="px-6 py-3 space-y-3">
           {step === "choose_source" ? (
             <>
+              <p className="text-xs text-mono-medium">
+                Select an account for this upload, or create one.
+              </p>
               {dataSourcesLoading ? (
                 <p className="text-sm text-mono-medium">Loading accounts…</p>
               ) : (
                 <>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-mono-dark block">Account</label>
-                    <div className="space-y-1.5 max-h-40 overflow-y-auto border border-bg-tertiary rounded-md p-1">
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto border border-bg-tertiary/60 rounded-none p-1">
                       {dataSources.map((ds) => (
                         <button
                           key={ds.id}
                           type="button"
                           onClick={() => setSelectedDataSourceId(ds.id)}
-                          className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition ${
+                          className={`w-full text-left px-3 py-2.5 rounded-none text-sm transition ${
                             selectedDataSourceId === ds.id
                               ? "bg-accent-sage/12 text-accent-sage font-medium"
                               : "text-mono-dark hover:bg-bg-secondary"
@@ -477,7 +617,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                       Create new account
                     </button>
                   ) : (
-                    <div className="border border-bg-tertiary rounded-md p-4 space-y-3 bg-bg-secondary/30">
+                    <div className="border border-bg-tertiary/60 rounded-none p-4 space-y-3 bg-bg-secondary/30">
                       <h3 className="text-sm font-semibold text-mono-dark">New account</h3>
                       <div>
                         <label className="text-sm font-medium text-mono-dark block mb-2">Account name *</label>
@@ -486,7 +626,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                           value={createName}
                           onChange={(e) => setCreateName(e.target.value)}
                           placeholder="e.g. Chase Business Checking"
-                          className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white placeholder:text-mono-light focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
+                          className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
                         />
                       </div>
                       <div>
@@ -494,7 +634,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                         <select
                           value={createAccountType}
                           onChange={(e) => setCreateAccountType(e.target.value)}
-                          className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
+                          className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
                         >
                           {ACCOUNT_TYPES.map((t) => (
                             <option key={t.value} value={t.value}>{t.label}</option>
@@ -508,14 +648,14 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                           value={createInstitution}
                           onChange={(e) => setCreateInstitution(e.target.value)}
                           placeholder="e.g. Chase, Amex"
-                          className="w-full border border-bg-tertiary rounded-md px-3.5 py-2.5 text-sm text-mono-dark bg-white placeholder:text-mono-light focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none transition"
+                          className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
                         />
                       </div>
                       <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => setShowCreateForm(false)}
-                          className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition"
+                          className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors"
                         >
                           Cancel
                         </button>
@@ -523,7 +663,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                           type="button"
                           onClick={handleCreateDataSource}
                           disabled={createSaving || !createName.trim()}
-                          className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 disabled:opacity-40 transition"
+                          className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 disabled:opacity-40 transition-colors"
                         >
                           {createSaving ? "Creating…" : "Create account"}
                         </button>
@@ -536,8 +676,8 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
             </>
           ) : (
             <>
-          <p className="text-sm text-mono-light">
-            Each transaction is assigned to the tax year of its date (e.g. 2026 dates → 2026 records).
+          <p className="text-xs text-mono-medium">
+            Upload CSV or Excel. AI categorization runs in the background.
           </p>
 
           {/* Drop zone */}
@@ -548,7 +688,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
             onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            className={`relative flex min-h-[160px] flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed transition-colors ${
+            className={`relative flex min-h-[160px] flex-col items-center justify-center gap-2 rounded-none border-2 border-dashed transition-colors ${
               isDragging
                 ? "border-accent-terracotta bg-accent-terracotta/5"
                 : "border-bg-tertiary bg-bg-secondary/50"
@@ -577,13 +717,6 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
               />
               <span className="flex items-center gap-1">
                 Suppress duplicates
-                <span
-                  className="material-symbols-rounded text-[16px] text-mono-medium"
-                  aria-label="Suppress duplicate transactions info"
-                  title="If enabled, we skip transactions that already exist for this account with the same date and name."
-                >
-                  info
-                </span>
               </span>
             </label>
             <p className="text-xs text-mono-medium">
@@ -595,11 +728,11 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
           {previewRows.length > 0 && (
             <>
               {previewRows.some((r) => r.transaction_type === "income") && (
-                <div className="rounded-md bg-accent-sage/10 px-3 py-2 text-xs text-accent-sage">
+                <div className="rounded-none bg-accent-sage/10 px-3 py-2 text-xs text-accent-sage">
                   Income transactions detected. These will be added to your business revenue.
                 </div>
               )}
-              <div className="border border-bg-tertiary rounded-md overflow-auto max-h-48 text-[11px]">
+              <div className="border border-bg-tertiary/60 rounded-none overflow-auto max-h-48 text-[11px]">
                 <table className="min-w-full">
                   <thead className="bg-bg-secondary text-mono-light">
                     <tr>
@@ -616,7 +749,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                         <td className="px-2 py-1 truncate max-w-[200px]">{row.vendor}</td>
                         <td className="px-2 py-1 text-right tabular-nums">${Math.abs(row.amount).toFixed(2)}</td>
                         <td className="px-2 py-1">
-                          <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                          <span className={`inline-block rounded-none px-1.5 py-0.5 text-[10px] font-medium ${
                             row.transaction_type === "income"
                               ? "bg-accent-sage/10 text-accent-sage"
                               : "bg-bg-tertiary/50 text-mono-medium"
@@ -646,7 +779,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                       : "Processing..."}
                 </span>
               </div>
-              <div className="h-1.5 w-full bg-bg-tertiary rounded-full overflow-hidden">
+              <div className="h-1.5 w-full bg-bg-tertiary rounded-none overflow-hidden">
                 <div className="h-full bg-accent-sage animate-pulse" style={{ width: stage === "uploading" ? "70%" : "40%" }} />
               </div>
             </div>
@@ -665,7 +798,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                   </a>
                 </div>
               )}
-              <div className="rounded-md bg-accent-sage/10 px-3 py-2 text-xs text-accent-sage font-medium">
+              <div className="rounded-none bg-accent-sage/10 px-3 py-2 text-xs text-accent-sage font-medium">
                 {rowCount} transactions imported. AI categorization is running in the background.
               </div>
             </div>
@@ -676,34 +809,33 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-bg-tertiary/40">
+        <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
           {step === "choose_source" ? (
             <>
-              <button onClick={onClose} className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition">
+              <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors">
                 Cancel
               </button>
               <button
                 onClick={() => { setStep("upload"); setError(null); }}
                 disabled={!selectedDataSourceId || dataSourcesLoading}
-                className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition disabled:opacity-40"
+                className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors disabled:opacity-40"
               >
                 Continue
               </button>
             </>
           ) : stage === "done" ? (
-            <button onClick={onClose} className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition">
+            <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors">
               Done
             </button>
           ) : (
             <>
-              <button onClick={onClose} disabled={loading} className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40">
+              <button onClick={onClose} disabled={loading} className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40">
                 Cancel
               </button>
               <button
                 disabled={!file || loading || (needsDataSourceStep && !effectiveDataSourceId)}
                 onClick={handleImport}
-                className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition disabled:opacity-40"
+                className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors disabled:opacity-40"
               >
                 {loading ? "Importing..." : "Import"}
               </button>

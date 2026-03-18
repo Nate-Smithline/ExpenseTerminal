@@ -11,7 +11,7 @@ const FULL_WIDTH_ROUTES = ["/", "/pricing", "/request-demo"];
 
 const mobileFooterNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
-  { href: "/data-sources", label: "Accounts", icon: "database" },
+  { href: "/data-sources", label: "Accounts & Data", icon: "database" },
   { href: "/inbox", label: "Inbox", icon: "inbox" },
   { href: "/tax-details", label: "Tax", icon: "receipt_long" },
 ];
