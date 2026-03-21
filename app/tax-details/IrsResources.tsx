@@ -144,29 +144,33 @@ export function IrsResources() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   return (
-    <div className="card p-6">
-      <div className="flex items-start justify-between gap-3 mb-1">
+    <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
+      <div className="px-4 py-3 flex items-center justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold text-mono-dark">
+          <div
+            role="heading"
+            aria-level={2}
+            className="text-base md:text-lg font-normal font-sans text-mono-dark"
+          >
             IRS Resources &amp; Filing Guide
-          </h3>
-          <p className="text-xs text-mono-light mt-0.5">
-            Short, plain-English answers to common questions, plus links out to the IRS when you need more detail.
+          </div>
+          <p className="text-xs text-mono-medium mt-1 font-sans">
+            Plain-English answers to common IRS questions, plus links when you need more detail.
           </p>
         </div>
       </div>
 
-      <div className="divide-y divide-bg-tertiary/40">
+      <div className="px-4 py-3 divide-y divide-[#F0F1F7]">
         {RESOURCES.map((section, idx) => {
           const isOpen = expanded === section.category;
           return (
-            <div key={section.category} className="py-3">
+            <div key={section.category} className="py-3 first:pt-2 last:pb-2">
               <button
                 type="button"
                 onClick={() => setExpanded(isOpen ? null : section.category)}
                 className="w-full flex items-center justify-between text-left hover:text-mono-dark"
               >
-                <span className="text-sm font-medium text-mono-dark">
+                <span className="text-xs md:text-sm font-medium font-sans text-mono-dark">
                   {section.category}
                 </span>
                 <span className="material-symbols-rounded text-[18px] text-mono-light">
@@ -179,10 +183,10 @@ export function IrsResources() {
                   {section.items.map((item) => {
                     const Content = (
                       <div className="space-y-0.5">
-                        <p className="text-sm font-medium text-mono-dark">
+                        <p className="text-xs md:text-sm font-medium font-sans text-mono-dark">
                           {item.title}
                         </p>
-                        <p className="text-xs text-mono-medium leading-relaxed">
+                        <p className="text-[11px] text-mono-medium leading-relaxed font-sans">
                           {item.description}
                         </p>
                       </div>
@@ -208,6 +212,6 @@ export function IrsResources() {
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }

@@ -25,13 +25,22 @@ interface TaxFormCardProps {
   lineBreakdown: Record<string, number>;
   transactions: TaxFormCardTransaction[];
   onSelectTransaction?: (id: string) => void;
+  /** Optional visual variant: "card" (default) or "section" for flat home styling */
+  variant?: "card" | "section";
 }
 
 function formatCurrency(n: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
 
-export function TaxFormCard({ title, subtitle, lineBreakdown, transactions, onSelectTransaction }: TaxFormCardProps) {
+export function TaxFormCard({
+  title,
+  subtitle,
+  lineBreakdown,
+  transactions,
+  onSelectTransaction,
+  variant = "card",
+}: TaxFormCardProps) {
   const [expandedLine, setExpandedLine] = useState<string | null>(null);
   const [hiddenTransactionIds, setHiddenTransactionIds] = useState<string[]>([]);
   const [visiblePerLine, setVisiblePerLine] = useState<Record<string, number>>({});
@@ -129,8 +138,13 @@ export function TaxFormCard({ title, subtitle, lineBreakdown, transactions, onSe
     );
   }
 
+  const containerClass =
+    variant === "section"
+      ? "border border-[#F0F1F7] bg-white px-4 py-3"
+      : "card p-6";
+
   return (
-    <div className="card p-6">
+    <div className={containerClass}>
       {/* Undo bar (same style as Inbox) */}
       {undoState && (
         <div className="flex items-center justify-between rounded-lg bg-mono-dark px-4 py-2.5 text-sm text-white mb-4">

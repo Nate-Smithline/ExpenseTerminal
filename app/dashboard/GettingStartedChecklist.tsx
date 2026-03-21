@@ -142,53 +142,68 @@ export function GettingStartedChecklist({ setupStatus }: { setupStatus?: {
   if (allDone) return null;
 
   return (
-    <div className="card p-6 space-y-5">
-      <div className="flex items-start justify-between">
+    <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
+      <div className="px-4 py-3 flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg text-mono-dark">Getting Started</h2>
-          <p className="text-xs text-mono-light mt-0.5">
-            {completedCount} of {STEPS.length} complete
+          <div
+            role="heading"
+            aria-level={2}
+            className="text-base md:text-lg font-normal font-sans text-mono-dark"
+          >
+            Getting Started
+          </div>
+          <p className="text-xs text-mono-medium mt-1 font-sans">
+            {completedCount} of {STEPS.length} checklist items complete.
           </p>
         </div>
       </div>
 
-      {/* Progress bar */}
-      <div className="h-1.5 bg-bg-tertiary/40 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-accent-sage rounded-full transition-all duration-500"
-          style={{ width: `${(completedCount / STEPS.length) * 100}%` }}
-        />
-      </div>
+      <div className="px-4 py-3 space-y-3">
+        {/* Progress bar — match Accounts page styling */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-1.5 rounded-none bg-[#F0F1F7] overflow-hidden">
+            <div
+              className="h-full rounded-none bg-[#8A9BB0] transition-all duration-300"
+              style={{ width: `${(completedCount / STEPS.length) * 100}%` }}
+            />
+          </div>
+          <span className="text-[11px] tabular-nums font-medium text-mono-medium shrink-0">
+            {Math.round((completedCount / STEPS.length) * 100)}%
+          </span>
+        </div>
 
-      <div className="space-y-2">
+        <div className="space-y-1.5">
         {STEPS.map((step) => {
           const done = isStepDone(step.id);
           return (
             <div
               key={step.id}
-              className={`flex items-center gap-3 rounded-xl px-4 py-3 transition-all ${
-                done ? "bg-bg-secondary/60" : "bg-white border border-bg-tertiary/30"
-              }`}
+              className="flex items-center gap-3 px-1 py-2"
             >
               <button
                 onClick={() => toggleStep(step.id)}
-                className={`h-5 w-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${
+                className={`h-4 w-4 rounded-sm border flex items-center justify-center shrink-0 transition-all ${
                   done
-                    ? "bg-accent-sage border-accent-sage"
-                    : "border-bg-tertiary hover:border-accent-sage/40"
+                    ? "bg-[#0D1F35] border-[#0D1F35]"
+                    : "border-bg-tertiary hover:border-[#2563EB]/50"
                 }`}
               >
                 {done && (
-                  <span className="material-symbols-rounded text-white text-[10px]">check</span>
+                  <span
+                    className="material-symbols-rounded text-white leading-none"
+                    style={{ fontSize: 12, lineHeight: "12px" }}
+                  >
+                    check
+                  </span>
                 )}
               </button>
 
               <div className="flex-1 min-w-0">
-                <p className={`text-sm font-medium ${done ? "text-mono-light line-through" : "text-mono-dark"}`}>
+                <p className={`text-xs md:text-sm font-medium font-sans ${done ? "text-mono-light line-through" : "text-mono-dark"}`}>
                   {step.label}
                 </p>
                 {!done && (
-                  <p className="text-xs text-mono-light mt-0.5">{step.description}</p>
+                  <p className="text-[11px] text-mono-light mt-0.5 font-sans">{step.description}</p>
                 )}
               </div>
 
@@ -201,7 +216,7 @@ export function GettingStartedChecklist({ setupStatus }: { setupStatus?: {
                         if (typeof window === "undefined") return;
                         window.dispatchEvent(new CustomEvent("open-what-can-i-deduct"));
                       }}
-                      className="text-xs text-accent-sage font-medium hover:underline"
+                      className="text-[11px] text-[#2563EB] font-medium hover:underline"
                     >
                       Go
                     </button>
@@ -213,21 +228,21 @@ export function GettingStartedChecklist({ setupStatus }: { setupStatus?: {
                         void updateProgress(next);
                         router.push(step.href);
                       }}
-                      className="text-xs text-accent-sage font-medium hover:underline"
+                      className="text-[11px] text-[#2563EB] font-medium hover:underline"
                     >
                       Go
                     </button>
                   ) : (
                     <Link
                       href={step.href}
-                      className="text-xs text-accent-sage font-medium hover:underline"
+                      className="text-[11px] text-[#2563EB] font-medium hover:underline"
                     >
                       Go
                     </Link>
                   )}
                   <button
                     onClick={() => skipStep(step.id)}
-                    className="text-xs text-mono-light hover:text-mono-medium transition-colors"
+                    className="text-[11px] text-mono-light hover:text-mono-medium transition-colors"
                   >
                     Skip
                   </button>
@@ -236,7 +251,8 @@ export function GettingStartedChecklist({ setupStatus }: { setupStatus?: {
             </div>
           );
         })}
+        </div>
       </div>
-    </div>
+    </section>
   );
 }

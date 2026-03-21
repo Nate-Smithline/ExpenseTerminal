@@ -18,6 +18,8 @@ interface CategoryBreakoutProps {
   categoryBreakdown: Record<string, number>;
   transactions: CategoryBreakoutTransaction[];
   onSelectTransaction?: (id: string) => void;
+  /** Optional visual variant: "card" (default) or "section" for flat home styling */
+  variant?: "card" | "section";
 }
 
 function formatCurrency(n: number): string {
@@ -54,7 +56,12 @@ function normalizeCategoryLabel(raw: string | null | undefined): string {
   return trimmed;
 }
 
-export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTransaction }: CategoryBreakoutProps) {
+export function CategoryBreakout({
+  categoryBreakdown,
+  transactions,
+  onSelectTransaction,
+  variant = "card",
+}: CategoryBreakoutProps) {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [hiddenTransactionIds, setHiddenTransactionIds] = useState<string[]>([]);
   const [visiblePerCategory, setVisiblePerCategory] = useState<Record<string, number>>({});
@@ -147,7 +154,13 @@ export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTran
 
   if (displayCategories.length === 0) {
     return (
-      <div className="card p-6">
+      <div
+        className={
+          variant === "section"
+            ? "border border-[#F0F1F7] bg-white px-4 py-3"
+            : "card p-6"
+        }
+      >
         <h3 className="text-lg font-semibold text-mono-dark mb-2">Category Breakout</h3>
         <p className="text-sm text-mono-light text-center py-8">
           No expense categories to display yet.
@@ -237,8 +250,13 @@ export function CategoryBreakout({ categoryBreakdown, transactions, onSelectTran
     return null;
   }
 
+  const containerClass =
+    variant === "section"
+      ? "border border-[#F0F1F7] bg-white px-4 py-3"
+      : "card p-6";
+
   return (
-    <div className="card p-6">
+    <div className={containerClass}>
       {/* Undo bar (same style as Inbox) */}
       {undoState && (
         <div className="flex items-center justify-between rounded-lg bg-mono-dark px-4 py-2.5 text-sm text-white mb-4">

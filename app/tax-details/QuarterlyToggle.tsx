@@ -17,7 +17,7 @@ export function QuarterlyToggle({ value, onChange }: QuarterlyToggleProps) {
   const currentQuarter = Math.ceil((new Date().getMonth() + 1) / 3);
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-2">
       {QUARTERS.map((q) => {
         const isActive = value === q.value;
         const isCurrent = q.value === currentQuarter;
@@ -25,7 +25,11 @@ export function QuarterlyToggle({ value, onChange }: QuarterlyToggleProps) {
           <button
             key={q.label}
             onClick={() => onChange(q.value)}
-            className={`btn-pill relative ${isActive ? "selected" : ""}`}
+            className={`relative px-3 py-2 text-xs font-medium font-sans border ${
+              isActive
+                ? "bg-[#F5F0E8] border-[#F5F0E8] text-mono-dark"
+                : "bg-white border-[#F0F1F7] text-mono-medium hover:bg-[#F5F0E8]/60"
+            }`}
           >
             {q.label}
             {isCurrent && !isActive && (

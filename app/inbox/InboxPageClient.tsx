@@ -131,6 +131,18 @@ export function InboxPageClient({
   const [pendingBulkAnalyze, setPendingBulkAnalyze] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
+  // If we ever end up in a "bulkAnalyzing" UI state without the real AI progress
+  // starting (e.g. while testing preview UI), automatically reset back.
+  useEffect(() => {
+    if (!bulkAnalyzing) return;
+    if (aiProgress) return;
+    const t = window.setTimeout(() => {
+      // Re-check at execution time in case state changed.
+      if (bulkAnalyzing && !aiProgress) setBulkAnalyzing(false);
+    }, 1500);
+    return () => window.clearTimeout(t);
+  }, [bulkAnalyzing, aiProgress]);
+
   const cardRefs = useRef<Map<string, TransactionCardRef>>(new Map());
 
   useEffect(() => {
@@ -825,7 +837,7 @@ export function InboxPageClient({
 
       {/* Background AI progress banner */}
       {aiProgress && (
-        <div className="card px-5 py-3 flex flex-col gap-3">
+        <div className="border border-[#F0F1F7] bg-white px-5 py-3 flex flex-col gap-3">
           <div className="flex items-center gap-4">
             <div className="h-2 flex-1 rounded-full bg-bg-tertiary overflow-hidden">
               <div
@@ -862,7 +874,7 @@ export function InboxPageClient({
 
       {/* Upgrade panel: free tier over limit */}
       {showUpgradePanel && billingUsage?.overLimit && (
-        <div className="rounded-xl border border-accent-warm/40 bg-white p-6 space-y-5">
+        <div className="border border-accent-warm/40 bg-white p-6 space-y-5">
           <h3 className="text-sm font-semibold text-mono-dark">
             Free AI limit reached
           </h3>
@@ -870,7 +882,7 @@ export function InboxPageClient({
             Only the first {billingUsage.maxCsvTransactionsForAi ?? 250} CSV transactions are eligible for AI on the free plan.
             You have {billingUsage.csvTransactions.totalCsvUploaded} CSV transactions; we&apos;ll analyze up to {billingUsage.maxCsvTransactionsForAi ?? 250}. Upgrade to analyze everything.
           </p>
-          <div className="rounded-lg border border-bg-tertiary/60 bg-bg-secondary/40 px-4 py-3 text-xs sm:text-sm space-y-3">
+          <div className="border border-bg-tertiary/60 bg-bg-secondary/40 px-4 py-3 text-xs sm:text-sm space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
               <div>
                 <p className="font-medium text-mono-dark">
@@ -935,25 +947,37 @@ export function InboxPageClient({
 
       {/* Unanalyzed: need AI before they appear in inbox */}
       {!loading && unanalyzedCount > 0 && !aiProgress && !showUpgradePanel && (
-        <div className="rounded-xl border border-bg-tertiary/40 bg-white p-6 space-y-5">
+        <div className="border border-[#F0F1F7] bg-cool-stock p-4 space-y-3">
+          <p className="text-base font-sans font-medium text-mono-dark leading-snug">
+            Categorize {unanalyzedCount} transaction{unanalyzedCount === 1 ? "" : "s"} with our pre-trained model to begin verifying with confidence.
+          </p>
           <div>
-            <h3 className="text-sm font-semibold text-mono-dark mb-1">
-              AI categorization needed
-            </h3>
-            <p className="text-sm text-mono-medium">
-              <strong>{unanalyzedCount}</strong> transaction{unanalyzedCount === 1 ? "" : "s"} need examination before they appear in the inbox.
-            </p>
-          </div>
-          <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => runBulkAnalyze()}
-              disabled={bulkAnalyzing}
-              className="inline-flex items-center gap-2 rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-40"
-            >
-              {bulkAnalyzing ? "Analyzing…" : "Start examination"}
-              <kbd className="kbd-hint ml-1.5 !bg-white/20 !text-white !border-white/30">e</kbd>
-            </button>
+            {!bulkAnalyzing ? (
+              <button
+                type="button"
+                onClick={() => runBulkAnalyze()}
+                disabled={bulkAnalyzing}
+                className="inline-flex items-center gap-2 rounded-none bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition disabled:opacity-40"
+              >
+                <kbd className="kbd-hint !rounded-none !border-transparent !bg-white/20 !text-white !opacity-100">e</kbd>
+                <span className="ml-2">Run analysis</span>
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-rounded text-[16px] text-[var(--color-sovereign-blue)] animate-spin-slow">progress_activity</span>
+                    <span className="text-sm font-medium text-[#0D1F35]">Running analysis</span>
+                  </div>
+                </div>
+                <div className="h-1.5 bg-[var(--color-frost)] overflow-hidden">
+                  <div className="h-full w-2/5 bg-[var(--color-sovereign-blue)] animate-pulse" />
+                </div>
+                <p className="text-xs text-mono-medium">
+                  Reviewing uncategorized transactions and queuing categorized results for inbox verification.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -982,7 +1006,7 @@ export function InboxPageClient({
         )}
 
         {toast && (
-          <div className="rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white">
+          <div className="bg-accent-sage px-4 py-2.5 text-sm font-medium text-white">
             {toast}
           </div>
         )}
@@ -990,7 +1014,7 @@ export function InboxPageClient({
 
       {/* Keyboard shortcut overlay */}
       {showShortcuts && (
-        <div className="card p-6">
+        <div className="border border-[#F0F1F7] bg-white p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-mono-dark">Keyboard Shortcuts</h3>
             <button onClick={() => setShowShortcuts(false)} className="text-xs text-mono-light hover:text-mono-dark">
@@ -1030,18 +1054,22 @@ export function InboxPageClient({
       {/* Possible duplicates */}
       {!loading && visibleDuplicateGroups.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-mono-dark">Possible duplicates</h3>
+          <div className="space-y-1">
+            <h3 className="text-base text-mono-dark !font-sans !font-normal">
+              Possible duplicates
+            </h3>
+            <p className="text-xs text-mono-medium">
+              Transactions in this section share the same date, amount, and vendor. Review each group before removing duplicates.
+            </p>
+          </div>
           {visibleDuplicateGroups.map((group) => {
             const key = duplicateKey(group[0]);
             const first = group[0];
             return (
               <div
                 key={key}
-                className="rounded-xl border border-bg-tertiary/60 bg-white p-4 space-y-3"
+                className="border border-[#F0F1F7] bg-white p-4 space-y-3"
               >
-                <p className="text-xs text-mono-medium">
-                  {group.length} transactions with same date, amount, and vendor
-                </p>
                 <ul className="text-xs text-mono-dark space-y-1">
                   {group.map((t) => (
                     <li key={t.id}>
@@ -1055,7 +1083,7 @@ export function InboxPageClient({
                     onClick={() => {
                       handleDelete(first.id);
                     }}
-                    className="rounded-lg px-3 py-2 text-xs font-medium bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition"
+                    className="px-3 py-2 text-xs font-medium bg-[#FEE2E2] text-[#DC2626] hover:bg-[#FCA5A5]/30 transition rounded-none"
                   >
                     Mark as duplicate (remove first)
                   </button>
@@ -1064,7 +1092,7 @@ export function InboxPageClient({
                     onClick={() => {
                       setDismissedDuplicateKeys((prev) => new Set(prev).add(key));
                     }}
-                    className="rounded-lg px-3 py-2 text-xs font-medium bg-bg-secondary text-mono-medium border border-bg-tertiary hover:bg-bg-tertiary/60 transition"
+                    className="px-3 py-2 text-xs font-medium bg-cool-stock text-black hover:bg-[#E8EEF5] transition rounded-none"
                   >
                     Not a duplicate (keep all)
                   </button>
@@ -1159,6 +1187,9 @@ export function InboxPageClient({
           onMarkPersonal={async () => {
             await handleMarkPersonal(manageTx.id);
             setManageTx(null);
+          }}
+          onDelete={async () => {
+            await handleDelete(manageTx.id);
           }}
           editable
           onSave={async (txId, update) => {

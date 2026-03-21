@@ -10,6 +10,11 @@ import { DashboardHeader } from "./DashboardHeader";
 import { WhatCanIDeduct } from "./WhatCanIDeduct";
 import { DashboardStats } from "./DashboardStats";
 import { AdditionalDeductionsList } from "./AdditionalDeductionsList";
+import { IrsResources } from "../tax-details/IrsResources";
+import { ExportCallout } from "./ExportCallout";
+import { ForYourAwareness } from "./ForYourAwareness";
+import { DashboardPeriodBar } from "./DashboardPeriodBar";
+import { TaxDetailsSections } from "./TaxDetailsSections";
 
 function deductibleAmount(t: { amount: string; deduction_percent?: number | null; is_meal?: boolean; is_travel?: boolean }): number {
   const amt = Math.abs(Number(t.amount));
@@ -141,11 +146,15 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-10">
-      <DashboardHeader
-        taxYear={taxYear}
-        pendingCount={pendingCount ?? 0}
-        userName={profileRow ? [profileRow.name_prefix, profileRow.first_name, profileRow.last_name].filter(Boolean).join(" ").trim() || null : null}
-      />
+      <div className="space-y-4">
+        <DashboardHeader
+          pendingCount={pendingCount ?? 0}
+          userName={profileRow ? [profileRow.name_prefix, profileRow.first_name, profileRow.last_name].filter(Boolean).join(" ").trim() || null : null}
+        />
+
+        {/* Year + period selector bar (matches Tax Details styling) */}
+        <DashboardPeriodBar initialYear={taxYear} />
+      </div>
 
       {/* What can I deduct? — top actions */}
       <div className="-mt-5">
@@ -157,82 +166,123 @@ export default async function DashboardPage() {
         <GettingStartedChecklist setupStatus={setupStatus} />
       </div>
 
-      {/* Summary Cards */}
-      <DashboardStats
-        revenue={revenue}
-        fromTransactions={fromTransactions}
-        additionalTotal={additionalTotal}
-        totalSavings={totalSavings}
-        taxRate={taxRate}
-        taxYear={taxYear}
-      />
+      {/* Tax-ready PDF package export */}
+      <ExportCallout taxYear={taxYear} filingType={orgSettings?.filing_type ?? null} />
 
-      {/* Additional deductions — list first */}
-      <AdditionalDeductionsList additionalDeductions={additionalDeductions ?? []} />
+      {/* Summary Cards */}
+      <div className="-mt-4">
+        <DashboardStats
+          revenue={revenue}
+          fromTransactions={fromTransactions}
+          additionalTotal={additionalTotal}
+          totalSavings={totalSavings}
+          taxRate={taxRate}
+          taxYear={taxYear}
+        />
+      </div>
+
+      {/* Tax Details sections merged into Home (How much should I file, Schedule C, Category breakout, SE) */}
+      <TaxDetailsSections defaultYear={taxYear} />
 
       {/* Deduction Breakdown */}
-      <div className="card overflow-hidden p-6 border-l-4 border-l-bg-tertiary">
-        <h2 className="text-lg font-semibold text-mono-dark mb-1 tracking-tight">
-          Deduction Breakdown
-        </h2>
-        <p className="text-sm text-mono-light mb-5">
-          By category and by calculator
-        </p>
-
-        <div className="space-y-6">
-          <div>
-            <p className="text-xs font-medium text-mono-light uppercase tracking-wider mb-3">
-              From Transactions
-            </p>
-            <ul className="space-y-2.5 text-sm text-mono-medium">
-              {Object.entries(byCategory)
-                .sort((a, b) => b[1] - a[1])
-                .map(([cat, amt]) => (
-                  <li key={cat} className="flex justify-between items-baseline gap-4 py-1 border-b border-bg-tertiary/30 last:border-0">
-                    <span className="text-mono-dark">{cat}</span>
-                    <span className="tabular-nums font-medium text-mono-dark shrink-0">${amt.toFixed(2)}</span>
-                  </li>
-                ))}
-              {Object.keys(byCategory).length === 0 && (
-                <li className="text-mono-light py-2">
-                  No completed transactions yet.
-                  {(pendingCount ?? 0) > 0 && (
-                    <>
-                      {" "}
-                      <Link href="/inbox" className="text-accent-sage hover:underline font-medium">
-                        Review {pendingCount} pending in Inbox
-                      </Link>{" "}
-                      to add ${pendingDeductionPotential.toLocaleString("en-US", { minimumFractionDigits: 2 })} to deductions.
-                    </>
-                  )}
-                </li>
-              )}
-            </ul>
+      <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
+        <div className="px-4 py-3">
+          <div
+            role="heading"
+            aria-level={2}
+            className="text-base md:text-lg font-normal font-sans text-mono-dark"
+          >
+            Deduction Breakdown
           </div>
+          <p className="text-xs text-mono-medium mt-1 font-sans">
+            By category and by calculator.
+          </p>
+        </div>
 
-          <div className="border-t border-bg-tertiary/40 pt-5">
-            <p className="text-xs font-medium text-mono-light uppercase tracking-wider mb-3">
-              Additional Deductions
-            </p>
-            <ul className="space-y-2.5 text-sm text-mono-medium">
-              {additionalDeductions?.map((d: { type: string; amount: string; tax_savings: string }) => (
-                <li key={d.type + d.amount} className="flex justify-between items-baseline gap-4 py-1 border-b border-bg-tertiary/30 last:border-0">
-                  <span className="capitalize text-mono-dark">{d.type.replace(/_/g, " ")}</span>
-                  <span className="tabular-nums shrink-0">
-                    <span className="font-medium text-mono-dark">${Number(d.amount).toFixed(2)}</span>
-                    <span className="text-mono-light ml-1.5 text-xs">saves ${Number(d.tax_savings).toFixed(2)}</span>
+        <div className="px-4 py-3 space-y-3">
+          <p className="text-xs font-medium text-mono-medium uppercase tracking-wider">
+            From Transactions
+          </p>
+          <ul className="space-y-2.5 text-sm text-mono-medium">
+            {Object.entries(byCategory)
+              .sort((a, b) => b[1] - a[1])
+              .map(([cat, amt]) => (
+                <li
+                  key={cat}
+                  className="flex justify-between items-baseline gap-4 py-1 border-b border-[#F0F1F7] last:border-0"
+                >
+                  <span className="text-mono-dark">{cat}</span>
+                  <span className="tabular-nums font-medium text-mono-dark shrink-0">
+                    ${amt.toFixed(2)}
                   </span>
                 </li>
               ))}
-              {(!additionalDeductions || additionalDeductions.length === 0) && (
-                <li className="text-mono-light py-2">
-                  None yet. Add deductions from the section above.
-                </li>
-              )}
-            </ul>
-          </div>
+            {Object.keys(byCategory).length === 0 && (
+              <li className="text-mono-light py-2">
+                No completed transactions yet.
+                {(pendingCount ?? 0) > 0 && (
+                  <>
+                    {" "}
+                    <Link
+                      href="/inbox"
+                      className="text-accent-sage hover:underline font-medium"
+                    >
+                      Review {pendingCount} pending in Inbox
+                    </Link>{" "}
+                    to add $
+                    {pendingDeductionPotential.toLocaleString("en-US", {
+                      minimumFractionDigits: 2,
+                    })}{" "}
+                    to deductions.
+                  </>
+                )}
+              </li>
+            )}
+          </ul>
         </div>
-      </div>
+
+        <div className="px-4 py-3 space-y-3">
+          <p className="text-xs font-medium text-mono-medium uppercase tracking-wider">
+            Additional Deductions
+          </p>
+          <ul className="space-y-2.5 text-sm text-mono-medium">
+            {additionalDeductions?.map(
+              (d: { type: string; amount: string; tax_savings: string }) => (
+                <li
+                  key={d.type + d.amount}
+                  className="flex justify-between items-baseline gap-4 py-1 border-b border-[#F0F1F7] last:border-0"
+                >
+                  <span className="capitalize text-mono-dark">
+                    {d.type.replace(/_/g, " ")}
+                  </span>
+                  <span className="tabular-nums shrink-0">
+                    <span className="font-medium text-mono-dark">
+                      ${Number(d.amount).toFixed(2)}
+                    </span>
+                    <span className="text-mono-light ml-1.5 text-xs">
+                      saves ${Number(d.tax_savings).toFixed(2)}
+                    </span>
+                  </span>
+                </li>
+              ),
+            )}
+            {(!additionalDeductions || additionalDeductions.length === 0) && (
+              <li className="text-mono-light py-2">
+                None yet. Add deductions from the section above.
+              </li>
+            )}
+          </ul>
+        </div>
+      </section>
+
+      {/* Additional deductions */}
+      <AdditionalDeductionsList additionalDeductions={additionalDeductions ?? []} />
+
+      {/* IRS Resources */}
+      <IrsResources />
+
+      {/* For your awareness — disclaimer */}
+      <ForYourAwareness />
     </div>
   );
 }

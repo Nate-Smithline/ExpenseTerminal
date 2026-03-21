@@ -1,172 +1,243 @@
-"use client";
+ "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { LogIncomeForm } from "./LogIncomeForm";
+ import { useState, useEffect, useCallback } from "react";
+ import Link from "next/link";
+ import { useRouter } from "next/navigation";
+ import { LogIncomeForm } from "./LogIncomeForm";
 
-/** Typical small business finds ~15–25% of revenue in deductions (benchmark for comparison). */
-const TYPICAL_DEDUCTION_PCT = 0.20;
+ /** Typical small business finds ~15–25% of revenue in deductions (benchmark for comparison). */
+ const TYPICAL_DEDUCTION_PCT = 0.20;
 
-type IncomeRow = { id: string; date: string; vendor: string; amount: string; status: string | null };
+ type IncomeRow = { id: string; date: string; vendor: string; amount: string; status: string | null };
 
-interface DashboardStatsProps {
-  revenue: number;
-  fromTransactions: number;
-  additionalTotal: number;
-  totalSavings: number;
-  taxRate: number;
-  taxYear: number;
-}
+ interface DashboardStatsProps {
+   revenue: number;
+   fromTransactions: number;
+   additionalTotal: number;
+   totalSavings: number;
+   taxRate: number;
+   taxYear: number;
+ }
 
-export function DashboardStats({
-  revenue,
-  fromTransactions,
-  additionalTotal,
-  totalSavings,
-  taxRate,
-  taxYear,
-}: DashboardStatsProps) {
-  const router = useRouter();
-  const [logIncomeOpen, setLogIncomeOpen] = useState(false);
-  const [viewIncomeOpen, setViewIncomeOpen] = useState(false);
-  const [incomeList, setIncomeList] = useState<IncomeRow[]>([]);
-  const [incomeLoading, setIncomeLoading] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+ export function DashboardStats({
+   revenue,
+   fromTransactions,
+   additionalTotal,
+   totalSavings,
+   taxRate,
+   taxYear,
+ }: DashboardStatsProps) {
+   const router = useRouter();
+  const [activeYear, setActiveYear] = useState(taxYear);
+  const [activeQuarter, setActiveQuarter] = useState<number | null>(null);
+  const [periodStats, setPeriodStats] = useState<{
+    revenue: number;
+    fromTransactions: number;
+    additionalTotal: number;
+    estimatedQuarterlyPayment: number;
+  } | null>(null);
+   const [logIncomeOpen, setLogIncomeOpen] = useState(false);
+   const [viewIncomeOpen, setViewIncomeOpen] = useState(false);
+   const [incomeList, setIncomeList] = useState<IncomeRow[]>([]);
+   const [incomeLoading, setIncomeLoading] = useState(false);
+   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchIncomeList = useCallback(async () => {
-    setIncomeLoading(true);
-    try {
-      const res = await fetch(
-        `/api/transactions?tax_year=${taxYear}&transaction_type=income&limit=500&sort_by=date&sort_order=desc`
-      );
-      const data = await res.json().catch(() => ({}));
-      const list: IncomeRow[] = (data.data ?? []).filter(
-        (t: { status: string | null }) => t.status === "completed" || t.status === "auto_sorted"
-      );
-      setIncomeList(list);
-    } finally {
-      setIncomeLoading(false);
+  useEffect(() => {
+    function onPeriodChanged(e: Event) {
+      const detail = (e as CustomEvent<{ year?: number; quarter?: number | null }>).detail;
+      setActiveYear(detail?.year ?? taxYear);
+      setActiveQuarter(detail?.quarter ?? null);
     }
+    window.addEventListener("dashboard-period-changed", onPeriodChanged as EventListener);
+    return () =>
+      window.removeEventListener("dashboard-period-changed", onPeriodChanged as EventListener);
   }, [taxYear]);
 
   useEffect(() => {
-    if (viewIncomeOpen) fetchIncomeList();
-  }, [viewIncomeOpen, fetchIncomeList]);
+    let alive = true;
+    async function fetchPeriodStats() {
+      try {
+        const params = new URLSearchParams({ tax_year: String(activeYear) });
+        if (activeQuarter) params.set("quarter", String(activeQuarter));
+        const res = await fetch(`/api/tax-details/summary?${params.toString()}`);
+        const data = await res.json().catch(() => null);
+        if (!alive || !res.ok || !data) return;
 
-  async function deleteIncome(id: string) {
-    setDeletingId(id);
-    try {
-      const res = await fetch("/api/transactions/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      if (!res.ok) throw new Error("Failed to delete");
-      setIncomeList((prev) => prev.filter((t) => t.id !== id));
-      router.refresh();
-    } finally {
-      setDeletingId(null);
+        const fromTx = Object.values(data.lineBreakdown ?? {}).reduce(
+          (sum: number, v: unknown) => sum + Number(v || 0),
+          0,
+        );
+        const total = Number(data.totalExpenses ?? 0);
+        const additional = Math.max(0, total - fromTx);
+        setPeriodStats({
+          revenue: Number(data.grossIncome ?? 0),
+          fromTransactions: fromTx,
+          additionalTotal: additional,
+          estimatedQuarterlyPayment: Number(data.estimatedQuarterlyPayment ?? 0),
+        });
+      } catch {
+        // keep existing fallback stats
+      }
     }
-  }
-
-  useEffect(() => {
-    if (!logIncomeOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setLogIncomeOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [logIncomeOpen]);
-
-  useEffect(() => {
-    if (logIncomeOpen || viewIncomeOpen) document.body.style.overflow = "hidden";
+    fetchPeriodStats();
     return () => {
-      document.body.style.overflow = "";
+      alive = false;
     };
-  }, [logIncomeOpen, viewIncomeOpen]);
+  }, [activeYear, activeQuarter]);
 
-  const typicalDeductionAmount = revenue * TYPICAL_DEDUCTION_PCT;
-  const comparisonNote =
-    revenue > 0
-      ? `Typical businesses deduct ~${(TYPICAL_DEDUCTION_PCT * 100).toFixed(0)}% of revenue ($${typicalDeductionAmount.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} at your revenue).`
-      : "Track revenue and deductions to see how you compare to typical business deduction rates.";
+  const displayRevenue = periodStats?.revenue ?? revenue;
+  const displayFromTransactions = periodStats?.fromTransactions ?? fromTransactions;
+  const displayAdditionalTotal = periodStats?.additionalTotal ?? additionalTotal;
+  const mergedDeductions = displayFromTransactions + displayAdditionalTotal;
+  const displayNetProfit = displayRevenue - mergedDeductions;
 
-  const estTaxes = Math.max(0, revenue - fromTransactions - additionalTotal) * taxRate;
+   const fetchIncomeList = useCallback(async () => {
+     setIncomeLoading(true);
+     try {
+       const res = await fetch(
+        `/api/transactions?tax_year=${activeYear}&transaction_type=income&limit=500&sort_by=date&sort_order=desc`
+       );
+       const data = await res.json().catch(() => ({}));
+       const list: IncomeRow[] = (data.data ?? []).filter(
+         (t: { status: string | null }) => t.status === "completed" || t.status === "auto_sorted"
+       );
+       setIncomeList(list);
+     } finally {
+       setIncomeLoading(false);
+     }
+  }, [activeYear]);
 
-  return (
-    <>
-      <div className="space-y-4">
-        {/* Row 1: Revenue, Deductions, Additional — separate boxes */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          <div className="card overflow-hidden p-6 border-l-4 border-l-accent-sage/40 bg-gradient-to-br from-white to-bg-secondary/30">
-            <p className="text-xs font-medium text-mono-light uppercase tracking-wider mb-1.5">Revenue</p>
-            <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
-              ${revenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-            </p>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4">
-              <button
-                type="button"
-                onClick={() => setLogIncomeOpen(true)}
-                className="text-xs text-accent-sage font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded"
-              >
-                Log more
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewIncomeOpen(true)}
-                className="text-xs text-accent-sage font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded"
-              >
-                View logged income
-              </button>
+   useEffect(() => {
+     if (viewIncomeOpen) fetchIncomeList();
+   }, [viewIncomeOpen, fetchIncomeList]);
+
+   async function deleteIncome(id: string) {
+     setDeletingId(id);
+     try {
+       const res = await fetch("/api/transactions/delete", {
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify({ id }),
+       });
+       if (!res.ok) throw new Error("Failed to delete");
+       setIncomeList((prev) => prev.filter((t) => t.id !== id));
+       router.refresh();
+     } finally {
+       setDeletingId(null);
+     }
+   }
+
+   useEffect(() => {
+     if (!logIncomeOpen) return;
+     const onKey = (e: KeyboardEvent) => {
+       if (e.key === "Escape") setLogIncomeOpen(false);
+     };
+     document.addEventListener("keydown", onKey);
+     return () => document.removeEventListener("keydown", onKey);
+   }, [logIncomeOpen]);
+
+   useEffect(() => {
+     if (logIncomeOpen || viewIncomeOpen) document.body.style.overflow = "hidden";
+     return () => {
+       document.body.style.overflow = "";
+     };
+   }, [logIncomeOpen, viewIncomeOpen]);
+
+  const typicalDeductionAmount = displayRevenue * TYPICAL_DEDUCTION_PCT;
+   const comparisonNote =
+    displayRevenue > 0
+       ? `Typical businesses deduct ~${(TYPICAL_DEDUCTION_PCT * 100).toFixed(0)}% of revenue ($${typicalDeductionAmount.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} at your revenue).`
+       : "Track revenue and deductions to see how you compare to typical business deduction rates.";
+
+  const displayTotalSavings =
+    periodStats != null
+      ? displayFromTransactions * taxRate + displayAdditionalTotal
+      : totalSavings;
+  const fallbackEstPayment =
+    Math.max(0, displayRevenue - mergedDeductions) * taxRate / 4;
+  const estPayment =
+    periodStats?.estimatedQuarterlyPayment != null
+      ? periodStats.estimatedQuarterlyPayment
+      : fallbackEstPayment;
+
+   return (
+     <>
+       <div className="space-y-4">
+         {/* Row 1: Revenue, Deductions, Additional — separate boxes */}
+         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="border border-[#F0F1F7] rounded-none bg-white p-6">
+            <p className="text-xs font-medium text-mono-medium uppercase tracking-wider mb-1.5">Revenue</p>
+             <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
+              ${displayRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+             </p>
+             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4">
+               <button
+                 type="button"
+                 onClick={() => setLogIncomeOpen(true)}
+                 className="text-xs text-accent-sage font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded"
+               >
+                 Log more
+               </button>
+               <button
+                 type="button"
+                 onClick={() => setViewIncomeOpen(true)}
+                 className="text-xs text-accent-sage font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded"
+               >
+                 View logged income
+               </button>
+             </div>
+           </div>
+          <div className="border border-[#F0F1F7] rounded-none bg-white p-6">
+            <p className="text-xs font-medium text-mono-medium uppercase tracking-wider mb-1.5">Deductions</p>
+             <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
+              ${mergedDeductions.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+             </p>
+            <p className="text-xs text-mono-light mt-1">Transactions + additional deductions</p>
+            <div className="flex items-center gap-3 mt-2">
+              <Link href="/inbox" className="text-xs text-accent-sage font-medium inline-block hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded">
+                Inbox
+              </Link>
+              <Link href="/other-deductions" className="text-xs text-accent-sage font-medium inline-block hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded">
+                Other Deductions
+              </Link>
             </div>
-          </div>
-          <div className="card overflow-hidden p-6 border-l-4 border-l-accent-terracotta/40 bg-gradient-to-br from-white to-bg-secondary/30">
-            <p className="text-xs font-medium text-mono-light uppercase tracking-wider mb-1.5">Deductions</p>
-            <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
-              ${fromTransactions.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-            </p>
-            <p className="text-xs text-mono-light mt-1">From transactions</p>
-            <Link href="/inbox" className="text-xs text-accent-sage font-medium mt-2 inline-block hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded">
-              Inbox
-            </Link>
-          </div>
-          <div className="card overflow-hidden p-6 border-l-4 border-l-accent-warm/40 bg-gradient-to-br from-white to-bg-secondary/30">
-            <p className="text-xs font-medium text-mono-light uppercase tracking-wider mb-1.5">Additional</p>
-            <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
-              ${additionalTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-            </p>
-            <p className="text-xs text-mono-light mt-1">Home office, QBI, mileage</p>
-            <Link href="/other-deductions" className="text-xs text-accent-sage font-medium mt-2 inline-block hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded">
-              Other Deductions
-            </Link>
-          </div>
-        </div>
+           </div>
+          <div className="border border-[#F0F1F7] rounded-none bg-white p-6">
+            <p className="text-xs font-medium text-mono-medium uppercase tracking-wider mb-1.5">Net Profit</p>
+             <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
+              ${displayNetProfit.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+             </p>
+            <p className="text-xs text-mono-light mt-1">After deductions</p>
+           </div>
+         </div>
 
-        {/* Row 2: Est. Savings, Est. Taxes — separate boxes */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div className="card overflow-hidden p-6 bg-accent-sage/5 border border-accent-sage/20">
-            <p className="text-xs font-medium text-accent-sage uppercase tracking-wider mb-1.5">Est. Savings</p>
-            <p className="text-xl font-sans font-semibold text-accent-sage tabular-nums tracking-tight">
-              ${totalSavings.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-            </p>
-          </div>
-          <div className="card overflow-hidden p-6 border-l-4 border-l-bg-tertiary/60 bg-gradient-to-br from-white to-bg-secondary/30">
-            <p className="text-xs font-medium text-mono-light uppercase tracking-wider mb-1.5">Est. Taxes</p>
+         {/* Row 2: Est. Savings, Est. Taxes — separate boxes */}
+         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="border border-[#F0F1F7] rounded-none bg-white p-6">
+            <p className="text-xs font-medium text-mono-medium uppercase tracking-wider mb-1.5">Est. Savings</p>
             <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
-              ${estTaxes.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+              ${displayTotalSavings.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+             </p>
+            <p className="text-xs text-mono-light mt-1">
+              Estimated value captured from deductions
             </p>
-            <p className="text-xs text-mono-light mt-1">At {(taxRate * 100).toFixed(0)}%</p>
-          </div>
-        </div>
-        <p className="text-xs text-mono-medium max-w-xl">
-          Savings: transaction deductions × {(taxRate * 100).toFixed(0)}% rate, plus additional deductions (QBI, home office, etc.) not multiplied by rate.
-          <Link href="/preferences/org" className="text-accent-sage ml-1 hover:underline font-medium">Edit rate</Link>
-        </p>
-        <p className="text-xs text-mono-medium mt-2 pt-2 border-t border-bg-tertiary/40">
-          {comparisonNote}
-        </p>
-      </div>
+           </div>
+          <div className="border border-[#F0F1F7] rounded-none bg-white p-6">
+            <p className="text-xs font-medium text-mono-medium uppercase tracking-wider mb-1.5">Est. Payment</p>
+             <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
+              ${estPayment.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+             </p>
+             <p className="text-xs text-mono-light mt-1">At {(taxRate * 100).toFixed(0)}%</p>
+           </div>
+         </div>
+         <p className="text-xs text-mono-medium max-w-xl">
+           Savings: transaction deductions × {(taxRate * 100).toFixed(0)}% rate, plus additional deductions (QBI, home office, etc.) not multiplied by rate.
+           <Link href="/preferences/org" className="text-accent-sage ml-1 hover:underline font-medium">Edit rate</Link>
+         </p>
+         <p className="text-xs text-mono-medium mt-2 pt-2 border-t border-bg-tertiary/40">
+           {comparisonNote}
+         </p>
+       </div>
 
       {/* Log Income modal */}
       {logIncomeOpen && (

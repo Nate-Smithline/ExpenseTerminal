@@ -80,7 +80,7 @@ export function TaxYearSelector({
         <div
           role="listbox"
           aria-label={label}
-          className="absolute left-0 top-full z-50 mt-1.5 min-w-[6rem] overflow-hidden rounded-none border border-[#8A9BB0]/50 bg-white py-1 shadow-lg animate-in fade-in slide-in-from-top-1 duration-150"
+          className="absolute right-0 top-full z-50 mt-1.5 min-w-[6rem] overflow-hidden rounded-none border border-[#8A9BB0]/50 bg-white py-1 shadow-lg animate-in fade-in slide-in-from-top-1 duration-150"
         >
           {YEAR_OPTIONS.map((year) => {
             const isSelected = value === year;

@@ -48,6 +48,52 @@ function formatLastPulled(source: DataSource): string | null {
   return null;
 }
 
+/** Payload from POST /api/data-sources/sync (matches server `StripeSyncDiagnostics`). */
+type StripeSyncDiag = {
+  rawTransactionsFromStripe: number;
+  postedIncludedInSync: number;
+  upsertCallsSucceeded: number;
+  transactionCountForDataSource: number;
+  statusBreakdown: Record<string, number>;
+  transactedAtFilter?: { gteIso?: string; lteIso?: string; gteUnix?: number; lteUnix?: number };
+  stripeSyncStartDateStored?: string | null;
+  financialConnectionsAccountId?: string;
+  stripeMode?: string;
+  apiListPages?: number;
+};
+
+function logStripeSyncDiagnostics(d: StripeSyncDiag | undefined) {
+  if (!d) return;
+  console.info(
+    "[ExpenseTerminal] Stripe sync diagnostics — compare rawTransactionsFromStripe & statusBreakdown to your bank export; postedIncludedInSync is what we save.",
+    d,
+  );
+}
+
+function stripeSyncStatusMessage(d: StripeSyncDiag | undefined): string {
+  if (!d) return "Sync complete";
+  return `Sync complete · Stripe listed ${d.rawTransactionsFromStripe} → ${d.postedIncludedInSync} posted kept → ${d.upsertCallsSucceeded} upserts OK this run · ${d.transactionCountForDataSource} total in app for this account (see console for date filter & status breakdown).`;
+}
+
+function formatMonthDayOrdinal(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "Unknown";
+  const day = d.getDate();
+  const dayPadded = String(day).padStart(2, "0");
+  const mod10 = day % 10;
+  const mod100 = day % 100;
+  const suffix =
+    mod10 === 1 && mod100 !== 11
+      ? "st"
+      : mod10 === 2 && mod100 !== 12
+        ? "nd"
+        : mod10 === 3 && mod100 !== 13
+          ? "rd"
+          : "th";
+  const month = d.toLocaleDateString("en-US", { month: "short" });
+  return `${month} ${dayPadded}${suffix}`;
+}
+
 export function DataSourcesClient({
   initialSources,
   initialStats = {},
@@ -205,10 +251,12 @@ export function DataSourcesClient({
         body: JSON.stringify({ data_source_id: sourceId }),
       });
       if (res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { diagnostics?: StripeSyncDiag };
+        logStripeSyncDiagnostics(data.diagnostics);
         await reloadSources();
         window.dispatchEvent(new CustomEvent("inbox-count-changed"));
-        setSyncStatusBar({ message: "Sync complete", type: "success" });
-        setTimeout(() => setSyncStatusBar(null), 5000);
+        setSyncStatusBar({ message: stripeSyncStatusMessage(data.diagnostics), type: "success" });
+        setTimeout(() => setSyncStatusBar(null), 8000);
       } else {
         const data = await res.json().catch(() => ({}));
         setSyncStatusBar({ message: data.error ?? "Sync failed", type: "error" });
@@ -902,12 +950,16 @@ export function DataSourcesClient({
                       }),
                     });
                     if (res.ok) {
+                      const data = (await res.json().catch(() => ({}))) as {
+                        message?: string;
+                        diagnostics?: StripeSyncDiag;
+                      };
+                      logStripeSyncDiagnostics(data.diagnostics);
                       setPullModalSource(null);
                       await reloadSources();
                       window.dispatchEvent(new CustomEvent("inbox-count-changed"));
-                      const data = await res.json().catch(() => ({}));
-                      setSyncStatusBar({ message: "Sync complete", type: "success" });
-                      setTimeout(() => setSyncStatusBar(null), 5000);
+                      setSyncStatusBar({ message: stripeSyncStatusMessage(data.diagnostics), type: "success" });
+                      setTimeout(() => setSyncStatusBar(null), 8000);
                       setToast(data.message ?? "Sync completed. Duplicates are skipped.");
                       setTimeout(() => setToast(null), 4000);
                     } else {
@@ -1166,7 +1218,12 @@ export function DataSourcesClient({
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify(syncBody),
                             });
-                            if (!res.ok) failed.push({ name: source.name });
+                            if (res.ok) {
+                              const data = (await res.json().catch(() => ({}))) as { diagnostics?: StripeSyncDiag };
+                              logStripeSyncDiagnostics(data.diagnostics);
+                            } else {
+                              failed.push({ name: source.name });
+                            }
                           }
                           setShowPostConnectDateModal(false);
                           await reloadSources();
@@ -1278,36 +1335,35 @@ export function DataSourcesClient({
                     </div>
                   )}
                   {source.source_type === "stripe" && (stripeStatuses[source.id] === "disconnected" || stripeStatuses[source.id] === "inactive" || !source.financial_connections_account_id) && (
-                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                      <p className="text-sm font-medium text-amber-800">
+                    <div className="mt-3 bg-[#F5F0E8] p-3">
+                      <p className="text-sm font-medium text-mono-dark">
                         {!source.financial_connections_account_id
                           ? "This account isn't linked to a bank."
-                          : "This connection is no longer active."}
+                          : "This connection is no longer active"}
                       </p>
-                      <p className="text-xs text-amber-700 mt-1">Reconnect your bank to restore syncing.</p>
+                      <p className="text-xs text-mono-medium mt-1">Reconnect your bank to restore syncing</p>
                       <button
                         type="button"
                         onClick={() => { setShowAdd(true); setAddStep("2b"); }}
-                        className="mt-2 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700"
+                        className="mt-2 bg-black px-3 py-1.5 text-xs font-medium text-white hover:bg-black/85"
                       >
                         Repair connection
                       </button>
                     </div>
                   )}
                   {hasSyncFailure && !(source.source_type === "stripe" && (stripeStatuses[source.id] === "disconnected" || stripeStatuses[source.id] === "inactive" || !source.financial_connections_account_id)) && (
-                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                      <p className="text-sm font-medium text-amber-800">We couldn&apos;t sync this account.</p>
-                      <p className="text-xs text-amber-700 mt-1">
-                        Last successful sync: {source.last_successful_sync_at ? new Date(source.last_successful_sync_at).toLocaleString() : "Never"}
+                    <div className="mt-3 bg-[#F5F0E8] p-3">
+                      <p className="text-sm font-medium text-mono-dark">We&apos;re having trouble syncing your account</p>
+                      <p className="text-xs text-mono-medium mt-1">
+                        {source.last_successful_sync_at
+                          ? `Last synced ${formatMonthDayOrdinal(source.last_successful_sync_at)}`
+                          : "Last synced Never"}
                       </p>
-                      {source.last_error_summary && (
-                        <p className="text-xs text-amber-700 mt-0.5">{source.last_error_summary}</p>
-                      )}
                       <button
                         type="button"
                         onClick={() => handleRetrySync(source.id)}
                         disabled={syncingId === source.id}
-                        className="mt-2 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                        className="mt-2 bg-black px-3 py-1.5 text-xs font-medium text-white hover:bg-black/85 disabled:opacity-50"
                       >
                         {syncingId === source.id ? "Syncing…" : "Retry sync"}
                       </button>

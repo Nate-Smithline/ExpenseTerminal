@@ -115,54 +115,68 @@ export function WhatCanIDeduct() {
   return (
     <>
       {open && (
-        <div className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px] p-4">
+        <div className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
           <div
-            className="rounded-xl bg-white shadow-[0_8px_30px_-6px_rgba(0,0,0,0.14)] max-w-[520px] w-full mx-4 overflow-hidden flex flex-col"
+            className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden flex flex-col"
             role="dialog"
             aria-modal="true"
             aria-labelledby="what-can-i-deduct-title"
           >
-            <div className="rounded-t-xl bg-[#2d3748] px-6 pt-6 pb-4 flex items-center justify-between gap-4">
+            <div className="bg-white px-6 pt-6 pb-1 flex items-center justify-between gap-4">
               <div>
-                <h2 id="what-can-i-deduct-title" className="text-xl font-bold text-white tracking-tight">
+                <h2
+                  id="what-can-i-deduct-title"
+                  className="text-xl text-mono-dark font-medium"
+                  style={{ fontFamily: "var(--font-sans)" }}
+                >
                   What can I deduct?
                 </h2>
-                <p className="text-sm text-white/80 mt-1.5">
-                  Short guidance on common deductions, meals, travel, and documentation.
-                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="h-8 w-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition shrink-0"
+                className="h-6 w-6 flex items-center justify-center text-mono-light hover:text-mono-dark transition shrink-0"
                 aria-label="Close"
               >
-                <span className="material-symbols-rounded text-[18px]">close</span>
+                <span className="material-symbols-rounded text-[16px]">close</span>
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-5">
-              <h3 className="font-display text-lg text-mono-dark mb-3">{slide.title}</h3>
-              <p className="text-sm text-mono-medium leading-relaxed">{slide.detail}</p>
+            <div className="flex-1 overflow-y-auto px-6 py-3 space-y-2.5">
+              <p className="text-xs text-mono-medium">
+                Short guidance on common deductions, meals, travel, and documentation.
+              </p>
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium text-mono-dark">{slide.title}</h3>
+                <p className="text-sm text-mono-medium leading-relaxed">{slide.detail}</p>
+              </div>
               {slide.href && (
-                <Link
-                  href={slide.href}
-                  className="inline-flex items-center gap-1.5 mt-4 text-sm font-medium text-accent-sage hover:underline"
-                >
-                  {slide.linkLabel}
-                  <span className="material-symbols-rounded text-[18px]">arrow_forward</span>
-                </Link>
+                (slide.key === "home-vehicle" || slide.key === "other") ? (
+                  <Link
+                    href={slide.href}
+                    className="inline-flex items-center justify-center mt-4 px-4 py-2.5 text-sm font-medium font-sans bg-[#5B82B4] text-white rounded-none hover:bg-[#4a6b93] transition-colors"
+                  >
+                    {slide.linkLabel}
+                  </Link>
+                ) : (
+                  <Link
+                    href={slide.href}
+                    className="inline-flex items-center gap-1.5 mt-4 text-sm font-medium text-accent-sage hover:underline"
+                  >
+                    {slide.linkLabel}
+                    <span className="material-symbols-rounded text-[18px]">arrow_forward</span>
+                  </Link>
+                )
               )}
             </div>
 
-            <div className="shrink-0 border-t border-bg-tertiary/60 px-6 py-4 flex items-center justify-between gap-4">
+            <div className="shrink-0 px-6 pt-3 pb-4 flex items-center justify-between gap-4">
               <button
                 type="button"
                 onClick={() => setIndex((i) => Math.max(i - 1, 0))}
                 disabled={index === 0}
-                className="flex items-center gap-1.5 text-sm font-medium text-mono-dark disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <span className="material-symbols-rounded text-[20px]">chevron_left</span>
                 Previous
               </button>
               <span className="text-xs text-mono-light tabular-nums">
@@ -175,19 +189,17 @@ export function WhatCanIDeduct() {
                     void markCompleted();
                     setOpen(false);
                   }}
-                  className="flex items-center gap-1.5 text-sm font-medium text-mono-dark"
+                  className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors"
                 >
                   Finish
-                  <span className="material-symbols-rounded text-[20px]">check</span>
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={() => setIndex((i) => i + 1)}
-                  className="flex items-center gap-1.5 text-sm font-medium text-mono-dark"
+                  className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors"
                 >
                   Next
-                  <span className="material-symbols-rounded text-[20px]">chevron_right</span>
                 </button>
               )}
             </div>

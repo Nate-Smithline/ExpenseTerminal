@@ -415,9 +415,9 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
       <div
         ref={cardRef}
         onClick={() => onFocus?.()}
-        className={`card transition-all duration-200 ${
+        className={`border border-[#F0F1F7] bg-white transition-all duration-200 ${
           isActive
-            ? "ring-1 ring-accent-sage/20 shadow-md px-6 py-5"
+            ? "ring-1 ring-accent-sage/20 shadow-sm px-6 py-5"
             : "opacity-50 hover:opacity-75 px-6 py-4 cursor-pointer"
         }`}
       >

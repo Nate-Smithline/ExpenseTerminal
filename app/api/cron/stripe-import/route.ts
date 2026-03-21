@@ -42,6 +42,7 @@ export async function GET(req: Request) {
       id: row.id,
       success: result.success,
       error: result.error,
+      ...(result.diagnostics ? { diagnostics: result.diagnostics } : {}),
     });
   }
 

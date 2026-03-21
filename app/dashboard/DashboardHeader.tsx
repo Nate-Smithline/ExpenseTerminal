@@ -2,17 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { TaxYearSelector } from "@/components/TaxYearSelector";
 
 interface DashboardHeaderProps {
-  taxYear: number;
   pendingCount: number;
   userName: string | null;
 }
 
-export function DashboardHeader({ taxYear, pendingCount, userName }: DashboardHeaderProps) {
-  const router = useRouter();
+export function DashboardHeader({ pendingCount, userName }: DashboardHeaderProps) {
   const displayName = userName?.trim() || "there";
   const [greeting, setGreeting] = useState<string | null>(null);
 
@@ -20,11 +16,11 @@ export function DashboardHeader({ taxYear, pendingCount, userName }: DashboardHe
     if (typeof window === "undefined") return;
     const now = new Date();
     const hour = now.getHours();
-    let label = "Good evening";
-    if (hour < 12) label = "Good morning";
-    else if (hour < 17) label = "Good afternoon";
-    else if (hour < 21) label = "Good evening";
-    else label = "Good night";
+    let label = "Good Evening";
+    if (hour < 12) label = "Good Morning";
+    else if (hour < 17) label = "Good Afternoon";
+    else if (hour < 21) label = "Good Evening";
+    else label = "Good Night";
     setGreeting(label);
 
     try {
@@ -41,30 +37,19 @@ export function DashboardHeader({ taxYear, pendingCount, userName }: DashboardHe
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-4">
-      <div>
+      <div className="flex flex-col justify-center">
         <h1 className="text-2xl md:text-3xl font-display font-normal text-mono-dark tracking-tight">
-          {greeting ?? "Welcome back"}
+          {(greeting ?? "Welcome back")}, {displayName}
         </h1>
-        <p className="text-lg md:text-xl font-sans text-mono-dark/80 mt-0.5 tracking-tight">
-          {displayName}
-        </p>
       </div>
-      <div className="flex items-center gap-2">
-        <TaxYearSelector
-          value={taxYear}
-          onChange={() => router.refresh()}
-          label="Tax year"
-          pill
-        />
-        {(pendingCount ?? 0) > 0 && (
-          <Link
-            href="/inbox"
-            className="md:hidden inline-flex items-center justify-center rounded-full border border-bg-tertiary/60 bg-white px-6 py-3 text-sm font-medium text-mono-dark transition-all hover:border-accent-sage/40 hover:shadow-sm"
-          >
-            {pendingCount} pending
-          </Link>
-        )}
-      </div>
+      {(pendingCount ?? 0) > 0 && (
+        <Link
+          href="/inbox"
+          className="md:hidden inline-flex items-center justify-center rounded-full border border-bg-tertiary/60 bg-white px-6 py-3 text-sm font-medium text-mono-dark transition-all hover:border-accent-sage/40 hover:shadow-sm"
+        >
+          {pendingCount} pending
+        </Link>
+      )}
     </div>
   );
 }

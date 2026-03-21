@@ -9,7 +9,6 @@ const mainNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/data-sources", label: "Accounts & Data", icon: "database" },
   { href: "/inbox", label: "Inbox", icon: "visibility" },
-  { href: "/tax-details", label: "Tax Details", icon: "savings" },
   { href: "/other-deductions", label: "Other Deductions", icon: "receipt_long" },
 ];
 

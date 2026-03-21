@@ -37,21 +37,26 @@ interface TransactionDetailPanelProps {
   onClose: () => void;
   onReanalyze?: (id: string) => Promise<void>;
   onMarkPersonal?: () => Promise<void>;
+  onDelete?: () => Promise<void>;
   /** When set, show editable tax fields and call onSave when user saves */
   editable?: boolean;
   onSave?: (id: string, update: TransactionDetailUpdate) => Promise<void>;
   taxRate?: number;
 }
 
+const PANEL_MIN_WIDTH = 360;
+const PANEL_MAX_WIDTH = 500;
+const COLLAPSED_WIDTH = 72;
+
 function formatDate(date: string) {
   const d = new Date(date);
   return d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 }
 
-function PropertyRow({ label, children }: { label: string; children: React.ReactNode }) {
+function PropertyRow({ label, children, alignTop = false }: { label: string; children: React.ReactNode; alignTop?: boolean }) {
   return (
-    <div className="flex items-start gap-4 py-2.5 border-b border-bg-tertiary/20">
-      <span className="text-xs text-mono-light w-28 shrink-0 pt-0.5">{label}</span>
+    <div className={`flex gap-4 py-2.5 ${alignTop ? "items-start" : "items-center"}`}>
+      <span className={`text-xs text-mono-light w-28 shrink-0 ${alignTop ? "pt-0.5" : ""}`}>{label}</span>
       <div className="flex-1 min-w-0 text-sm text-mono-dark">{children}</div>
     </div>
   );
@@ -78,6 +83,7 @@ export function TransactionDetailPanel({
   onClose,
   onReanalyze,
   onMarkPersonal,
+  onDelete,
   editable = false,
   onSave,
   taxRate = 0.24,
@@ -99,10 +105,14 @@ export function TransactionDetailPanel({
     (transaction.status as "pending" | "completed" | "auto_sorted" | "personal") ?? "pending"
   );
   const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editSource, setEditSource] = useState<"csv_upload" | "manual">(
     (transaction.source === "manual" ? "manual" : "csv_upload") as "csv_upload" | "manual",
   );
+  const [panelWidth, setPanelWidth] = useState(PANEL_MAX_WIDTH);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isEscapedDocked, setIsEscapedDocked] = useState(false);
 
   const amount = Math.abs(Number(transaction.amount));
   const deductionPct = transaction.deduction_percent ?? 100;
@@ -117,33 +127,41 @@ export function TransactionDetailPanel({
     return "default";
   };
 
-  async function handleSaveEdits() {
+  function getPendingUpdate(): TransactionDetailUpdate {
+    const update: TransactionDetailUpdate = {};
+    if (editCategory !== (transaction.category ?? "")) update.category = editCategory || null;
+    if (editScheduleLine !== (transaction.schedule_c_line ?? "")) update.schedule_c_line = editScheduleLine || null;
+    if (editDeductionPct !== (transaction.deduction_percent ?? 100)) update.deduction_percent = editDeductionPct;
+    if (editBusinessPurpose !== (transaction.business_purpose ?? "")) update.business_purpose = editBusinessPurpose || null;
+    if (editNotes !== (transaction.notes ?? "")) update.notes = editNotes || null;
+    if (editVendor !== (transaction.vendor ?? "")) update.vendor = editVendor.trim();
+    const numAmount = parseFloat(editAmount);
+    if (!Number.isNaN(numAmount)) {
+      const currentAmount = Math.abs(Number(transaction.amount));
+      if (Math.abs(numAmount - currentAmount) > 1e-6) update.amount = numAmount;
+    }
+    if (editDate !== (transaction.date ?? "").slice(0, 10)) update.date = editDate;
+    if (editTransactionType !== (transaction.transaction_type === "income" ? "income" : "expense")) update.transaction_type = editTransactionType;
+    if (editStatus !== (transaction.status ?? "pending")) update.status = editStatus;
+    const currentSource = (transaction.source === "manual" ? "manual" : "csv_upload") as "csv_upload" | "manual";
+    if (transaction.source !== "data_feed" && editSource !== currentSource) {
+      update.source = editSource;
+    }
+    return update;
+  }
+
+  async function handleSaveEdits(forcedUpdate?: TransactionDetailUpdate) {
     if (!editable || !onSave) return;
     setSaving(true);
+    setSaveState("saving");
     setSaveError(null);
     try {
-      const update: TransactionDetailUpdate = {};
-      if (editCategory !== (transaction.category ?? "")) update.category = editCategory || null;
-      if (editScheduleLine !== (transaction.schedule_c_line ?? "")) update.schedule_c_line = editScheduleLine || null;
-      if (editDeductionPct !== (transaction.deduction_percent ?? 100)) update.deduction_percent = editDeductionPct;
-      if (editBusinessPurpose !== (transaction.business_purpose ?? "")) update.business_purpose = editBusinessPurpose || null;
-      if (editNotes !== (transaction.notes ?? "")) update.notes = editNotes || null;
-      if (editVendor !== (transaction.vendor ?? "")) update.vendor = editVendor.trim();
-      const numAmount = parseFloat(editAmount);
-      if (!Number.isNaN(numAmount)) {
-        const currentAmount = Math.abs(Number(transaction.amount));
-        if (Math.abs(numAmount - currentAmount) > 1e-6) update.amount = numAmount;
-      }
-      if (editDate !== (transaction.date ?? "").slice(0, 10)) update.date = editDate;
-      if (editTransactionType !== (transaction.transaction_type === "income" ? "income" : "expense")) update.transaction_type = editTransactionType;
-      if (editStatus !== (transaction.status ?? "pending")) update.status = editStatus;
-      const currentSource = (transaction.source === "manual" ? "manual" : "csv_upload") as "csv_upload" | "manual";
-      if (transaction.source !== "data_feed" && editSource !== currentSource) {
-        update.source = editSource;
-      }
+      const update = forcedUpdate ?? getPendingUpdate();
       if (Object.keys(update).length === 0) return;
       await onSave(transaction.id, update);
+      setSaveState("saved");
     } catch (e) {
+      setSaveState("error");
       setSaveError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);
@@ -162,6 +180,8 @@ export function TransactionDetailPanel({
     setEditTransactionType((transaction.transaction_type === "income" ? "income" : "expense") as "expense" | "income");
     setEditStatus((transaction.status as "pending" | "completed" | "auto_sorted" | "personal") ?? "pending");
     setEditSource((transaction.source === "manual" ? "manual" : "csv_upload") as "csv_upload" | "manual");
+    setSaveError(null);
+    setSaveState("idle");
   }, [
     transaction.id,
     transaction.category,
@@ -178,13 +198,45 @@ export function TransactionDetailPanel({
   ]);
 
   useEffect(() => {
+    if (!editable || !onSave || isCollapsed) return;
+    const pending = getPendingUpdate();
+    if (Object.keys(pending).length === 0) return;
+    const timeout = window.setTimeout(() => {
+      void handleSaveEdits(pending);
+    }, 700);
+    return () => window.clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    editable,
+    onSave,
+    isCollapsed,
+    editCategory,
+    editScheduleLine,
+    editDeductionPct,
+    editBusinessPurpose,
+    editNotes,
+    editVendor,
+    editDate,
+    editAmount,
+    editTransactionType,
+    editStatus,
+    editSource,
+    transaction.id,
+  ]);
+
+  useEffect(() => {
     function handleClick(e: MouseEvent) {
+      if (isEscapedDocked) return;
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         onClose();
       }
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsEscapedDocked(true);
+      }
     }
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
@@ -192,32 +244,95 @@ export function TransactionDetailPanel({
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
     };
-  }, [onClose]);
+  }, [onClose, isEscapedDocked]);
+
+  function startResize(e: React.MouseEvent<HTMLButtonElement>) {
+    if (isCollapsed) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panelWidth;
+    function onMove(ev: MouseEvent) {
+      const delta = startX - ev.clientX;
+      const next = Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, startWidth + delta));
+      setPanelWidth(next);
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
 
   return (
-    <div className="fixed inset-0 min-h-[100dvh] z-50 flex justify-end">
+    <div
+      className={`fixed inset-0 min-h-[100dvh] z-50 flex justify-end ${isEscapedDocked ? "pointer-events-none" : ""}`}
+    >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
+      {!isEscapedDocked && <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />}
 
       {/* Panel */}
       <div
         ref={panelRef}
-        className="relative w-full max-w-md bg-white border-l border-bg-tertiary/40 shadow-xl h-full overflow-y-auto animate-in"
-        style={{ animation: "slideInRight 0.2s ease-out" }}
+        className="relative bg-white border-l border-[#F0F1F7] shadow-xl h-full overflow-y-auto animate-in pointer-events-auto"
+        style={{
+          animation: "slideInRight 0.2s ease-out",
+          width: isCollapsed ? COLLAPSED_WIDTH : `min(${panelWidth}px, 100vw)`,
+          transform: isEscapedDocked ? "translateX(100%)" : "translateX(0)",
+          transition: "transform 220ms ease-out",
+        }}
       >
+        <button
+          type="button"
+          onMouseDown={startResize}
+          className={`absolute left-0 top-0 h-full w-1 -translate-x-1/2 cursor-col-resize bg-transparent ${isCollapsed ? "hidden" : "block"}`}
+          aria-label="Resize transaction panel"
+        />
         {/* Panel header */}
-        <div className="sticky top-0 z-10 bg-white border-b border-bg-tertiary/20 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-mono-dark truncate">{transaction.vendor || "New transaction"}</h2>
-          <button
-            onClick={onClose}
-            className="h-7 w-7 rounded-md hover:bg-bg-secondary flex items-center justify-center transition"
-          >
-            <span className="material-symbols-rounded text-[18px] text-mono-light">close</span>
-          </button>
+        <div className="sticky top-0 z-10 bg-white px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCollapsed((v) => !v)}
+              className="h-8 w-8 text-black flex items-center justify-center transition hover:bg-warm-stock"
+              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              <span className="material-symbols-rounded text-[18px] text-mono-medium">keyboard_double_arrow_right</span>
+            </button>
+            {!isCollapsed && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void onMarkPersonal?.()}
+                  className="h-8 px-3 border border-warm-stock text-black text-xs font-medium flex items-center justify-center transition hover:bg-warm-stock"
+                  title="Mark as personal"
+                >
+                  Mark Personal
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!onDelete) return;
+                    await onDelete();
+                    onClose();
+                  }}
+                  disabled={!onDelete}
+                  className="h-8 w-8 text-black flex items-center justify-center transition hover:bg-warm-stock disabled:opacity-40"
+                  title="Delete transaction"
+                >
+                  <span className="material-symbols-rounded text-[12px]">delete</span>
+                </button>
+              </div>
+            )}
+          </div>
+          {!isCollapsed && (
+            <div className="flex items-start gap-2 pt-4">
+              <h2 className="text-2xl leading-tight font-semibold font-sans text-mono-dark truncate">{transaction.vendor || "New transaction"}</h2>
+            </div>
+          )}
         </div>
-
         {/* Properties */}
-        <div className="px-6 py-4">
+        {!isCollapsed && <div className="px-6 py-4">
           <PropertyRow label="Vendor">
             {editable && onSave ? (
               <input
@@ -225,7 +340,7 @@ export function TransactionDetailPanel({
                 value={editVendor}
                 onChange={(e) => setEditVendor(e.target.value)}
                 placeholder="Transaction name / vendor"
-                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
               />
             ) : (
               <span className="font-medium">{transaction.vendor || "—"}</span>
@@ -238,7 +353,7 @@ export function TransactionDetailPanel({
                 type="date"
                 value={editDate}
                 onChange={(e) => setEditDate(e.target.value)}
-                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
               />
             ) : (
               formatDate(transaction.date)
@@ -254,7 +369,7 @@ export function TransactionDetailPanel({
                 value={editAmount}
                 onChange={(e) => setEditAmount(e.target.value)}
                 placeholder="0.00"
-                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white tabular-nums"
+                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white tabular-nums"
               />
             ) : (
               <span className="font-semibold tabular-nums">${amount.toFixed(2)}</span>
@@ -266,7 +381,7 @@ export function TransactionDetailPanel({
               <select
                 value={editTransactionType}
                 onChange={(e) => setEditTransactionType(e.target.value as "expense" | "income")}
-                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
               >
                 <option value="expense">Expense</option>
                 <option value="income">Income</option>
@@ -281,7 +396,7 @@ export function TransactionDetailPanel({
               <select
                 value={editStatus}
                 onChange={(e) => setEditStatus(e.target.value as "pending" | "completed" | "auto_sorted" | "personal")}
-                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
               >
                 <option value="pending">Pending</option>
                 <option value="completed">Completed</option>
@@ -300,7 +415,7 @@ export function TransactionDetailPanel({
               <select
                 value={editCategory}
                 onChange={(e) => setEditCategory(e.target.value)}
-                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
               >
                 <option value="">Uncategorized</option>
                 {SCHEDULE_C_LINES.map((l) => (
@@ -321,7 +436,7 @@ export function TransactionDetailPanel({
               <select
                 value={editScheduleLine}
                 onChange={(e) => setEditScheduleLine(e.target.value)}
-                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
               >
                 <option value="">—</option>
                 {SCHEDULE_C_LINES.map((l) => (
@@ -337,7 +452,7 @@ export function TransactionDetailPanel({
             )}
           </PropertyRow>
 
-          <PropertyRow label="Deduction">
+          <PropertyRow label="Deduction" alignTop>
             {editable && onSave ? (
               <div className="flex items-center gap-2 flex-wrap">
                 {SNAP_POINTS.map((pct) => (
@@ -345,10 +460,10 @@ export function TransactionDetailPanel({
                     key={pct}
                     type="button"
                     onClick={() => setEditDeductionPct(pct)}
-                    className={`rounded px-2 py-1 text-xs font-medium tabular-nums ${
+                    className={`px-2 py-1 text-xs font-medium tabular-nums border ${
                       editDeductionPct === pct
-                        ? "bg-accent-sage text-white"
-                        : "border border-bg-tertiary hover:bg-bg-secondary"
+                        ? "bg-warm-stock border-warm-stock text-mono-dark"
+                        : "border-bg-tertiary hover:bg-bg-secondary"
                     }`}
                   >
                     {pct}%
@@ -369,7 +484,7 @@ export function TransactionDetailPanel({
           </PropertyRow>
 
           {confPct != null && (
-            <PropertyRow label="AI Confidence">
+            <PropertyRow label="AI Confidence" alignTop>
               <div className="flex items-center gap-2">
                 <div className="h-1.5 w-20 rounded-full bg-bg-tertiary overflow-hidden">
                   <div
@@ -383,19 +498,19 @@ export function TransactionDetailPanel({
           )}
 
           {transaction.ai_reasoning != null && transaction.ai_reasoning !== "" && (
-            <PropertyRow label="AI Reasoning">
+            <PropertyRow label="AI Reasoning" alignTop>
               <p className="text-xs text-mono-medium leading-relaxed">{transaction.ai_reasoning}</p>
             </PropertyRow>
           )}
 
-          <PropertyRow label="Business Purpose">
+          <PropertyRow label="Business Purpose" alignTop>
             {editable && onSave ? (
               <textarea
                 value={editBusinessPurpose}
                 onChange={(e) => setEditBusinessPurpose(e.target.value)}
                 placeholder="Business purpose"
                 rows={2}
-                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white resize-none"
+                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white resize-none"
               />
             ) : transaction.business_purpose ? (
               <p className="text-xs">{transaction.business_purpose}</p>
@@ -411,19 +526,19 @@ export function TransactionDetailPanel({
           )}
 
           {transaction.description != null && transaction.description !== "" && (
-            <PropertyRow label="Description">
+            <PropertyRow label="Description" alignTop>
               <p className="text-xs text-mono-medium">{transaction.description}</p>
             </PropertyRow>
           )}
 
-          <PropertyRow label="Notes">
+          <PropertyRow label="Notes" alignTop>
             {editable && onSave ? (
               <textarea
                 value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}
                 placeholder="Notes"
                 rows={2}
-                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white resize-none"
+                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white resize-none"
               />
             ) : transaction.notes ? (
               <p className="text-xs text-mono-medium">{transaction.notes}</p>
@@ -435,12 +550,12 @@ export function TransactionDetailPanel({
           <PropertyRow label="Data source">
             {transaction.source === "data_feed" ? (
               <span className="text-xs text-mono-medium">
-                Live Data through{" "}
+                Direct Feed through{" "}
                 <a
                   href="https://stripe.com"
                   target="_blank"
                   rel="noreferrer"
-                  className="font-semibold text-[#635bff]"
+                  className="font-semibold text-blue-600 hover:text-blue-700"
                 >
                   Stripe
                 </a>
@@ -449,7 +564,7 @@ export function TransactionDetailPanel({
               <select
                 value={editSource}
                 onChange={(e) => setEditSource(e.target.value as "csv_upload" | "manual")}
-                className="w-full border border-bg-tertiary rounded-md px-2 py-1.5 text-sm bg-white"
+                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
               >
                 <option value="csv_upload">Uploaded via CSV</option>
                 <option value="manual">Entered manually</option>
@@ -470,27 +585,28 @@ export function TransactionDetailPanel({
               <span className="text-xs text-mono-light font-mono">{transaction.vendor_normalized}</span>
             </PropertyRow>
           )}
-        </div>
+        </div>}
 
-        {/* Editable: Save button and error */}
+        {/* Autosave status */}
         {editable && onSave && (
-          <div className="px-6 py-4 border-t border-bg-tertiary/20 space-y-2">
+          <div className="px-6 py-3 space-y-1">
             {saveError && (
               <p className="text-xs text-red-600">{saveError}</p>
             )}
-            <button
-              type="button"
-              onClick={handleSaveEdits}
-              disabled={saving}
-              className="w-full flex items-center justify-center gap-2 rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-sage/90 transition disabled:opacity-50"
-            >
-              {saving ? "Saving…" : "Save tax details"}
-            </button>
+            {!saveError && (
+              <p className="text-xs text-mono-medium">
+                {saveState === "saving" || saving
+                  ? "Saving changes..."
+                  : saveState === "saved"
+                  ? "All changes auto-saved"
+                  : ""}
+              </p>
+            )}
           </div>
         )}
 
         {/* Actions */}
-        <div className="px-6 py-4 border-t border-bg-tertiary/20 space-y-2">
+        {!isCollapsed && <div className="px-6 py-4 space-y-2">
           {onReanalyze && (
             <button
               type="button"
@@ -501,17 +617,7 @@ export function TransactionDetailPanel({
               Re-analyze with AI
             </button>
           )}
-          {onMarkPersonal && (
-            <button
-              type="button"
-              onClick={onMarkPersonal}
-              className="w-full flex items-center gap-2.5 rounded-lg border border-bg-tertiary px-4 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition"
-            >
-              <span className="material-symbols-rounded text-[16px]">person_off</span>
-              Mark as personal
-            </button>
-          )}
-        </div>
+        </div>}
       </div>
     </div>
   );

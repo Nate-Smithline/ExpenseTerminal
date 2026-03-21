@@ -3,12 +3,40 @@ import type { StripeMode } from "@/lib/stripe";
 import { getStripeClient } from "@/lib/stripe";
 import { normalizeVendor } from "@/lib/vendor-matching";
 
+/** Returned on successful Stripe FC sync to compare against bank exports (e.g. Chase CSV). */
+export type StripeSyncDiagnostics = {
+  financialConnectionsAccountId: string;
+  stripeMode: "test" | "live";
+  /** `transacted_at` filter sent to Stripe FC list (UTC midnight interpretation of date strings). */
+  transactedAtFilter: {
+    gteIso?: string;
+    lteIso?: string;
+    gteUnix?: number;
+    lteUnix?: number;
+  };
+  /** Stored lookback on `data_sources` (used when sync does not pass start_date). */
+  stripeSyncStartDateStored: string | null;
+  /** Every object returned across all paginated `transactions.list` calls. */
+  rawTransactionsFromStripe: number;
+  /** Stripe `status` histogram (`(missing)` if field absent). */
+  statusBreakdown: Record<string, number>;
+  /** Rows we keep (`status === "posted"` only — pending/void etc. are dropped). */
+  postedIncludedInSync: number;
+  /** Upsert calls with no error (includes duplicates ignored by `ignoreDuplicates`). */
+  upsertCallsSucceeded: number;
+  apiListPages: number;
+  /** Row count in DB for this data source after sync. */
+  transactionCountForDataSource: number;
+};
+
 export type SyncResult = {
   success: boolean;
   message?: string;
   error?: string;
   code?: string;
   status?: number;
+  /** Present after a successful `stripe` sync. */
+  diagnostics?: StripeSyncDiagnostics;
 };
 
 export type SyncOptions = {
@@ -185,15 +213,25 @@ export async function runSyncForDataSource(
       const allTx: Array<{ id: string; amount: number; description?: string; transacted_at: number; status?: string }> = [];
       let hasMore = true;
       let startingAfter: string | undefined;
+      let rawTransactionsFromStripe = 0;
+      let apiListPages = 0;
+      const statusBreakdown: Record<string, number> = {};
+      const transactedAt: Record<string, number> = {};
+      if (startDate) transactedAt.gte = Math.floor(new Date(startDate).getTime() / 1000);
+      if (endDate) transactedAt.lte = Math.floor(new Date(endDate).getTime() / 1000);
+      const transactedAtFilter = {
+        gteIso: startDate ?? undefined,
+        lteIso: endDate ?? undefined,
+        gteUnix: transactedAt.gte,
+        lteUnix: transactedAt.lte,
+      };
 
       while (hasMore) {
+        apiListPages += 1;
         const listParams: Record<string, unknown> = {
           account: fcAccountId,
           limit: 100,
         };
-        const transactedAt: Record<string, number> = {};
-        if (startDate) transactedAt.gte = Math.floor(new Date(startDate).getTime() / 1000);
-        if (endDate) transactedAt.lte = Math.floor(new Date(endDate).getTime() / 1000);
         if (Object.keys(transactedAt).length > 0) listParams.transacted_at = transactedAt;
         if (startingAfter) listParams.starting_after = startingAfter;
 
@@ -215,6 +253,11 @@ export async function runSyncForDataSource(
         }
 
         const data = (list?.data ?? []) as Array<{ id: string; amount: number; description?: string; transacted_at: number; status?: string }>;
+        rawTransactionsFromStripe += data.length;
+        for (const tx of data) {
+          const key = tx?.status == null || tx.status === "" ? "(missing)" : String(tx.status);
+          statusBreakdown[key] = (statusBreakdown[key] ?? 0) + 1;
+        }
         if (allTx.length === 0) {
           console.warn("[sync-runner] First list response", { dataSourceId, count: data.length, has_more: list?.has_more, transacted_at: listParams.transacted_at });
         }
@@ -284,8 +327,28 @@ export async function runSyncForDataSource(
         .eq("id", dataSourceId)
         .eq("user_id", userId);
 
-      console.warn("[sync-runner] Sync completed", { dataSourceId, listed: allTx.length, inserted, transactionCount, firstInsertError: firstInsertError ?? undefined });
-      return { success: true, message: `Sync completed. ${inserted} new transactions.` };
+      const diagnostics: StripeSyncDiagnostics = {
+        financialConnectionsAccountId: fcAccountId,
+        stripeMode: mode,
+        transactedAtFilter,
+        stripeSyncStartDateStored: (row.stripe_sync_start_date as string | null) ?? null,
+        rawTransactionsFromStripe,
+        statusBreakdown,
+        postedIncludedInSync: allTx.length,
+        upsertCallsSucceeded: inserted,
+        apiListPages,
+        transactionCountForDataSource: transactionCount,
+      };
+      console.warn("[sync-runner] Sync completed", {
+        dataSourceId,
+        ...diagnostics,
+        firstInsertError: firstInsertError ?? undefined,
+      });
+      return {
+        success: true,
+        message: `Sync completed. ${inserted} new transactions.`,
+        diagnostics,
+      };
     } catch (e) {
       const message = e instanceof Error ? e.message : "Sync failed";
       await (supabase as any)

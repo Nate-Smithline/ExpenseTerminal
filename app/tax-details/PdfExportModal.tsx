@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface PdfExportModalProps {
   open: boolean;
@@ -23,10 +23,25 @@ export function PdfExportModal({
   const [includeAuditList, setIncludeAuditList] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // ESC to close, align with preferences modals
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    }
+    if (!open) return;
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const isScheduleCFiler =
     !filingType ||
+    filingType === "sole_prop" ||
+    filingType === "llc" ||
     filingType === "sole_proprietor" ||
     filingType === "Sole Proprietor" ||
     filingType === "single_llc" ||
@@ -58,57 +73,43 @@ export function PdfExportModal({
       aria-modal="true"
       aria-labelledby="export-tax-documents-title"
     >
-      <div className="rounded-xl bg-white shadow-[0_8px_30px_-6px_rgba(0,0,0,0.14)] max-w-[480px] w-full mx-4 overflow-hidden">
-        {/* Header */}
-        <div className="rounded-t-xl bg-[#2d3748] px-6 pt-6 pb-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2
-                id="export-tax-documents-title"
-                className="text-xl font-bold text-white tracking-tight"
-              >
-                Export Tax Documents
-              </h2>
-              <p className="text-sm text-white/80 mt-1.5">
-                Choose which summaries to include in your{" "}
-                <span className="font-semibold">{taxYear}</span>
-                {quarter ? (
-                  <>
-                    {" "}
-                    Q{quarter}
-                  </>
-                ) : null}{" "}
-                PDF package.
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              className="h-8 w-8 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition shrink-0"
-              aria-label="Close"
+      <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
+        {/* Header (preferences-style) */}
+        <div className="bg-white px-6 pt-6 pb-2 flex items-center justify-between gap-4">
+          <div>
+            <h2
+              id="export-tax-documents-title"
+              className="text-xl text-mono-dark font-medium"
+              style={{ fontFamily: "var(--font-sans)" }}
             >
-              <span className="material-symbols-rounded text-[18px]">close</span>
-            </button>
+              Export tax documents
+            </h2>
           </div>
         </div>
 
         {/* Body */}
-        <div className="px-6 py-6 space-y-4">
+        <div className="px-6 py-4 space-y-3">
           <p className="text-xs text-mono-medium leading-relaxed">
-            This export is designed for{" "}
-            <span className="font-medium">your tax professional</span> or records. It pulls together
-            the same numbers you see on this page into a PDF they can reference alongside the IRS
-            forms.
+            Export a PDF package your tax preparer can reference alongside IRS forms for{" "}
+            <span className="font-medium">{taxYear}</span>
+            {quarter ? (
+              <>
+                {" "}
+                Q{quarter}
+              </>
+            ) : null}
+            .
           </p>
 
-          <div className="space-y-3">
+          <div className="space-y-2.5">
           {isScheduleCFiler && (
             <>
-              <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-bg-secondary/60 transition-colors">
+              <label className="flex items-center gap-3 cursor-pointer p-3 border border-[#F0F1F7] bg-white hover:bg-[#F0F1F7]/40 transition-colors">
                 <input
                   type="checkbox"
                   checked={includeScheduleC}
                   onChange={(e) => setIncludeScheduleC(e.target.checked)}
-                  className="w-4 h-4 rounded accent-accent-sage"
+                  className="w-4 h-4 rounded-none border-bg-tertiary accent-[#2563EB]"
                 />
                 <div>
                   <p className="text-sm font-medium text-mono-dark">Schedule C summary (Form 1040)</p>
@@ -118,12 +119,12 @@ export function PdfExportModal({
                 </div>
               </label>
 
-              <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-bg-secondary/60 transition-colors">
+              <label className="flex items-center gap-3 cursor-pointer p-3 border border-[#F0F1F7] bg-white hover:bg-[#F0F1F7]/40 transition-colors">
                 <input
                   type="checkbox"
                   checked={includeScheduleSE}
                   onChange={(e) => setIncludeScheduleSE(e.target.checked)}
-                  className="w-4 h-4 rounded accent-accent-sage"
+                  className="w-4 h-4 rounded-none border-bg-tertiary accent-[#2563EB]"
                 />
                 <div>
                   <p className="text-sm font-medium text-mono-dark">Schedule SE (Self-employment tax)</p>
@@ -136,12 +137,12 @@ export function PdfExportModal({
             </>
           )}
 
-          <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-bg-secondary/60 transition-colors">
+          <label className="flex items-center gap-3 cursor-pointer p-3 border border-[#F0F1F7] bg-white hover:bg-[#F0F1F7]/40 transition-colors">
             <input
               type="checkbox"
               checked={includeCategories}
               onChange={(e) => setIncludeCategories(e.target.checked)}
-              className="w-4 h-4 rounded accent-accent-sage"
+              className="w-4 h-4 rounded-none border-bg-tertiary accent-[#2563EB]"
             />
             <div>
               <p className="text-sm font-medium text-mono-dark">Category breakdown</p>
@@ -151,12 +152,12 @@ export function PdfExportModal({
             </div>
           </label>
 
-          <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-bg-secondary/60 transition-colors">
+          <label className="flex items-center gap-3 cursor-pointer p-3 border border-[#F0F1F7] bg-white hover:bg-[#F0F1F7]/40 transition-colors">
             <input
               type="checkbox"
               checked={includeAuditList}
               onChange={(e) => setIncludeAuditList(e.target.checked)}
-              className="w-4 h-4 rounded accent-accent-sage"
+              className="w-4 h-4 rounded-none border-bg-tertiary accent-[#2563EB]"
             />
             <div>
               <p className="text-sm font-medium text-mono-dark">Audit-ready transaction list</p>
@@ -168,19 +169,19 @@ export function PdfExportModal({
         </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-bg-tertiary/40">
+        {/* Footer (preferences-style) */}
+        <div className="flex justify-end gap-3 px-6 pt-2 pb-5">
           <button
             onClick={onClose}
             disabled={loading}
-            className="rounded-md border border-bg-tertiary bg-white px-4 py-2.5 text-sm font-semibold text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
+            className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
           >
             Cancel
           </button>
           <button
             onClick={handleDownload}
             disabled={loading}
-            className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition disabled:opacity-40"
+            className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors disabled:opacity-40"
           >
             {loading ? "Generating…" : "Download tax PDF"}
           </button>

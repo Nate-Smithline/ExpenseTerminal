@@ -63,9 +63,16 @@ export async function POST(req: Request) {
   });
 
   if (result.success) {
-    return new Response(JSON.stringify({ ok: true, message: result.message }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        message: result.message,
+        ...(result.diagnostics ? { diagnostics: result.diagnostics } : {}),
+      }),
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   }
 
   return new Response(
