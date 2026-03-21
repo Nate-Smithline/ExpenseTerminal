@@ -60,6 +60,7 @@ type StripeSyncDiag = {
   financialConnectionsAccountId?: string;
   stripeMode?: string;
   apiListPages?: number;
+  transactionsListLimitPerPage?: number;
 };
 
 function logStripeSyncDiagnostics(d: StripeSyncDiag | undefined) {

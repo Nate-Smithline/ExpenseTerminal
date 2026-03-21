@@ -3,6 +3,14 @@ import type { StripeMode } from "@/lib/stripe";
 import { getStripeClient } from "@/lib/stripe";
 import { normalizeVendor } from "@/lib/vendor-matching";
 
+/**
+ * Stripe Financial Connections `transactions.list` accepts `limit` between 1 and 100 (inclusive).
+ * API default is 10; we use 100 to minimize round-trips. Pagination uses `has_more` + `starting_after`
+ * until no further pages — there is no larger single-page limit on Stripe’s side.
+ * @see https://docs.stripe.com/api/financial_connections/transactions/list
+ */
+const STRIPE_FC_TRANSACTIONS_PAGE_LIMIT = 100;
+
 /** Returned on successful Stripe FC sync to compare against bank exports (e.g. Chase CSV). */
 export type StripeSyncDiagnostics = {
   financialConnectionsAccountId: string;
@@ -25,6 +33,8 @@ export type StripeSyncDiagnostics = {
   /** Upsert calls with no error (includes duplicates ignored by `ignoreDuplicates`). */
   upsertCallsSucceeded: number;
   apiListPages: number;
+  /** `limit` passed to each `transactions.list` call (Stripe allows 1–100). */
+  transactionsListLimitPerPage: number;
   /** Row count in DB for this data source after sync. */
   transactionCountForDataSource: number;
 };
@@ -211,7 +221,6 @@ export async function runSyncForDataSource(
       console.warn("[sync-runner] Transaction refresh succeeded", { dataSourceId, mode, refreshId: refreshId ?? undefined });
 
       const allTx: Array<{ id: string; amount: number; description?: string; transacted_at: number; status?: string }> = [];
-      let hasMore = true;
       let startingAfter: string | undefined;
       let rawTransactionsFromStripe = 0;
       let apiListPages = 0;
@@ -226,11 +235,12 @@ export async function runSyncForDataSource(
         lteUnix: transactedAt.lte,
       };
 
-      while (hasMore) {
+      // Paginate with Stripe's cursor: repeat while `has_more` is true, advancing `starting_after`.
+      for (;;) {
         apiListPages += 1;
         const listParams: Record<string, unknown> = {
           account: fcAccountId,
-          limit: 100,
+          limit: STRIPE_FC_TRANSACTIONS_PAGE_LIMIT,
         };
         if (Object.keys(transactedAt).length > 0) listParams.transacted_at = transactedAt;
         if (startingAfter) listParams.starting_after = startingAfter;
@@ -264,9 +274,15 @@ export async function runSyncForDataSource(
         // Only include posted (completed) transactions; skip pending and void.
         const posted = data.filter((tx) => tx?.status === "posted");
         allTx.push(...posted);
-        hasMore = list?.has_more ?? false;
-        if (data.length > 0) startingAfter = data[data.length - 1]?.id as string | undefined;
-        else hasMore = false;
+
+        if (data.length === 0) {
+          break;
+        }
+        const stripeReportsMorePages = list?.has_more === true;
+        if (!stripeReportsMorePages) {
+          break;
+        }
+        startingAfter = data[data.length - 1]!.id;
       }
 
       let inserted = 0;
@@ -337,6 +353,7 @@ export async function runSyncForDataSource(
         postedIncludedInSync: allTx.length,
         upsertCallsSucceeded: inserted,
         apiListPages,
+        transactionsListLimitPerPage: STRIPE_FC_TRANSACTIONS_PAGE_LIMIT,
         transactionCountForDataSource: transactionCount,
       };
       console.warn("[sync-runner] Sync completed", {
