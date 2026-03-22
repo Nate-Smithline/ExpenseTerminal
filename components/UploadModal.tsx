@@ -13,7 +13,13 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-type DataSource = { id: string; name: string; account_type: string; institution?: string | null };
+type DataSource = {
+  id: string;
+  name: string;
+  account_type: string;
+  institution?: string | null;
+  source_type?: string | null;
+};
 
 const ACCOUNT_TYPES = [
   { value: "checking", label: "Business Checking" },
@@ -41,6 +47,8 @@ interface UploadModalProps {
   onClose: () => void;
   onCompleted: (result?: UploadResult) => Promise<void>;
   dataSourceId?: string;
+  /** True when uploading into a Direct Feed (Stripe FC) account — copy explains CSV complements the feed. */
+  directFeedAccount?: boolean;
 }
 
 type ParsedRow = {
@@ -277,11 +285,11 @@ function validateAndParseCsv(content: string): { rows: ParsedRow[]; error?: stri
   return { rows };
 }
 
-export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdProp }: UploadModalProps) {
+export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdProp, directFeedAccount = false }: UploadModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [previewRows, setPreviewRows] = useState<ParsedRow[]>([]);
   const [taxYear, setTaxYear] = useState(new Date().getFullYear());
-  const [suppressDuplicates, setSuppressDuplicates] = useState(false);
+  const [suppressDuplicates, setSuppressDuplicates] = useState(true);
 
   const needsDataSourceStep = dataSourceIdProp == null;
   const [step, setStep] = useState<"choose_source" | "upload">(needsDataSourceStep ? "choose_source" : "upload");
@@ -295,6 +303,11 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
   const [createSaving, setCreateSaving] = useState(false);
 
   const effectiveDataSourceId = selectedDataSourceId ?? dataSourceIdProp ?? null;
+
+  const resolvedDirectFeed =
+    directFeedAccount ||
+    (effectiveDataSourceId != null &&
+      dataSources.some((d) => d.id === effectiveDataSourceId && d.source_type === "stripe"));
 
   const fetchDataSources = useCallback(async () => {
     const res = await fetch("/api/data-sources");
@@ -572,7 +585,11 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
             className="text-xl text-mono-dark font-medium"
             style={{ fontFamily: "var(--font-sans)" }}
           >
-            {step === "choose_source" ? "Choose account" : "Upload transactions"}
+            {step === "choose_source"
+              ? "Choose account"
+              : resolvedDirectFeed
+                ? "Upload bank CSV"
+                : "Upload transactions"}
           </h2>
         </div>
 
@@ -601,8 +618,12 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                           }`}
                         >
                           {ds.name}
-                          {ds.institution && (
-                            <span className="text-mono-light ml-1">· {ds.institution}</span>
+                          {ds.source_type === "stripe" ? (
+                            <span className="text-mono-light ml-1">· Direct Feed</span>
+                          ) : (
+                            ds.institution && (
+                              <span className="text-mono-light ml-1">· {ds.institution}</span>
+                            )
                           )}
                         </button>
                       ))}
@@ -676,9 +697,21 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
             </>
           ) : (
             <>
-          <p className="text-xs text-mono-medium">
-            Upload CSV or Excel. AI categorization runs in the background.
-          </p>
+          {resolvedDirectFeed ? (
+            <div className="space-y-2">
+              <p className="text-xs text-mono-medium">
+                Import a bank export (CSV or Excel) to add transactions that aren&apos;t available through your Direct
+                Feed— for example older history. New rows are linked to this account alongside synced transactions.
+              </p>
+              <p className="text-xs text-mono-light">
+                AI categorization runs in the background after import.
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-mono-medium">
+              Upload CSV or Excel. AI categorization runs in the background.
+            </p>
+          )}
 
           {/* Drop zone */}
           <div

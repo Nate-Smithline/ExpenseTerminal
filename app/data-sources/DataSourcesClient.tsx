@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { loadStripe } from "@stripe/stripe-js";
 import type { Database } from "@/lib/types/database";
 import { UploadModal } from "@/components/UploadModal";
+import { TaxYearSelector } from "@/components/TaxYearSelector";
 import { useUpgradeModal } from "@/components/UpgradeModalContext";
 import type { DataSourceStats } from "./page";
 
@@ -68,6 +69,9 @@ type StripeSyncDiag = {
     lastTransactionId?: string;
   }>;
   paginationStoppedBecause?: "empty_page" | "stripe_has_more_false";
+  earliestTransactionDateReturned?: string | null;
+  latestTransactionDateReturned?: string | null;
+  startDateExceedsFcLookback?: boolean;
 };
 
 function logStripeSyncDiagnostics(d: StripeSyncDiag | undefined) {
@@ -81,13 +85,41 @@ function logStripeSyncDiagnostics(d: StripeSyncDiag | undefined) {
 function stripeSyncStatusMessage(d: StripeSyncDiag | undefined): string {
   if (!d) return "Sync complete";
   const pages = d.paginationPages?.length ?? d.apiListPages ?? 0;
-  const stop =
-    d.paginationStoppedBecause === "empty_page"
-      ? "empty page"
-      : d.paginationStoppedBecause === "stripe_has_more_false"
-        ? "Stripe has_more=false"
-        : "done";
-  return `Sync complete · ${pages} list request(s) · ${d.rawTransactionsFromStripe} rows from Stripe → ${d.postedIncludedInSync} posted · stopped: ${stop} (not a 500 cap — see diagnostics.paginationPages in console/network).`;
+  let msg = `Sync complete · ${pages} list request(s) · ${d.rawTransactionsFromStripe} rows from Stripe → ${d.postedIncludedInSync} posted → ${d.upsertCallsSucceeded} saved · ${d.transactionCountForDataSource} total in app`;
+  if (d.startDateExceedsFcLookback) {
+    const earliest = d.earliestTransactionDateReturned ?? "unknown";
+    msg += ` · ⚠ Start date is >180 days ago — Stripe only returned data from ${earliest}. Upload a bank CSV for older transactions.`;
+  }
+  return msg;
+}
+
+/** Compact date for cards, e.g. "Mar 18, 2025". */
+function formatEarliestCompact(iso: string): string {
+  const parts = iso.split("-").map(Number);
+  const y = parts[0];
+  const m = parts[1];
+  const d = parts[2];
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/**
+ * Oldest tx is already near the start of the calendar tax year — no need to surface “how far back” copy.
+ * Uses Mar 1 as the cutoff (Jan–Feb = well covered from the year’s opening).
+ */
+function isEarliestNearStartOfTaxYear(iso: string, taxYear: number): boolean {
+  const parts = iso.split("-").map(Number);
+  const y = parts[0];
+  const m = parts[1];
+  const d = parts[2];
+  if (!y || !m || !d) return false;
+  const earliest = new Date(y, m - 1, d);
+  const marchFirst = new Date(taxYear, 2, 1);
+  return earliest < marchFirst;
 }
 
 function formatMonthDayOrdinal(value: string): string {
@@ -112,12 +144,15 @@ function formatMonthDayOrdinal(value: string): string {
 export function DataSourcesClient({
   initialSources,
   initialStats = {},
+  taxYear,
   isFree = false,
   stripeSourceCount = 0,
   stripePublishableKey = null,
 }: {
   initialSources: DataSource[];
   initialStats?: Record<string, DataSourceStats>;
+  /** Tax year used for earliest-date-on-card and transaction queries (cookie / profile). */
+  taxYear: number;
   isFree?: boolean;
   stripeSourceCount?: number;
   /** Publishable key for Stripe.js Financial Connections (test or live based on host). */
@@ -207,7 +242,7 @@ export function DataSourcesClient({
   type SyncStatusBar = { message: string; type: "syncing" | "success" | "error" } | null;
   const [syncStatusBar, setSyncStatusBar] = useState<SyncStatusBar>(null);
   // Post-connect date modal (after Stripe accounts load)
-  const [postConnectLookback, setPostConnectLookback] = useState<"2years" | "forward" | "custom">("2years");
+  const [postConnectLookback, setPostConnectLookback] = useState<"180days" | "forward" | "custom">("180days");
   const [postConnectCustomStartDate, setPostConnectCustomStartDate] = useState("");
   const [postConnectPulling, setPostConnectPulling] = useState(false);
   const [postConnectError, setPostConnectError] = useState<string | null>(null);
@@ -216,7 +251,7 @@ export function DataSourcesClient({
 
   useEffect(() => {
     if (showPostConnectDateModal) {
-      setPostConnectLookback("2years");
+      setPostConnectLookback("180days");
       setPostConnectCustomStartDate("");
       setPostConnectError(null);
     }
@@ -303,7 +338,17 @@ export function DataSourcesClient({
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.data) {
         setSources((prev) => [data.data, ...prev]);
-        setStats((prev) => ({ ...prev, [data.data.id]: { transactionCount: 0, totalIncome: 0, totalExpenses: 0, pctReviewed: 0, totalSavings: 0 } }));
+        setStats((prev) => ({
+          ...prev,
+          [data.data.id]: {
+            transactionCount: 0,
+            totalIncome: 0,
+            totalExpenses: 0,
+            pctReviewed: 0,
+            totalSavings: 0,
+            earliestTransactionDateInTaxYear: null,
+          },
+        }));
         setName("");
         setInstitution("");
         setShowAdd(false);
@@ -447,7 +492,7 @@ export function DataSourcesClient({
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-start gap-4">
         <div className="space-y-3">
           <div>
             <div
@@ -462,15 +507,19 @@ export function DataSourcesClient({
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="inline-flex items-center px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors"
-        >
-          <kbd className="mr-2.5 inline-flex items-center justify-center border border-mono-medium bg-white/30 px-1.5 py-0.5 text-[10px] font-mono text-white">
-            a
-          </kbd>
-          Add Account
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <TaxYearSelector value={taxYear} onChange={() => router.refresh()} compact />
+          <button
+            type="button"
+            onClick={() => setShowAdd(true)}
+            className="inline-flex items-center px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors"
+          >
+            <kbd className="mr-2.5 inline-flex items-center justify-center border border-mono-medium bg-white/30 px-1.5 py-0.5 text-[10px] font-mono text-white">
+              a
+            </kbd>
+            Add Account
+          </button>
+        </div>
       </div>
 
       {(syncStatusBar || debugCallouts) && (
@@ -517,7 +566,7 @@ export function DataSourcesClient({
           aria-modal="true"
           aria-labelledby="add-account-title"
         >
-          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden relative">
+          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden relative border-0">
             {addModalLoading && (
               <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
                 <span className="material-symbols-rounded animate-spin text-3xl text-mono-medium">progress_activity</span>
@@ -824,11 +873,11 @@ export function DataSourcesClient({
           aria-modal="true"
           aria-labelledby="edit-account-title"
         >
-          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
+          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden border-0">
             <div className="bg-white px-6 pt-6 pb-1 flex items-start">
               <h2
                 id="edit-account-title"
-                className="text-xl text-mono-dark font-medium"
+                className="text-xl text-black font-medium"
                 style={{ fontFamily: "var(--font-sans)" }}
               >
                 Edit account
@@ -842,7 +891,7 @@ export function DataSourcesClient({
             >
               <div className="px-6 py-3 space-y-3">
                 <div>
-                  <label className="text-sm font-medium text-mono-dark block mb-2">
+                  <label className="text-sm font-medium text-black block mb-2">
                     Name *
                   </label>
                   <input
@@ -854,7 +903,7 @@ export function DataSourcesClient({
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-mono-dark block mb-2">
+                  <label className="text-sm font-medium text-black block mb-2">
                     Institution
                   </label>
                   <input
@@ -900,26 +949,31 @@ export function DataSourcesClient({
       )}
 
       {/* Pull transactions (date range) modal */}
-      {pullModalSource && (
+      {pullModalSource && (() => {
+        const pullFcLookbackDate = (() => {
+          const d = new Date();
+          d.setDate(d.getDate() - 180);
+          return d.toISOString().slice(0, 10);
+        })();
+        const pullFromDate = pullDatesBySource[pullModalSource.id]?.start;
+        const pullExceedsFcLookback = !!pullFromDate && new Date(pullFromDate) < new Date(pullFcLookbackDate);
+        return (
         <div
           className="fixed inset-0 min-h-[100dvh] z-[60] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pull-transactions-title"
         >
-          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
+          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden border-0">
             <div className="bg-white px-6 pt-6 pb-1 flex items-start">
-              <h2 id="pull-transactions-title" className="text-xl text-mono-dark font-medium" style={{ fontFamily: "var(--font-sans)" }}>
+              <h2 id="pull-transactions-title" className="text-xl text-black font-medium" style={{ fontFamily: "var(--font-sans)" }}>
                 Pull transactions
               </h2>
             </div>
             <div className="px-6 py-3 space-y-3">
-              <p className="text-xs text-mono-medium">
-                {pullModalSource.name}
-              </p>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs text-mono-medium mb-1">From date</label>
+                  <label className="block text-xs text-black mb-1">From date</label>
                   <input
                     type="date"
                     value={pullDatesBySource[pullModalSource.id]?.start ?? ""}
@@ -928,7 +982,7 @@ export function DataSourcesClient({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-mono-medium mb-1">To date</label>
+                  <label className="block text-xs text-black mb-1">To date</label>
                   <input
                     type="date"
                     value={pullDatesBySource[pullModalSource.id]?.end ?? ""}
@@ -937,7 +991,18 @@ export function DataSourcesClient({
                   />
                 </div>
               </div>
-              <p className="text-xs text-mono-light">Leave dates empty to use default range. Duplicates are not added.</p>
+              {pullExceedsFcLookback ? (
+                <div className="border-0 bg-warm-stock px-3 py-3 space-y-1">
+                  <p className="text-xs font-medium text-black">
+                    Stripe provides up to ~180 days of history
+                  </p>
+                  <p className="text-xs text-black/80 leading-relaxed">
+                    Your &ldquo;from&rdquo; date is older than what Stripe can typically reach. Transactions before roughly {new Date(new Date().setDate(new Date().getDate() - 180)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} may not be returned. For older history, upload a CSV export from your bank.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-black/70">Leave dates empty to use default range. Duplicates are not added.</p>
+              )}
             </div>
             <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
               <button
@@ -996,7 +1061,8 @@ export function DataSourcesClient({
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Delete account confirmation modal */}
       {deleteConfirmSource && (
@@ -1006,14 +1072,14 @@ export function DataSourcesClient({
           aria-modal="true"
           aria-labelledby="delete-confirm-title"
         >
-          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
+          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden border-0">
             <div className="bg-white px-6 pt-6 pb-1 flex items-start">
-              <h2 id="delete-confirm-title" className="text-xl text-mono-dark font-medium" style={{ fontFamily: "var(--font-sans)" }}>
+              <h2 id="delete-confirm-title" className="text-xl text-black font-medium" style={{ fontFamily: "var(--font-sans)" }}>
                 Delete account?
               </h2>
             </div>
             <div className="px-6 py-3 space-y-3">
-              <p className="text-xs text-mono-medium">
+              <p className="text-xs text-black">
                 Are you sure you want to delete <strong>{deleteConfirmSource.name}</strong>? This cannot be undone.
               </p>
               <div>
@@ -1022,13 +1088,13 @@ export function DataSourcesClient({
                     type="checkbox"
                     checked={deleteAlsoTransactions}
                     onChange={(e) => setDeleteAlsoTransactions(e.target.checked)}
-                    className="mt-1 rounded-none border-bg-tertiary"
+                    className="mt-1 rounded-none border-0 text-black accent-black"
                   />
-                  <span className="text-sm text-mono-dark">
+                  <span className="text-sm text-black">
                     Also delete all transactions from this account
                   </span>
                 </label>
-                <p className="text-xs text-mono-light mt-1 ml-6">
+                <p className="text-xs text-black/70 mt-1 ml-6">
                   {deleteAlsoTransactions
                     ? "Transactions will be permanently removed."
                     : "Transactions will be kept but unlinked from this account."}
@@ -1088,16 +1154,27 @@ export function DataSourcesClient({
         if (unsyncedStripeSources.length === 0) {
           return null;
         }
-        const twoYearsAgo = (() => {
+        const fcLookbackDate = (() => {
           const d = new Date();
-          d.setFullYear(d.getFullYear() - 2);
+          d.setDate(d.getDate() - 180);
           return d.toISOString().slice(0, 10);
+        })();
+        const fcLookbackLabel = (() => {
+          const [y, mo, day] = fcLookbackDate.split("-").map(Number);
+          return new Date(y, mo - 1, day).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          });
         })();
         const today = new Date().toISOString().slice(0, 10);
         let startDate: string | null = null;
-        if (postConnectLookback === "2years") startDate = twoYearsAgo;
+        if (postConnectLookback === "180days") startDate = fcLookbackDate;
         else if (postConnectLookback === "custom" && postConnectCustomStartDate) startDate = postConnectCustomStartDate;
-        const canPull = postConnectLookback !== "custom" || (postConnectCustomStartDate && new Date(postConnectCustomStartDate) >= new Date(twoYearsAgo));
+        const canPull =
+          postConnectLookback !== "custom" ||
+          (postConnectCustomStartDate && postConnectCustomStartDate >= fcLookbackDate);
+        const exceedsFcLookback = startDate ? new Date(startDate) < new Date(fcLookbackDate) : false;
         const accountNames = unsyncedStripeSources.map((s) => s.name).join(", ");
         return (
           <div
@@ -1106,26 +1183,41 @@ export function DataSourcesClient({
             aria-modal="true"
             aria-labelledby="post-connect-date-title"
           >
-            <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden border-0">
               {postConnectPulling ? (
                 <div className="px-6 py-12 flex flex-col items-center justify-center gap-4">
-                  <span className="material-symbols-rounded animate-spin text-4xl text-mono-medium">progress_activity</span>
-                  <h2 id="post-connect-date-title" className="text-xl text-mono-dark font-medium text-center" style={{ fontFamily: "var(--font-sans)" }}>
+                  <span className="material-symbols-rounded animate-spin text-4xl text-black/40">progress_activity</span>
+                  <h2 className="text-xl text-black font-medium text-center" style={{ fontFamily: "var(--font-sans)" }}>
                     Loading transactions
                   </h2>
-                  <p className="text-xs text-mono-medium text-center">
+                  <p className="text-xs text-black/70 text-center">
                     Pulling from {unsyncedStripeSources.length > 1 ? "your accounts" : accountNames}… This may take a minute.
                   </p>
                 </div>
               ) : (
                 <>
                   <div className="bg-white px-6 pt-6 pb-0 flex items-start">
-                    <h2 id="post-connect-date-title" className="text-xl text-mono-dark font-medium" style={{ fontFamily: "var(--font-sans)" }}>
-                      Choose history to pull
+                    <h2 id="post-connect-date-title" className="text-xl text-black font-medium" style={{ fontFamily: "var(--font-sans)" }}>
+                      Pull Bank Transactions
                     </h2>
                   </div>
+                  {exceedsFcLookback && (
+                    <div className="px-6 pt-3">
+                      <div className="border-0 bg-warm-stock px-3 py-3">
+                        <p className="text-xs text-black/80 leading-relaxed">
+                          Transactions before roughly{" "}
+                          {new Date(new Date().setDate(new Date().getDate() - 180)).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}{" "}
+                          may not be available through this connection. To include older transactions, upload a CSV export from your bank after setup.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   <div className="px-6 py-3 space-y-3">
-                    <p className="text-xs text-mono-medium">
+                    <p className="text-xs text-black">
                       Select a date range and we’ll pull transactions for the connected accounts.
                     </p>
 
@@ -1138,29 +1230,29 @@ export function DataSourcesClient({
                     </div>
 
                     {postConnectError && (
-                      <p className="text-xs text-[#DC2626] bg-[#FEE2E2] px-3 py-2">{postConnectError}</p>
+                      <p className="text-xs text-[#B91C1C] px-0 py-1">{postConnectError}</p>
                     )}
 
                     <div className="space-y-2">
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => { setPostConnectLookback("2years"); setPostConnectError(null); }}
-                          className={`py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border ${
-                            postConnectLookback === "2years"
-                              ? "border-[#F0F1F7] bg-[#F0F1F7] text-mono-dark"
-                              : "border-[#F0F1F7] bg-white text-mono-medium hover:bg-[#F0F1F7]"
+                          onClick={() => { setPostConnectLookback("180days"); setPostConnectError(null); }}
+                          className={`py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border-0 ${
+                            postConnectLookback === "180days"
+                              ? "bg-black text-white"
+                              : "bg-cool-stock text-black/80 hover:bg-frost"
                           }`}
                         >
-                          Last 2 years
+                          Last 180 days
                         </button>
                         <button
                           type="button"
                           onClick={() => { setPostConnectLookback("forward"); setPostConnectError(null); }}
-                          className={`py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border ${
+                          className={`py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border-0 ${
                             postConnectLookback === "forward"
-                              ? "border-[#F0F1F7] bg-[#F0F1F7] text-mono-dark"
-                              : "border-[#F0F1F7] bg-white text-mono-medium hover:bg-[#F0F1F7]"
+                              ? "bg-black text-white"
+                              : "bg-cool-stock text-black/80 hover:bg-frost"
                           }`}
                         >
                           Going forward
@@ -1169,25 +1261,27 @@ export function DataSourcesClient({
                       <button
                         type="button"
                         onClick={() => { setPostConnectLookback("custom"); setPostConnectError(null); }}
-                        className={`w-full py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border ${
+                        className={`w-full py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border-0 ${
                           postConnectLookback === "custom"
-                            ? "border-[#F0F1F7] bg-[#F0F1F7] text-mono-dark"
-                            : "border-[#F0F1F7] bg-white text-mono-medium hover:bg-[#F0F1F7]"
+                            ? "bg-black text-white"
+                            : "bg-cool-stock text-black/80 hover:bg-frost"
                         }`}
                       >
                         Custom start date
                       </button>
                       {postConnectLookback === "custom" && (
                         <div>
-                          <label className="block text-xs text-mono-medium mb-1">Start date</label>
+                          <label className="block text-xs text-black mb-1">Start date</label>
                           <input
                             type="date"
                             value={postConnectCustomStartDate}
                             onChange={(e) => setPostConnectCustomStartDate(e.target.value)}
                             className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
                           />
-                          {postConnectCustomStartDate && new Date(postConnectCustomStartDate) < new Date(twoYearsAgo) && (
-                            <p className="text-xs text-[#DC2626] mt-1">Date must be within the last 2 years</p>
+                          {postConnectCustomStartDate && postConnectCustomStartDate < fcLookbackDate && (
+                            <p className="text-xs text-[#B91C1C] mt-1">
+                              Date must be after {fcLookbackLabel}
+                            </p>
                           )}
                         </div>
                       )}
@@ -1312,6 +1406,7 @@ export function DataSourcesClient({
               totalExpenses: 0,
               pctReviewed: 0,
               totalSavings: 0,
+              earliestTransactionDateInTaxYear: null,
             };
             const totalTxCount = s.transactionCount ?? 0;
             const reviewedTxCount =
@@ -1319,6 +1414,10 @@ export function DataSourcesClient({
                 ? Math.round((Math.min(100, Math.max(0, s.pctReviewed ?? 0)) / 100) * totalTxCount)
                 : 0;
             const hasSyncFailure = !!source.last_failed_sync_at;
+            const showEarliestTaxYearLine =
+              totalTxCount > 0 &&
+              !!s.earliestTransactionDateInTaxYear &&
+              !isEarliestNearStartOfTaxYear(s.earliestTransactionDateInTaxYear, taxYear);
             return (
               <li
                 key={source.id}
@@ -1339,6 +1438,34 @@ export function DataSourcesClient({
                   <p className="text-lg font-semibold text-mono-dark">{source.name}</p>
                   {source.institution && (
                     <p className="text-sm text-mono-light">{source.institution}</p>
+                  )}
+                  {showEarliestTaxYearLine && s.earliestTransactionDateInTaxYear && (
+                    <p
+                      className="mt-1.5 max-w-md text-xs leading-snug text-mono-medium"
+                      style={{ fontFamily: "var(--font-sans)" }}
+                    >
+                      Earliest in{" "}
+                      <span className="tabular-nums font-medium text-mono-dark">{taxYear}</span>
+                      {": "}
+                      <span className="font-medium text-mono-dark">
+                        {formatEarliestCompact(s.earliestTransactionDateInTaxYear)}
+                      </span>
+                      {source.source_type === "stripe" && (
+                        <>
+                          <span className="text-mono-light"> · </span>
+                          <span className="text-mono-light">~6 mo bank feed</span>
+                          {" · "}
+                          <button
+                            type="button"
+                            onClick={() => setUploadSourceId(source.id)}
+                            className="font-medium text-mono-dark underline underline-offset-2 decoration-black/20 hover:decoration-mono-dark focus:outline-none focus-visible:ring-1 focus-visible:ring-mono-dark/25 focus-visible:ring-offset-1"
+                          >
+                            Upload CSV
+                          </button>
+                        </>
+                      )}
+                      .
+                    </p>
                   )}
                   {source.source_type === "stripe" && (
                     <div className="text-xs text-mono-light mt-1 space-y-0.5">
@@ -1439,10 +1566,14 @@ export function DataSourcesClient({
                         Pull Transactions
                       </button>
                     )}
-                    {source.source_type !== "stripe" && (
                     <button
+                      type="button"
                       onClick={() => setUploadSourceId(source.id)}
-                      className="inline-flex items-center gap-2 rounded-none bg-[#2563EB] px-3 py-2 text-sm font-medium text-white hover:opacity-90 transition"
+                      className={`inline-flex items-center gap-2 rounded-none px-3 py-2 text-sm font-medium transition ${
+                        source.source_type === "stripe"
+                          ? "bg-cool-stock text-black hover:bg-frost"
+                          : "bg-[#2563EB] text-white hover:opacity-90"
+                      }`}
                     >
                       <span
                         className="material-symbols-rounded leading-none"
@@ -1452,7 +1583,6 @@ export function DataSourcesClient({
                       </span>
                       Upload CSV
                     </button>
-                    )}
                     <button
                       onClick={() => openEdit(source)}
                       className="inline-flex items-center gap-2 rounded-none border border-bg-tertiary/60 px-3 py-2 text-sm font-medium text-mono-medium hover:bg-bg-secondary/60 transition"
@@ -1486,6 +1616,7 @@ export function DataSourcesClient({
       {uploadSourceId && (
         <UploadModal
           dataSourceId={uploadSourceId}
+          directFeedAccount={sources.some((s) => s.id === uploadSourceId && s.source_type === "stripe")}
           onClose={() => setUploadSourceId(null)}
           onCompleted={async (result) => {
             setUploadSourceId(null);

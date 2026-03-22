@@ -48,6 +48,16 @@ export type StripeSyncDiagnostics = {
   }>;
   /** Why the pagination loop ended (not an arbitrary row cap). */
   paginationStoppedBecause: "empty_page" | "stripe_has_more_false";
+  /** Earliest `transacted_at` date among all rows returned by Stripe (ISO date string). */
+  earliestTransactionDateReturned: string | null;
+  /** Latest `transacted_at` date among all rows returned by Stripe (ISO date string). */
+  latestTransactionDateReturned: string | null;
+  /**
+   * Stripe FC provides up to ~180 days of history depending on institution.
+   * True when the requested start date is older than 180 days from now,
+   * meaning some transactions in that range are likely unavailable through FC.
+   */
+  startDateExceedsFcLookback: boolean;
 };
 
 export type SyncResult = {
@@ -316,6 +326,18 @@ export async function runSyncForDataSource(
         startingAfter = data[data.length - 1]!.id;
       }
 
+      let earliestTs: number | null = null;
+      let latestTs: number | null = null;
+      for (const tx of allTx) {
+        if (earliestTs === null || tx.transacted_at < earliestTs) earliestTs = tx.transacted_at;
+        if (latestTs === null || tx.transacted_at > latestTs) latestTs = tx.transacted_at;
+      }
+
+      const fcLookbackDays = 180;
+      const fcLookbackMs = fcLookbackDays * 24 * 60 * 60 * 1000;
+      const startDateExceedsFcLookback =
+        !!startDate && (Date.now() - new Date(startDate).getTime() > fcLookbackMs);
+
       let inserted = 0;
       let firstInsertError: string | null = null;
       for (const tx of allTx) {
@@ -388,15 +410,21 @@ export async function runSyncForDataSource(
         transactionCountForDataSource: transactionCount,
         paginationPages,
         paginationStoppedBecause,
+        earliestTransactionDateReturned: earliestTs ? new Date(earliestTs * 1000).toISOString().slice(0, 10) : null,
+        latestTransactionDateReturned: latestTs ? new Date(latestTs * 1000).toISOString().slice(0, 10) : null,
+        startDateExceedsFcLookback,
       };
       console.warn("[sync-runner] Sync completed", {
         dataSourceId,
         ...diagnostics,
         firstInsertError: firstInsertError ?? undefined,
       });
+      const lookbackNote = startDateExceedsFcLookback
+        ? ` Note: your start date (${startDate}) is more than 180 days ago — Stripe Financial Connections typically only provides ~180 days of history. Oldest transaction returned: ${earliestTs ? new Date(earliestTs * 1000).toISOString().slice(0, 10) : "N/A"}. For older transactions, consider uploading a CSV export from your bank.`
+        : "";
       return {
         success: true,
-        message: `Sync completed. ${inserted} new transactions.`,
+        message: `Sync completed. ${inserted} new transactions.${lookbackNote}`,
         diagnostics,
       };
     } catch (e) {

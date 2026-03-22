@@ -61,6 +61,32 @@ export async function POST(req: Request) {
 
   const dataSourceIdVal = dataSourceId ?? null;
 
+  if (dataSourceIdVal) {
+    const { data: ownedSource, error: dsLookupErr } = await supabase
+      .from("data_sources")
+      .select("id, source_type")
+      .eq("id", dataSourceIdVal)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (dsLookupErr) {
+      return NextResponse.json(
+        { error: safeErrorMessage(dsLookupErr.message, "Could not verify account") },
+        { status: 500 },
+      );
+    }
+    if (!ownedSource) {
+      return NextResponse.json({ error: "Account not found." }, { status: 404 });
+    }
+    const st = (ownedSource as { source_type?: string }).source_type;
+    if (st !== "manual" && st !== "stripe") {
+      return NextResponse.json(
+        { error: "This account type does not support CSV upload." },
+        { status: 400 },
+      );
+    }
+  }
+
   // Normalize rows for duplicate detection (date + vendor)
   const normalizedRows = rows.map((row) => {
     const dateStr = new Date(row.date).toISOString().slice(0, 10);
@@ -183,13 +209,23 @@ export async function POST(req: Request) {
   // Return the inserted IDs so the client can request AI analysis separately
   const insertedIds = inserted.map((t: { id: string }) => t.id);
 
-  // Update data source stats if provided
+  // Update data source stats (full recount — works for manual + Direct Feed with mixed CSV + sync rows)
   if (dataSourceIdVal) {
+    const { count: txCount, error: countErr } = await supabase
+      .from("transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("data_source_id", dataSourceIdVal)
+      .eq("user_id", userId);
+
+    if (countErr) {
+      console.warn("[transactions/upload] Failed to recount transactions for data source", countErr);
+    }
+
     await (supabase as any)
       .from("data_sources")
       .update({
         last_upload_at: new Date().toISOString(),
-        transaction_count: inserted.length,
+        transaction_count: txCount ?? 0,
       })
       .eq("id", dataSourceIdVal)
       .eq("user_id", userId);
