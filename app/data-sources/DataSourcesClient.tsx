@@ -61,6 +61,13 @@ type StripeSyncDiag = {
   stripeMode?: string;
   apiListPages?: number;
   transactionsListLimitPerPage?: number;
+  paginationPages?: Array<{
+    page: number;
+    rowCount: number;
+    has_more: boolean;
+    lastTransactionId?: string;
+  }>;
+  paginationStoppedBecause?: "empty_page" | "stripe_has_more_false";
 };
 
 function logStripeSyncDiagnostics(d: StripeSyncDiag | undefined) {
@@ -73,7 +80,14 @@ function logStripeSyncDiagnostics(d: StripeSyncDiag | undefined) {
 
 function stripeSyncStatusMessage(d: StripeSyncDiag | undefined): string {
   if (!d) return "Sync complete";
-  return `Sync complete · Stripe listed ${d.rawTransactionsFromStripe} → ${d.postedIncludedInSync} posted kept → ${d.upsertCallsSucceeded} upserts OK this run · ${d.transactionCountForDataSource} total in app for this account (see console for date filter & status breakdown).`;
+  const pages = d.paginationPages?.length ?? d.apiListPages ?? 0;
+  const stop =
+    d.paginationStoppedBecause === "empty_page"
+      ? "empty page"
+      : d.paginationStoppedBecause === "stripe_has_more_false"
+        ? "Stripe has_more=false"
+        : "done";
+  return `Sync complete · ${pages} list request(s) · ${d.rawTransactionsFromStripe} rows from Stripe → ${d.postedIncludedInSync} posted · stopped: ${stop} (not a 500 cap — see diagnostics.paginationPages in console/network).`;
 }
 
 function formatMonthDayOrdinal(value: string): string {
@@ -1197,6 +1211,7 @@ export function DataSourcesClient({
                         try {
                           const start = startDate ?? null;
                           const failed: { name: string }[] = [];
+                          let lastSuccessfulDiagnostics: StripeSyncDiag | undefined;
                           for (const source of unsyncedStripeSources) {
                             if (start) {
                               const patchRes = await fetch("/api/data-sources", {
@@ -1222,6 +1237,7 @@ export function DataSourcesClient({
                             if (res.ok) {
                               const data = (await res.json().catch(() => ({}))) as { diagnostics?: StripeSyncDiag };
                               logStripeSyncDiagnostics(data.diagnostics);
+                              lastSuccessfulDiagnostics = data.diagnostics ?? lastSuccessfulDiagnostics;
                             } else {
                               failed.push({ name: source.name });
                             }
@@ -1231,10 +1247,13 @@ export function DataSourcesClient({
                           window.dispatchEvent(new CustomEvent("inbox-count-changed"));
                           const okCount = unsyncedStripeSources.length - failed.length;
                           if (okCount > 0) {
+                            const singleAccountOk = okCount === 1 && unsyncedStripeSources.length === 1 && failed.length === 0;
                             setSyncStatusBar({
-                              message: failed.length > 0
-                                ? `Loaded ${okCount} account${okCount === 1 ? "" : "s"}. ${failed.length} couldn’t be loaded — retry or reconnect from the card.`
-                                : "Transactions loaded",
+                              message: singleAccountOk && lastSuccessfulDiagnostics
+                                ? stripeSyncStatusMessage(lastSuccessfulDiagnostics)
+                                : failed.length > 0
+                                  ? `Loaded ${okCount} account${okCount === 1 ? "" : "s"}. ${failed.length} couldn’t be loaded — retry or reconnect from the card.`
+                                  : `Transactions loaded for ${okCount} account${okCount === 1 ? "" : "s"}. Open the browser console for Stripe sync diagnostics (pagination per account).`,
                               type: "success",
                             });
                             setToast(failed.length > 0

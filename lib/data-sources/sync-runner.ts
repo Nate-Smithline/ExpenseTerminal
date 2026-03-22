@@ -37,6 +37,17 @@ export type StripeSyncDiagnostics = {
   transactionsListLimitPerPage: number;
   /** Row count in DB for this data source after sync. */
   transactionCountForDataSource: number;
+  /** One entry per API request — proves we paginated until Stripe stopped. */
+  paginationPages: Array<{
+    page: number;
+    rowCount: number;
+    /** Stripe says another page exists after this one. */
+    has_more: boolean;
+    /** Last transaction id on this page (cursor for next request). */
+    lastTransactionId?: string;
+  }>;
+  /** Why the pagination loop ended (not an arbitrary row cap). */
+  paginationStoppedBecause: "empty_page" | "stripe_has_more_false";
 };
 
 export type SyncResult = {
@@ -224,6 +235,8 @@ export async function runSyncForDataSource(
       let startingAfter: string | undefined;
       let rawTransactionsFromStripe = 0;
       let apiListPages = 0;
+      const paginationPages: StripeSyncDiagnostics["paginationPages"] = [];
+      let paginationStoppedBecause: StripeSyncDiagnostics["paginationStoppedBecause"] = "stripe_has_more_false";
       const statusBreakdown: Record<string, number> = {};
       const transactedAt: Record<string, number> = {};
       if (startDate) transactedAt.gte = Math.floor(new Date(startDate).getTime() / 1000);
@@ -245,7 +258,7 @@ export async function runSyncForDataSource(
         if (Object.keys(transactedAt).length > 0) listParams.transacted_at = transactedAt;
         if (startingAfter) listParams.starting_after = startingAfter;
 
-        let list: { data?: unknown[]; has_more?: boolean } | null = null;
+        let list: { data?: unknown[]; has_more?: boolean; hasMore?: boolean } | null = null;
         try {
           list = await (stripe as any).financialConnections.transactions.list(listParams);
         } catch (listErr) {
@@ -268,18 +281,36 @@ export async function runSyncForDataSource(
           const key = tx?.status == null || tx.status === "" ? "(missing)" : String(tx.status);
           statusBreakdown[key] = (statusBreakdown[key] ?? 0) + 1;
         }
+        // Stripe Node may expose snake_case or camelCase on list responses.
+        const stripeReportsMorePages =
+          list?.has_more === true || list?.hasMore === true;
+
+        paginationPages.push({
+          page: apiListPages,
+          rowCount: data.length,
+          has_more: stripeReportsMorePages,
+          lastTransactionId: data.length > 0 ? data[data.length - 1]!.id : undefined,
+        });
+
         if (allTx.length === 0) {
-          console.warn("[sync-runner] First list response", { dataSourceId, count: data.length, has_more: list?.has_more, transacted_at: listParams.transacted_at });
+          console.warn("[sync-runner] First list response", {
+            dataSourceId,
+            count: data.length,
+            has_more: list?.has_more,
+            hasMore: list?.hasMore,
+            transacted_at: listParams.transacted_at,
+          });
         }
         // Only include posted (completed) transactions; skip pending and void.
         const posted = data.filter((tx) => tx?.status === "posted");
         allTx.push(...posted);
 
         if (data.length === 0) {
+          paginationStoppedBecause = "empty_page";
           break;
         }
-        const stripeReportsMorePages = list?.has_more === true;
         if (!stripeReportsMorePages) {
+          paginationStoppedBecause = "stripe_has_more_false";
           break;
         }
         startingAfter = data[data.length - 1]!.id;
@@ -355,6 +386,8 @@ export async function runSyncForDataSource(
         apiListPages,
         transactionsListLimitPerPage: STRIPE_FC_TRANSACTIONS_PAGE_LIMIT,
         transactionCountForDataSource: transactionCount,
+        paginationPages,
+        paginationStoppedBecause,
       };
       console.warn("[sync-runner] Sync completed", {
         dataSourceId,
