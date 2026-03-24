@@ -777,7 +777,9 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                 <button
                   type="button"
                   onClick={() => onMoveNext?.()}
-                  className="inline-flex items-center gap-2 rounded-none border-0 bg-white px-3 py-2 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition"
+                  className={`inline-flex items-center gap-2 rounded-none border-0 bg-white py-2 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition ${
+                    hasPrevious ? "px-3" : "pl-0 pr-3"
+                  }`}
                 >
                   <kbd className="kbd-hint kbd-warm !rounded-none !border-transparent">j</kbd>
                   Go down
