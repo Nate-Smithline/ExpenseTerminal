@@ -639,6 +639,19 @@ export function InboxPageClient({
 
       const key = e.key;
       const keyLower = key.toLowerCase();
+      const isAnalysisShortcut =
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !bulkAnalyzing &&
+        unanalyzedCount > 0 &&
+        (keyLower === "e" || e.code === "KeyE");
+
+      if (isAnalysisShortcut) {
+        e.preventDefault();
+        void runBulkAnalyze();
+        return;
+      }
 
       const activeCard = transactions[activeIdx] ? cardRefs.current.get(transactions[activeIdx].id) : null;
 
@@ -684,10 +697,6 @@ export function InboxPageClient({
         case "u":
           e.preventDefault();
           setUploadOpen(true);
-          break;
-        case "e":
-          e.preventDefault();
-          if (unanalyzedCount > 0 && !bulkAnalyzing) runBulkAnalyze();
           break;
         case "enter":
           e.preventDefault();
@@ -759,24 +768,24 @@ export function InboxPageClient({
           className="inline-flex items-center text-sm text-mono-medium hover:text-mono-dark"
           title="Keyboard shortcuts"
         >
-          <kbd className="kbd-hint kbd-warm mr-1.5">?</kbd> Shortcuts
+          <kbd className="kbd-hint kbd-warm !rounded-none mr-1.5">?</kbd> Shortcuts
         </button>
       </div>
 
       {/* Background AI progress banner */}
       {aiProgress && (
-        <div className="border border-[#F0F1F7] bg-white px-5 py-3 flex flex-col gap-3">
+        <div className="border border-bg-tertiary bg-white px-5 py-3 flex flex-col gap-3">
           <div className="flex items-center gap-4">
-            <div className="h-2 flex-1 rounded-full bg-bg-tertiary overflow-hidden">
+            <div className="h-2 flex-1 bg-cool-stock overflow-hidden">
               <div
-                className="h-full bg-accent-sage transition-all duration-500 ease-out"
+                className="h-full bg-frost transition-all duration-500 ease-out"
                 style={{ width: `${aiProgress.total > 0 ? Math.round((aiProgress.completed / aiProgress.total) * 100) : 0}%` }}
               />
             </div>
-            <span className="text-xs text-accent-sage font-medium shrink-0 tabular-nums">
+            <span className="text-xs text-black font-medium shrink-0 tabular-nums">
               AI: {aiProgress.completed}/{aiProgress.total}
             </span>
-            <span className="text-xs text-mono-light truncate max-w-[200px]">{aiProgress.current}</span>
+            <span className="text-xs text-black truncate max-w-[200px]">{aiProgress.current}</span>
           </div>
           {aiStalled && (
             <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-bg-tertiary/40">
@@ -802,7 +811,7 @@ export function InboxPageClient({
 
       {/* Unanalyzed: need AI before they appear in inbox */}
       {!loading && unanalyzedCount > 0 && !aiProgress && (
-        <div className="border border-[#F0F1F7] bg-cool-stock p-4 space-y-3">
+        <div className="border border-bg-tertiary bg-white p-4 space-y-3">
           <p className="text-base font-sans font-medium text-mono-dark leading-snug">
             Categorize {unanalyzedCount} transaction{unanalyzedCount === 1 ? "" : "s"} with our pre-trained model to begin verifying with confidence.
           </p>
@@ -821,14 +830,16 @@ export function InboxPageClient({
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-rounded text-[16px] text-[var(--color-sovereign-blue)] animate-spin-slow">progress_activity</span>
-                    <span className="text-sm font-medium text-[#0D1F35]">Running analysis</span>
+                    <span className="inline-flex h-6 w-6 items-center justify-center bg-cool-stock">
+                      <span className="material-symbols-rounded text-[16px] text-frost animate-spin-slow">progress_activity</span>
+                    </span>
+                    <span className="text-sm font-medium text-black">Running analysis</span>
                   </div>
                 </div>
-                <div className="h-1.5 bg-[var(--color-frost)] overflow-hidden">
-                  <div className="h-full w-2/5 bg-[var(--color-sovereign-blue)] animate-pulse" />
+                <div className="h-1.5 bg-cool-stock overflow-hidden">
+                  <div className="h-full w-2/5 bg-frost animate-pulse" />
                 </div>
-                <p className="text-xs text-mono-medium">
+                <p className="text-xs text-black">
                   Reviewing uncategorized transactions and queuing categorized results for inbox verification.
                 </p>
               </div>
@@ -855,13 +866,19 @@ export function InboxPageClient({
               className="inline-flex items-center gap-1 rounded-full border border-white/40 px-3 py-1.5 text-xs font-semibold hover:bg-white/10 transition"
             >
               Undo
-              <kbd className="kbd-hint kbd-on-primary ml-1">z</kbd>
+              <kbd className="kbd-hint kbd-on-primary !rounded-none ml-1">z</kbd>
             </button>
           </div>
         )}
 
         {toast && (
-          <div className="bg-accent-sage px-4 py-2.5 text-sm font-medium text-white">
+          <div
+            className={`px-4 py-2.5 text-sm font-medium ${
+              /categorized/i.test(toast)
+                ? "bg-sovereign-blue text-black"
+                : "bg-accent-sage text-white"
+            }`}
+          >
             {toast}
           </div>
         )}
@@ -871,7 +888,7 @@ export function InboxPageClient({
       {showShortcuts && (
         <div className="border border-[#F0F1F7] bg-white p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-mono-dark">Keyboard Shortcuts</h3>
+            <h3 className="text-sm font-semibold text-mono-dark !font-sans">Keyboard Shortcuts</h3>
             <button onClick={() => setShowShortcuts(false)} className="text-xs text-mono-light hover:text-mono-dark">
               Close
             </button>
@@ -880,7 +897,7 @@ export function InboxPageClient({
             {[
               ["j / k", "Navigate up/down"],
               ["Enter", "Open detail panel"],
-              ["0, 1, 2, 5, 7", "Set % (0%, 100%, 25%, 50%, 75%)"],
+              ["q, e, t, y, u", "Set % (0%, 25%, 50%, 75%, 100%)"],
               ["1-4", "Select reason (step 2)"],
               ["c", "Change category (arrows + Enter)"],
               ["p", "Mark as personal"],
@@ -896,7 +913,7 @@ export function InboxPageClient({
               ["Esc", "Close overlays"],
             ].map(([key, desc]) => (
               <div key={key} className="flex items-center gap-3 py-0.5">
-                <kbd className="kbd-hint min-w-[2.5rem] text-center">
+                <kbd className="kbd-hint kbd-warm !rounded-none !border-transparent min-w-[2.5rem] text-center">
                   {key}
                 </kbd>
                 <span className="text-mono-medium">{desc}</span>
@@ -1013,6 +1030,10 @@ export function InboxPageClient({
             onApplyToAllSimilar={handleApplyToAllSimilar}
             onOpenManage={(tx) => setManageTx(tx)}
             similarPopupOpen={!!similarPopup}
+            hasPrevious={i > 0}
+            hasNext={i < transactions.length - 1}
+            onMovePrevious={() => setActiveIdx((prev) => Math.max(prev - 1, 0))}
+            onMoveNext={() => setActiveIdx((prev) => Math.min(prev + 1, transactions.length - 1))}
           />
         ))}
       </div>

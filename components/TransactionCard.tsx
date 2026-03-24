@@ -29,6 +29,10 @@ interface TransactionCardProps {
   taxRate?: number;
   /** When true, card does not handle 'o' or 'y' so Similar Transactions popup can use them */
   similarPopupOpen?: boolean;
+  hasPrevious?: boolean;
+  hasNext?: boolean;
+  onMovePrevious?: () => void;
+  onMoveNext?: () => void;
 }
 
 export interface TransactionCardRef {
@@ -74,7 +78,23 @@ const EXPENSE_CATEGORIES: { line: string; name: string }[] = [
 
 export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardProps>(
   function TransactionCard(
-    { transaction, onSave, onMarkPersonal, onDelete, onCheckSimilar, onApplyToAllSimilar, onOpenManage, isActive, onFocus, taxRate = 0.24, similarPopupOpen = false },
+    {
+      transaction,
+      onSave,
+      onMarkPersonal,
+      onDelete,
+      onCheckSimilar,
+      onApplyToAllSimilar,
+      onOpenManage,
+      isActive,
+      onFocus,
+      taxRate = 0.24,
+      similarPopupOpen = false,
+      hasPrevious = false,
+      hasNext = false,
+      onMovePrevious,
+      onMoveNext,
+    },
     ref,
   ) {
     const [selectedLabel, setSelectedLabel] = useState(transaction.quick_label ?? "");
@@ -356,11 +376,10 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
           setAutoSort((prev) => !prev);
           return;
         }
-        if (key === "q" || key === "Q" || key === "e" || key === "E" || key === "t" || key === "T" || key === "y" || key === "Y" || key === "u" || key === "U") {
+        if (key === "q" || key === "Q" || key === "t" || key === "T" || key === "y" || key === "Y" || key === "u" || key === "U") {
           e.preventDefault();
           e.stopImmediatePropagation();
           if (key === "q" || key === "Q") setDeductionPct(0);
-          else if (key === "e" || key === "E") setDeductionPct(25);
           else if (key === "t" || key === "T") setDeductionPct(50);
           else if (key === "y" || key === "Y") setDeductionPct(75);
           else if (key === "u" || key === "U") setDeductionPct(100);
@@ -590,34 +609,33 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
             {isIncomeLike && (
               <div className="space-y-3 animate-in">
                 <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-mono-medium">How should we treat this?</p>
                   <p className="text-xs text-mono-light">
-                    This is money coming into your account. Mark business income to include it in your tax totals, or personal/transfer to ignore it.
+                    Mark business income to include it in your tax totals, or personal/transfer to ignore it.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => setIncomeTreatment("business")}
-                    className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-xs font-medium transition ${
+                    className={`flex items-center justify-center gap-1.5 rounded-none border px-3 py-2.5 text-xs font-medium transition ${
                       incomeTreatment === "business"
-                        ? "bg-emerald-600 border-emerald-600 text-white"
-                        : "bg-white border-bg-tertiary text-mono-medium hover:bg-bg-secondary"
+                        ? "bg-cool-stock border-cool-stock text-mono-dark"
+                        : "bg-white border-bg-tertiary text-mono-medium hover:bg-warm-stock/50"
                     }`}
                   >
-                    <kbd className="kbd-hint">b</kbd>
+                    <kbd className={`kbd-hint kbd-warm !rounded-none !border-transparent ${incomeTreatment === "business" ? "!bg-white" : ""}`}>b</kbd>
                     Business income
                   </button>
                   <button
                     type="button"
                     onClick={() => setIncomeTreatment("personal")}
-                    className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-xs font-medium transition ${
+                    className={`flex items-center justify-center gap-1.5 rounded-none border px-3 py-2.5 text-xs font-medium transition ${
                       incomeTreatment === "personal"
-                        ? "bg-mono-dark border-mono-dark text-white"
-                        : "bg-white border-bg-tertiary text-mono-light hover:text-mono-dark hover:bg-bg-secondary"
+                        ? "bg-cool-stock border-cool-stock text-mono-dark"
+                        : "bg-white border-bg-tertiary text-mono-light hover:text-mono-dark hover:bg-warm-stock/50"
                     }`}
                   >
-                    <kbd className="kbd-hint">p</kbd>
+                    <kbd className={`kbd-hint kbd-warm !rounded-none !border-transparent ${incomeTreatment === "personal" ? "!bg-white" : ""}`}>p</kbd>
                     Personal income
                   </button>
                 </div>
@@ -659,7 +677,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                     onClick={() => { setShowWriteIn(true); setTimeout(() => businessRef.current?.focus(), 50); }}
                     className="flex items-center gap-2 text-xs text-mono-light hover:text-mono-medium transition"
                   >
-                    <kbd className="kbd-hint">w</kbd>
+                    <kbd className="kbd-hint kbd-warm !rounded-none">w</kbd>
                     Click here to manually write in...
                   </button>
                 ) : (
@@ -697,10 +715,10 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                       type="button"
                       onClick={() => onMarkPersonal()}
                       disabled={saving}
-                      className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
+                      className="flex items-center justify-center gap-1.5 rounded-none bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
                       title="Mark as personal (removes from inbox)"
                     >
-                      <kbd className="kbd-hint">p</kbd>
+                      <kbd className="kbd-hint !rounded-none">p</kbd>
                       Personal
                     </button>
                   )}
@@ -712,34 +730,59 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                       (isIncomeLike && incomeTreatment == null) ||
                       (!isIncomeLike && !selectedLabel && !businessPurpose)
                     }
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-[var(--color-accent-terracotta-dark)] border border-[var(--color-accent-terracotta-dark)]/80 px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-40"
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-none bg-black border border-black px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-40"
                   >
                     Save
-                    <kbd className="kbd-hint !bg-white/20 !text-white !border-white/30 ml-1">s</kbd>
+                    <kbd className="kbd-hint !rounded-none !border-transparent !bg-white/20 !text-white ml-1">s</kbd>
                   </button>
                   {/* Secondary personal button removed to avoid duplication */}
                   <button
                     type="button"
                     onClick={() => onOpenManage?.(transaction)}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition"
+                    className="flex items-center justify-center gap-1.5 rounded-none bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition"
                     title="View details"
                   >
-                    <span className="material-symbols-rounded text-[16px]">tune</span>
-                    <kbd className="kbd-hint">Enter</kbd>
+                    <span className="material-symbols-rounded !text-[14px] leading-none">tune</span>
+                    <kbd className="kbd-hint !rounded-none">Enter</kbd>
                   </button>
                   {onDelete && (
                     <button
                       type="button"
                       onClick={() => onDelete()}
-                      className="flex items-center justify-center gap-1.5 rounded-lg bg-white border border-red-200 px-3 py-2.5 text-xs font-medium text-red-600 hover:bg-red-50 transition"
+                      className="flex items-center justify-center gap-1.5 rounded-none bg-white border border-red-200 px-3 py-2.5 text-xs font-medium text-red-600 hover:bg-red-50 transition"
                       title="Delete transaction"
                     >
-                      <span className="material-symbols-rounded text-[16px]">backspace</span>
-                      <kbd className="kbd-hint">⌫</kbd>
+                      <span className="material-symbols-rounded !text-[14px] leading-none">delete</span>
+                      <kbd className="kbd-hint !rounded-none">⌫</kbd>
                     </button>
                   )}
                 </div>
               </div>
+            </div>
+          )}
+
+          {isActive && (hasPrevious || hasNext) && (
+            <div className="mt-4 flex flex-wrap gap-0">
+              {hasPrevious && (
+                <button
+                  type="button"
+                  onClick={() => onMovePrevious?.()}
+                  className="inline-flex items-center gap-2 rounded-none border-0 bg-white pl-0 pr-3 py-2 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition"
+                >
+                  <kbd className="kbd-hint kbd-warm !rounded-none !border-transparent">k</kbd>
+                  Go up
+                </button>
+              )}
+              {hasNext && (
+                <button
+                  type="button"
+                  onClick={() => onMoveNext?.()}
+                  className="inline-flex items-center gap-2 rounded-none border-0 bg-white px-3 py-2 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition"
+                >
+                  <kbd className="kbd-hint kbd-warm !rounded-none !border-transparent">j</kbd>
+                  Go down
+                </button>
+              )}
             </div>
           )}
       </div>
