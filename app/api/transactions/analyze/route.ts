@@ -7,7 +7,7 @@ import { safeErrorMessage } from "@/lib/api/safe-error";
 import { transactionIdsBodySchema } from "@/lib/validation/schemas";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import type { Database } from "@/lib/types/database";
-import { getUserPlan, planIsFree } from "@/lib/billing/get-user-plan";
+import { getUserPlan } from "@/lib/billing/get-user-plan";
 
 type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
 
@@ -274,23 +274,6 @@ export async function POST(req: Request) {
   const ids = parsed.data.transactionIds;
 
   const plan = await getUserPlan(supabase, userId);
-  if (planIsFree(plan)) {
-    const { count: analyzedCount } = await (supabase as any)
-      .from("transactions")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .not("ai_confidence", "is", null);
-    const current = (analyzedCount ?? 0) as number;
-    if (current + ids.length > 200) {
-      return new Response(
-        JSON.stringify({
-          ai_limit_reached: true,
-          error: "Free plan allows up to 200 AI-analyzed transactions. Upgrade to Pro for unlimited.",
-        }),
-        { status: 402, headers: { "Content-Type": "application/json" } },
-      );
-    }
-  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey || !apiKey.startsWith("sk-ant-")) {
@@ -309,22 +292,11 @@ export async function POST(req: Request) {
       { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
-  const isFree = planIsFree(plan);
-  const transactions = isFree
-    ? fetchedTransactions.filter(
-        (t) => (t as TransactionRow & { eligible_for_ai?: boolean }).eligible_for_ai !== false
-      )
-    : fetchedTransactions;
-  const skippedCount = fetchedTransactions.length - transactions.length;
-  const overLimit = isFree && skippedCount > 0;
+  const transactions = fetchedTransactions;
 
   if (transactions.length === 0) {
     return new Response(
-      JSON.stringify({
-        error: overLimit
-          ? "None of the selected transactions are eligible for AI on your current plan. Upgrade to analyze more."
-          : "No matching transactions found.",
-      }),
+      JSON.stringify({ error: "No matching transactions found." }),
       { status: 404, headers: { "Content-Type": "application/json" } },
     );
   }
@@ -344,16 +316,6 @@ export async function POST(req: Request) {
     async start(controller) {
       function send(obj: Record<string, unknown>) {
         try { controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n")); } catch { /* closed */ }
-      }
-
-      if (overLimit && skippedCount > 0) {
-        send({
-          type: "status",
-          message: `${skippedCount} transaction(s) skipped (free-tier AI limit). Only the first 250 CSV transactions are eligible.`,
-          overLimit: true,
-          eligibleCount: total,
-          skippedCount,
-        });
       }
 
       const needsAI: TransactionRow[] = [];
@@ -606,9 +568,7 @@ export async function POST(req: Request) {
         totalInputTokens,
         totalOutputTokens,
         cachedCount,
-        overLimit: overLimit || undefined,
         eligibleCount: total,
-        skippedCount: overLimit ? skippedCount : undefined,
       });
       controller.close();
     },

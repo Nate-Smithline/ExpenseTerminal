@@ -7,7 +7,6 @@ import { loadStripe } from "@stripe/stripe-js";
 import type { Database } from "@/lib/types/database";
 import { UploadModal } from "@/components/UploadModal";
 import { TaxYearSelector } from "@/components/TaxYearSelector";
-import { useUpgradeModal } from "@/components/UpgradeModalContext";
 import type { DataSourceStats } from "./page";
 
 type DataSource = Database["public"]["Tables"]["data_sources"]["Row"];
@@ -145,22 +144,17 @@ export function DataSourcesClient({
   initialSources,
   initialStats = {},
   taxYear,
-  isFree = false,
-  stripeSourceCount = 0,
   stripePublishableKey = null,
 }: {
   initialSources: DataSource[];
   initialStats?: Record<string, DataSourceStats>;
   /** Tax year used for earliest-date-on-card and transaction queries (cookie / profile). */
   taxYear: number;
-  isFree?: boolean;
-  stripeSourceCount?: number;
   /** Publishable key for Stripe.js Financial Connections (test or live based on host). */
   stripePublishableKey?: string | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { openUpgradeModal } = useUpgradeModal();
   const debugCallouts = searchParams.get("debug_callouts") === "1";
   const [sources, setSources] = useState<DataSource[]>(initialSources);
   const [stats, setStats] = useState<Record<string, DataSourceStats>>(initialStats);
@@ -454,11 +448,7 @@ export function DataSourcesClient({
           setAddStep("2a");
         } else if (e.key === "d" || e.key === "D") {
           e.preventDefault();
-          if (isFree && stripeSourceCount >= 1) {
-            openUpgradeModal("stripe_sources");
-          } else {
-            setAddStep("2b");
-          }
+          setAddStep("2b");
         }
       }
     }
@@ -476,9 +466,6 @@ export function DataSourcesClient({
     uploadSourceId,
     showPostConnectDateModal,
     addStep,
-    isFree,
-    stripeSourceCount,
-    openUpgradeModal,
     closeAdd,
     closeEdit,
   ]);
@@ -514,7 +501,7 @@ export function DataSourcesClient({
             onClick={() => setShowAdd(true)}
             className="inline-flex items-center px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors"
           >
-            <kbd className="mr-2.5 inline-flex items-center justify-center border border-mono-medium bg-white/30 px-1.5 py-0.5 text-[10px] font-mono text-white">
+            <kbd className="mr-2.5 inline-flex items-center justify-center border border-mono-medium bg-white/30 px-1.5 py-0.5 text-[11px] font-mono text-white">
               a
             </kbd>
             Add Account
@@ -597,7 +584,7 @@ export function DataSourcesClient({
                   >
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-medium text-mono-dark">Manual</p>
-                      <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[10px] font-mono text-mono-dark">
+                      <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[11px] font-mono text-mono-dark">
                         m
                       </kbd>
                     </div>
@@ -607,28 +594,12 @@ export function DataSourcesClient({
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (isFree && stripeSourceCount >= 1) {
-                        openUpgradeModal("stripe_sources");
-                      } else {
-                        setAddStep("2b");
-                      }
-                    }}
-                    className={`border border-bg-tertiary/60 px-4 py-3 text-left transition ${
-                      isFree && stripeSourceCount >= 1
-                        ? "bg-bg-secondary/50 opacity-90 relative"
-                        : "hover:bg-[#635bff]/5"
-                    }`}
+                    onClick={() => setAddStep("2b")}
+                    className="border border-bg-tertiary/60 px-4 py-3 text-left transition hover:bg-[#635bff]/5"
                   >
-                    {isFree && stripeSourceCount >= 1 && (
-                      <span className="absolute top-3 right-3 bg-amber-100 text-amber-800 text-xs font-medium px-2 py-0.5 flex items-center gap-1">
-                        <span className="material-symbols-rounded text-[14px]">lock</span>
-                        Pro
-                      </span>
-                    )}
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-medium text-mono-dark">Direct Feed</p>
-                      <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[10px] font-mono text-mono-dark">
+                      <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[11px] font-mono text-mono-dark">
                         d
                       </kbd>
                     </div>
@@ -660,7 +631,7 @@ export function DataSourcesClient({
                     onClick={closeAdd}
                     className="text-sm font-medium text-mono-medium hover:text-mono-dark inline-flex items-center gap-2"
                   >
-                    <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[10px] font-mono text-mono-dark">
+                    <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[11px] font-mono text-mono-dark">
                       esc
                     </kbd>
                     Return
@@ -721,7 +692,7 @@ export function DataSourcesClient({
                     disabled={stripeConnectLoading}
                     className="text-sm font-medium text-mono-medium hover:text-mono-dark inline-flex items-center gap-2 disabled:opacity-50"
                   >
-                    <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[10px] font-mono text-mono-dark">
+                    <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[11px] font-mono text-mono-dark">
                       esc
                     </kbd>
                     Return

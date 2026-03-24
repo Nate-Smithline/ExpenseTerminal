@@ -361,7 +361,7 @@ export async function runSyncForDataSource(
               status: "pending",
               tax_year: year,
               source: "data_feed",
-              transaction_type: amount >= 0 ? "income" : "expense",
+              transaction_type: amount > 0 ? "income" : "expense",
               data_source_id: dataSourceId,
               data_feed_external_id: tx.id,
               updated_at: new Date().toISOString(),

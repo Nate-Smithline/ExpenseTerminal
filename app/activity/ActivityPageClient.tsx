@@ -6,7 +6,6 @@ import { normalizeVendor } from "@/lib/vendor-matching";
 import { ActivityToolbar, type ActivityViewState } from "./ActivityToolbar";
 import { ActivityTable } from "./ActivityTable";
 import { TransactionDetailPanel, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
-import { useUpgradeModal } from "@/components/UpgradeModalContext";
 import type { TransactionUpdate } from "@/components/TransactionCard";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
@@ -60,7 +59,6 @@ export function ActivityPageClient({
 }: ActivityPageClientProps) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [totalCount, setTotalCount] = useState(initialTotalCount);
-  const { openUpgradeModal } = useUpgradeModal();
   const [viewState, setViewState] = useState<ActivityViewState>(DEFAULT_VIEW_STATE);
   const [viewSettingsLoaded, setViewSettingsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -172,10 +170,6 @@ export function ActivityPageClient({
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
-        if (res.status === 402 && (errBody as { ai_limit_reached?: boolean }).ai_limit_reached) {
-          openUpgradeModal("ai_limit");
-          return;
-        }
         setToast((errBody as { error?: string }).error ?? "AI analysis failed");
         setTimeout(() => setToast(null), 5000);
         return;
@@ -234,12 +228,8 @@ export function ActivityPageClient({
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
-        if (res.status === 402 && (errBody as { ai_limit_reached?: boolean }).ai_limit_reached) {
-          openUpgradeModal("ai_limit");
-        } else {
-          setToast((errBody as { error?: string }).error ?? "Analysis failed");
-          setTimeout(() => setToast(null), 5000);
-        }
+        setToast((errBody as { error?: string }).error ?? "Analysis failed");
+        setTimeout(() => setToast(null), 5000);
         return;
       }
       const reader = res.body?.getReader();

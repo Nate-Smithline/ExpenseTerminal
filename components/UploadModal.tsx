@@ -78,6 +78,10 @@ function detectTransactionType(
     const creditVal = Number(String(lower["credit"]).replace(/[$,]/g, ""));
     if (!Number.isNaN(creditVal) && creditVal > 0) return "income";
   }
+  if (lower["debit"] != null) {
+    const debitVal = Number(String(lower["debit"]).replace(/[$,]/g, ""));
+    if (!Number.isNaN(debitVal) && Math.abs(debitVal) > 0) return "expense";
+  }
   if (amount > 0) return "income";
   return "expense";
 }
@@ -116,7 +120,11 @@ function extractAmount(
     const v = lower[k.toLowerCase()];
     if (v != null) {
       const n = Number(String(v).replace(/[$,]/g, ""));
-      if (!Number.isNaN(n)) return n;
+      if (Number.isNaN(n)) continue;
+      const isDebitOrCredit = k.toLowerCase() === "debit" || k.toLowerCase() === "credit";
+      if (isDebitOrCredit && n === 0) continue;
+      if (k.toLowerCase() === "debit") return -Math.abs(n);
+      return n;
     }
   }
   for (const [header, val] of Object.entries(lower)) {
@@ -820,17 +828,6 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
 
           {stage === "done" && !loading && (
             <div className="space-y-3">
-              {overLimitBanner && (
-                <div className="rounded-md border border-accent-warm/40 bg-accent-warm/5 px-3 py-2.5 text-xs text-mono-dark">
-                  <p className="font-medium text-mono-dark mb-1">You&apos;ve reached the free AI analysis limit.</p>
-                  <p className="text-mono-medium mb-2">
-                    We&apos;ll still upload your data, but only the first {overLimitBanner.maxCsvTransactionsForAi ?? 250} CSV transactions are eligible for AI. {overLimitBanner.ineligibleImported} from this upload won&apos;t be analyzed on the free plan.
-                  </p>
-                  <a href="/pricing" className="font-medium text-accent-sage hover:underline">
-                    Upgrade to analyze everything
-                  </a>
-                </div>
-              )}
               <div className="rounded-none bg-accent-sage/10 px-3 py-2 text-xs text-accent-sage font-medium">
                 {rowCount} transactions imported. AI categorization is running in the background.
               </div>

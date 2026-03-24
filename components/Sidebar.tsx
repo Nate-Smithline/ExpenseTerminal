@@ -20,7 +20,6 @@ const bottomNav = [
 export function Sidebar() {
   const pathname = usePathname();
   const [inboxCount, setInboxCount] = useState<number | null>(null);
-  const [plan, setPlan] = useState<string | null>(null);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
@@ -36,13 +35,6 @@ export function Sidebar() {
   useEffect(() => {
     loadInboxCount();
   }, [pathname]);
-
-  useEffect(() => {
-    fetch("/api/billing/usage")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setPlan(d?.plan ?? null))
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     function handleInboxChanged() {
@@ -103,29 +95,6 @@ export function Sidebar() {
 
       {/* Bottom nav - left align with main nav (px-5) */}
       <div className="px-5 pb-3 space-y-0.5">
-        {plan === "free" && (
-          <div className="rounded-lg border border-bg-tertiary/60 bg-white/80 p-3 mb-3">
-            <p className="font-semibold text-mono-dark text-sm">Upgrade to Pro — $400/year</p>
-            <p className="text-xs text-mono-light mt-1 leading-snug">
-              Unlock bank connections and full history.
-            </p>
-            <button
-              type="button"
-              onClick={async () => {
-                const res = await fetch("/api/billing/checkout", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ plan: "plus" }),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (res.ok && data.url) window.location.href = data.url;
-              }}
-              className="mt-2 w-full rounded-md bg-mono-dark px-3 py-2 text-xs font-semibold text-white hover:bg-mono-dark/90 transition text-center"
-            >
-              Upgrade to Pro
-            </button>
-          </div>
-        )}
         {bottomNav.map((item) => (
           <Link
             key={item.href}

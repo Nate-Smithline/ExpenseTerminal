@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
-import { getUserPlan } from "@/lib/billing/get-user-plan";
 import { getStripeModeForHostname, getStripePublishableKey } from "@/lib/stripe";
 import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
 import { getProfileOnboarding } from "@/lib/profile";
@@ -108,10 +107,6 @@ export default async function DataSourcesPage() {
     }
   }
 
-  const plan = await getUserPlan(supabase, userId);
-  const isFree = plan === "free";
-  const stripeSourceCount = (sources ?? []).filter((s: { source_type?: string }) => s.source_type === "stripe").length;
-
   const headersList = await headers();
   const host = headersList.get("host") ?? "";
   const stripeMode = getStripeModeForHostname(host);
@@ -122,8 +117,6 @@ export default async function DataSourcesPage() {
       initialSources={sources ?? []}
       initialStats={statsBySource}
       taxYear={taxYear}
-      isFree={isFree}
-      stripeSourceCount={stripeSourceCount}
       stripePublishableKey={stripePublishableKey}
     />
   );

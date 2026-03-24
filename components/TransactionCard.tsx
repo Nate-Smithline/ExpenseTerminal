@@ -108,7 +108,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     const isTravel = transaction.is_travel ?? false;
     const rawAmount = Number(transaction.amount);
     const amount = Math.abs(rawAmount);
-    const isIncomeLike = transaction.transaction_type === "income" || rawAmount > 0;
+    const isIncomeLike = transaction.transaction_type === "income";
     const deductibleAmount = (amount * deductionPct / 100);
     const recommendedPct = transaction.deduction_percent ?? (isMeal && !isTravel ? 50 : 100);
 
@@ -466,7 +466,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                       }}
                       className="flex items-center gap-1 text-[11px] text-mono-medium hover:text-mono-dark"
                     >
-                      <kbd className="kbd-hint mr-1.5 text-[10px]">c</kbd>
+                      <kbd className="kbd-hint mr-1.5 text-[11px]">c</kbd>
                       {categoryPickerOpen ? "Close" : "Change"}
                     </button>
                   </div>

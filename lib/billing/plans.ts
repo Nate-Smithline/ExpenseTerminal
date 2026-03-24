@@ -20,20 +20,21 @@ const PLUS_PRODUCT_ID = process.env.STRIPE_PLUS_PRODUCT_ID ?? null;
 export const plans: Record<PlanId, PlanDefinition> = {
   free: {
     id: "free",
-    name: "Trial",
+    name: "ExpenseTerminal",
     priceHuman: "$0",
     priceInterval: "year",
     stripeProductId: null,
-    description: "Try the full ExpenseTerminal flow with a focused limit on AI-reviewed transactions.",
+    description: "The full ExpenseTerminal experience — no limits.",
     highlights: [
       "Inbox-first review of your business expenses",
       "CSV uploads for bank and card exports",
-      "Up to 200 AI-reviewed CSV transactions per workspace",
+      "Unlimited AI-reviewed transactions",
+      "Live bank syncing with Stripe Financial Connections",
       "Schedule C-focused categorization and notes",
     ],
-    maxCsvTransactionsForAi: 200,
+    maxCsvTransactionsForAi: null,
     aiEnabled: true,
-    bankSyncIncluded: false,
+    bankSyncIncluded: true,
   },
   starter: {
     id: "starter",

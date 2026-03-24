@@ -4,19 +4,13 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import type { Database } from "@/lib/types/database";
 import { normalizeVendor } from "@/lib/vendor-matching";
-import { getPlanDefinition } from "@/lib/billing/plans";
 import { TaxYearSelector } from "@/components/TaxYearSelector";
 import { UploadModal } from "@/components/UploadModal";
 import { TransactionCard } from "@/components/TransactionCard";
 import type { TransactionUpdate, TransactionCardRef } from "@/components/TransactionCard";
 import { TransactionDetailPanel, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
 import { SimilarTransactionsPopup } from "@/components/SimilarTransactionsPopup";
-import { useUpgradeModal } from "@/components/UpgradeModalContext";
-
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
-
-const STARTER_PLAN = getPlanDefinition("starter");
-const PLUS_PLAN = getPlanDefinition("plus");
 
 interface InboxPageClientProps {
   initialYear: number;
@@ -94,7 +88,6 @@ export function InboxPageClient({
   const [pendingCount, setPendingCount] = useState(initialTotalPendingCount ?? initialPendingCount);
   const [unanalyzedCount, setUnanalyzedCount] = useState(initialUnanalyzedCount);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
-  const { openUpgradeModal } = useUpgradeModal();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -121,15 +114,6 @@ export function InboxPageClient({
   const [aiProgress, setAiProgress] = useState<{ completed: number; total: number; current: string } | null>(null);
   const [aiStalled, setAiStalled] = useState(false);
 
-  const [billingUsage, setBillingUsage] = useState<{
-    plan: string;
-    overLimit: boolean;
-    maxCsvTransactionsForAi: number | null;
-    csvTransactions: { totalCsvUploaded: number; eligibleForAi: number };
-  } | null>(null);
-  const [showUpgradePanel, setShowUpgradePanel] = useState(false);
-  const [pendingBulkAnalyze, setPendingBulkAnalyze] = useState(false);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   // If we ever end up in a "bulkAnalyzing" UI state without the real AI progress
   // starting (e.g. while testing preview UI), automatically reset back.
@@ -241,10 +225,6 @@ export function InboxPageClient({
           setAiProgress(null);
           setAiStalled(false);
           if (stalledCheckRef.id != null) clearInterval(stalledCheckRef.id);
-          if (res.status === 402 && (errBody as { ai_limit_reached?: boolean }).ai_limit_reached) {
-            openUpgradeModal("ai_limit");
-            return { ok: false, error: msg };
-          }
           setToast(msg);
           setTimeout(() => setToast(null), 5000);
           return { ok: false, error: msg };
@@ -359,38 +339,7 @@ export function InboxPageClient({
     })();
   }
 
-  async function startStarterCheckout() {
-    setCheckoutLoading(true);
-    try {
-      const res = await fetch("/api/billing/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: "starter" }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.url) {
-        window.location.href = data.url as string;
-        return;
-      }
-      const message = (data.error as string) ?? "Checkout failed";
-      setToast(message);
-      setTimeout(() => setToast(null), 5000);
-    } catch {
-      setToast("Checkout failed");
-      setTimeout(() => setToast(null), 5000);
-    } finally {
-      setCheckoutLoading(false);
-    }
-  }
-
-  async function runBulkAnalyze(forceContinue?: boolean) {
-    if (billingUsage?.overLimit && billingUsage.plan === "free" && !forceContinue) {
-      setPendingBulkAnalyze(true);
-      setShowUpgradePanel(true);
-      return;
-    }
-    setShowUpgradePanel(false);
-    setPendingBulkAnalyze(false);
+  async function runBulkAnalyze() {
     setBulkAnalyzing(true);
     try {
       const allIds = await fetchUnanalyzedIds({
@@ -425,13 +374,7 @@ export function InboxPageClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transactionIds: [id] }),
       });
-      if (!res.ok) {
-        if (res.status === 402) {
-          const errBody = await res.json().catch(() => ({}));
-          if ((errBody as { ai_limit_reached?: boolean }).ai_limit_reached) openUpgradeModal("ai_limit");
-        }
-        return;
-      }
+      if (!res.ok) return;
 
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
@@ -467,21 +410,6 @@ export function InboxPageClient({
     reloadInbox().finally(() => setLoading(false));
   }, [reloadInbox]);
 
-  useEffect(() => {
-    fetch("/api/billing/usage")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data && typeof data.plan === "string") {
-          setBillingUsage({
-            plan: data.plan,
-            overLimit: !!data.overLimit,
-            maxCsvTransactionsForAi: data.maxCsvTransactionsForAi ?? null,
-            csvTransactions: data.csvTransactions ?? { totalCsvUploaded: 0, eligibleForAi: 0 },
-          });
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   function notifyInboxCountChanged() {
     if (typeof window !== "undefined") {
@@ -872,81 +800,8 @@ export function InboxPageClient({
         </div>
       )}
 
-      {/* Upgrade panel: free tier over limit */}
-      {showUpgradePanel && billingUsage?.overLimit && (
-        <div className="border border-accent-warm/40 bg-white p-6 space-y-5">
-          <h3 className="text-sm font-semibold text-mono-dark">
-            Free AI limit reached
-          </h3>
-          <p className="text-sm text-mono-medium">
-            Only the first {billingUsage.maxCsvTransactionsForAi ?? 250} CSV transactions are eligible for AI on the free plan.
-            You have {billingUsage.csvTransactions.totalCsvUploaded} CSV transactions; we&apos;ll analyze up to {billingUsage.maxCsvTransactionsForAi ?? 250}. Upgrade to analyze everything.
-          </p>
-          <div className="border border-bg-tertiary/60 bg-bg-secondary/40 px-4 py-3 text-xs sm:text-sm space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2">
-              <div>
-                <p className="font-medium text-mono-dark">
-                  {STARTER_PLAN.name}
-                  <span className="ml-1 text-mono-medium">
-                    · {STARTER_PLAN.priceHuman}
-                    {STARTER_PLAN.priceInterval === "year" && "/year"}
-                  </span>
-                </p>
-                <p className="text-mono-medium">
-                  Unlimited AI-reviewed CSV transactions for your workspace.
-                </p>
-              </div>
-              <span className="text-xs font-medium text-accent-sage">
-                Recommended
-              </span>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-2 opacity-80">
-              <div>
-                <p className="font-medium text-mono-dark">
-                  {PLUS_PLAN.name}
-                  <span className="ml-1 text-mono-medium">
-                    · {PLUS_PLAN.priceHuman}
-                    {PLUS_PLAN.priceInterval === "year" && "/year"}
-                  </span>
-                </p>
-                <p className="text-mono-medium">
-                  {PLUS_PLAN.description} (coming soon).
-                </p>
-              </div>
-              <span className="text-[11px] font-medium text-mono-light uppercase tracking-wide">
-                Coming soon
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => runBulkAnalyze(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-accent-sage px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-sage/90 transition"
-            >
-              Continue (analyze first {billingUsage.maxCsvTransactionsForAi ?? 250})
-            </button>
-            <button
-              type="button"
-              onClick={() => startStarterCheckout()}
-              disabled={checkoutLoading}
-              className="inline-flex items-center gap-2 rounded-lg border border-bg-tertiary px-4 py-2.5 text-sm font-medium text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
-            >
-              {checkoutLoading ? "Opening Stripe…" : "Upgrade to Starter"}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setShowUpgradePanel(false); setPendingBulkAnalyze(false); }}
-              className="text-sm text-mono-light hover:text-mono-medium"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Unanalyzed: need AI before they appear in inbox */}
-      {!loading && unanalyzedCount > 0 && !aiProgress && !showUpgradePanel && (
+      {!loading && unanalyzedCount > 0 && !aiProgress && (
         <div className="border border-[#F0F1F7] bg-cool-stock p-4 space-y-3">
           <p className="text-base font-sans font-medium text-mono-dark leading-snug">
             Categorize {unanalyzedCount} transaction{unanalyzedCount === 1 ? "" : "s"} with our pre-trained model to begin verifying with confidence.

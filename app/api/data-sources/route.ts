@@ -5,8 +5,6 @@ import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { parseQueryLimit, parseQueryOffset } from "@/lib/validation/schemas";
-import { getUserPlan, planIsFree } from "@/lib/billing/get-user-plan";
-
 export async function GET(req: Request) {
   const authClient = await createSupabaseRouteClient();
   const auth = await requireAuth(authClient);
@@ -89,25 +87,6 @@ export async function POST(req: Request) {
   }
 
   const sourceType = body.source_type === "stripe" ? "stripe" : "manual";
-  if (sourceType === "stripe") {
-    const plan = await getUserPlan(supabase, userId);
-    if (planIsFree(plan)) {
-      const { count } = await (supabase as any)
-        .from("data_sources")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("source_type", "stripe");
-      if ((count ?? 0) >= 1) {
-        return new Response(
-          JSON.stringify({
-            error: "Free plan allows one bank connection. Upgrade to Pro to add more.",
-            code: "pro_required_stripe_sources",
-          }),
-          { status: 403, headers: { "Content-Type": "application/json" } },
-        );
-      }
-    }
-  }
 
   // Only insert columns that exist in minimal schema (omit source_type, connected_at, etc. if missing from schema cache).
   const insertCols = "id,user_id,name,account_type,institution,created_at";

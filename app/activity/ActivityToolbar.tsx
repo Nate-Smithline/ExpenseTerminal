@@ -324,7 +324,7 @@ export function ActivityToolbar({
           className="inline-flex items-center gap-1.5 rounded-md bg-accent-sage px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 transition-colors"
         >
           New
-          <kbd className="ml-0.5 rounded bg-white/20 px-1 py-px text-[10px] font-medium">n</kbd>
+          <kbd className="ml-0.5 rounded bg-white/20 px-1 py-px text-[11px] font-medium">n</kbd>
         </button>
       </div>
 
