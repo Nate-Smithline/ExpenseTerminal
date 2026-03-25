@@ -376,12 +376,10 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
           setAutoSort((prev) => !prev);
           return;
         }
-        if (key === "q" || key === "Q" || key === "t" || key === "T" || key === "y" || key === "Y" || key === "u" || key === "U") {
+        if (key === "y" || key === "Y" || key === "u" || key === "U") {
           e.preventDefault();
           e.stopImmediatePropagation();
-          if (key === "q" || key === "Q") setDeductionPct(0);
-          else if (key === "t" || key === "T") setDeductionPct(50);
-          else if (key === "y" || key === "Y") setDeductionPct(75);
+          if (key === "y" || key === "Y") setDeductionPct(50);
           else if (key === "u" || key === "U") setDeductionPct(100);
           return;
         }
@@ -485,7 +483,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                       }}
                       className="flex items-center gap-1 text-[11px] text-mono-medium hover:text-mono-dark"
                     >
-                      <kbd className="kbd-hint mr-1.5 text-[11px]">c</kbd>
+                      <kbd className="kbd-hint kbd-warm mr-1.5 text-[11px]">c</kbd>
                       {categoryPickerOpen ? "Close" : "Change"}
                     </button>
                   </div>
@@ -499,37 +497,47 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                   {categoryPickerOpen && (
                     <div
                       ref={categoryListRef}
-                      className="mt-1 z-10 w-full max-w-sm rounded-lg border border-bg-tertiary bg-white shadow-lg py-1 max-h-56 overflow-auto"
+                      className="mt-1 z-10 w-full rounded-none border border-bg-tertiary bg-white shadow-none"
                       role="listbox"
                     >
-                      {EXPENSE_CATEGORIES.map((c, i) => (
-                        <button
-                          key={c.line}
-                          type="button"
-                          role="option"
-                          aria-selected={categoryHighlightIdx === i}
-                          onClick={() => {
-                            setSelectedScheduleLine(c.line);
-                            setSelectedCategory(c.name);
-                            setCategoryPickerOpen(false);
-                          }}
-                          className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition ${
-                            categoryHighlightIdx === i ? "bg-accent-sage/10 text-accent-sage font-medium" : "text-mono-medium hover:bg-bg-secondary"
-                          }`}
-                        >
-                          <span className="text-mono-light w-8">{c.line}</span>
-                          {c.name}
-                        </button>
-                      ))}
+                      <div className="px-3 py-2 border-b border-bg-tertiary/60 text-[11px] text-mono-medium flex items-center justify-between gap-3">
+                        <span className="font-medium text-mono-dark">Select category</span>
+                        <span className="flex items-center gap-2">
+                          <span className="kbd-hint kbd-warm !rounded-none !border-transparent">↑↓</span>
+                          <span className="kbd-hint kbd-warm !rounded-none !border-transparent">Enter</span>
+                          <span className="kbd-hint kbd-warm !rounded-none !border-transparent">Esc</span>
+                        </span>
+                      </div>
+                      <div className="py-1 max-h-56 overflow-auto">
+                        {EXPENSE_CATEGORIES.map((c, i) => (
+                          <button
+                            key={c.line}
+                            type="button"
+                            role="option"
+                            aria-selected={categoryHighlightIdx === i}
+                            onClick={() => {
+                              setSelectedScheduleLine(c.line);
+                              setSelectedCategory(c.name);
+                              setCategoryPickerOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-xs flex items-center gap-2 transition ${
+                              categoryHighlightIdx === i ? "bg-accent-sage/10 text-accent-sage font-medium" : "text-mono-medium hover:bg-bg-secondary"
+                            }`}
+                          >
+                            <span className="text-mono-light w-8">{c.line}</span>
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
 
                 {/* Meal cap warning (after category line) */}
                 {isMeal && !isTravel && (
-                  <div className="flex items-center gap-2 rounded-lg bg-sky-50 border border-sky-200/60 px-2.5 py-1.5 mb-1">
+                  <div className="flex items-center gap-2 rounded-none bg-cool-stock border border-bg-tertiary/60 px-2.5 py-1.5 mb-1">
                     <span className="material-symbols-rounded text-sky-600 text-base">info</span>
-                    <p className="text-[11px] text-sky-800">Meals outside travel typically 50%.</p>
+                    <p className="text-[11px] text-mono-medium">Meals outside travel typically 50%.</p>
                   </div>
                 )}
 
@@ -543,7 +551,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                         onClick={() => setShowDeductionControls(true)}
                         className="flex items-center gap-1 text-[11px] text-mono-medium hover:text-mono-dark"
                       >
-                        <kbd className="kbd-hint mr-1">b</kbd>
+                        <kbd className="kbd-hint kbd-warm mr-1">b</kbd>
                         Adjust
                       </button>
                     )}
@@ -558,12 +566,9 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                     <>
                       <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                         <div className="flex items-center gap-2">
-                          {SNAP_POINTS.map((pt) => {
+                          {SNAP_POINTS.filter((pt) => pt === 50 || pt === 100).map((pt) => {
                             let shortcut: string | null = null;
-                            if (pt === 0) shortcut = "q";
-                            else if (pt === 25) shortcut = "e";
-                            else if (pt === 50) shortcut = "t";
-                            else if (pt === 75) shortcut = "y";
+                            if (pt === 50) shortcut = "y";
                             else if (pt === 100) shortcut = "u";
                             return (
                               <button
@@ -571,14 +576,14 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                                 type="button"
                                 onClick={() => setDeductionPct(pt)}
                                 className={`py-1 text-xs font-medium transition flex items-center gap-2.5 ${
-                                  pt === 0 ? "pl-0 pr-2" : "px-2"
+                                  pt === 50 ? "pl-0 pr-2" : "px-2"
                                 } ${
                                   deductionPct === pt
                                     ? "text-accent-sage font-semibold"
                                     : "text-mono-medium hover:text-mono-dark"
                                 }`}
                               >
-                                {shortcut && <kbd className="kbd-hint">{shortcut}</kbd>}
+                                {shortcut && <kbd className="kbd-hint kbd-warm">{shortcut}</kbd>}
                                 {pt}%
                               </button>
                             );
@@ -656,13 +661,19 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                           key={s}
                           type="button"
                           onClick={() => handleQuickAction(s)}
-                          className={`rounded-full px-3.5 py-1.5 text-xs font-medium border transition flex items-center gap-1.5 ${
+                          className={`rounded-none px-2.5 py-1.5 text-xs font-medium border transition flex items-center gap-1.5 ${
                             selectedLabel === s
-                              ? "border-accent-sage bg-accent-sage text-white"
-                              : "border-bg-tertiary bg-white text-mono-medium hover:border-accent-sage/40"
+                              ? "border-accent-sage bg-black text-white"
+                              : "border-transparent bg-cool-stock text-mono-medium hover:bg-cool-stock/80"
                           }`}
                         >
-                          <kbd className={`kbd-hint ${selectedLabel === s ? "!bg-white/20 !text-white !border-white/30" : ""}`}>{i + 1}</kbd>
+                          <kbd
+                            className={`kbd-hint !bg-white/50 !border-transparent !rounded-none ${
+                              selectedLabel === s ? "!text-white" : "!text-mono-dark"
+                            }`}
+                          >
+                            {i + 1}
+                          </kbd>
                           {s}
                         </button>
                       ))}
@@ -677,7 +688,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                     onClick={() => { setShowWriteIn(true); setTimeout(() => businessRef.current?.focus(), 50); }}
                     className="flex items-center gap-2 text-xs text-mono-light hover:text-mono-medium transition"
                   >
-                    <kbd className="kbd-hint kbd-warm !rounded-none">w</kbd>
+                    <kbd className="kbd-hint kbd-warm !rounded-none !border-transparent">w</kbd>
                     Click here to manually write in...
                   </button>
                 ) : (
@@ -687,7 +698,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                       value={businessPurpose}
                       onChange={(e) => setBusinessPurpose(e.target.value)}
                       placeholder={isIncomeLike ? "Who paid you, and what for?" : "Write your business purpose..."}
-                      className="w-full border border-bg-tertiary rounded-lg p-3 text-xs bg-white focus:ring-1 focus:ring-accent-sage/30 focus:border-accent-sage/40 outline-none resize-none"
+                      className="w-full border border-bg-tertiary rounded-none p-3 text-xs bg-white focus:ring-1 focus:ring-accent-sage/30 focus:border-accent-sage/40 outline-none resize-none"
                       rows={2}
                     />
                   </div>
@@ -709,19 +720,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                 )}
 
                 {/* Action row */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  {!isIncomeLike && (
-                    <button
-                      type="button"
-                      onClick={() => onMarkPersonal()}
-                      disabled={saving}
-                      className="flex items-center justify-center gap-1.5 rounded-none bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40"
-                      title="Mark as personal (removes from inbox)"
-                    >
-                      <kbd className="kbd-hint !rounded-none">p</kbd>
-                      Personal
-                    </button>
-                  )}
+                <div className="flex items-center gap-2 flex-wrap max-[700px]:flex-col max-[700px]:items-stretch">
                   <button
                     type="button"
                     onClick={handleApprove}
@@ -730,32 +729,47 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                       (isIncomeLike && incomeTreatment == null) ||
                       (!isIncomeLike && !selectedLabel && !businessPurpose)
                     }
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-none bg-black border border-black px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-40"
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-none bg-black border border-black px-4 py-2.5 text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-40 max-[700px]:w-full"
                   >
                     Save
-                    <kbd className="kbd-hint !rounded-none !border-transparent !bg-white/20 !text-white ml-1">s</kbd>
+                    <kbd className="kbd-hint !rounded-none !border-transparent !bg-white/30 !text-white ml-1">s</kbd>
                   </button>
-                  {/* Secondary personal button removed to avoid duplication */}
-                  <button
-                    type="button"
-                    onClick={() => onOpenManage?.(transaction)}
-                    className="flex items-center justify-center gap-1.5 rounded-none bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition"
-                    title="View details"
-                  >
-                    <span className="material-symbols-rounded !text-[14px] leading-none">tune</span>
-                    <kbd className="kbd-hint !rounded-none">Enter</kbd>
-                  </button>
-                  {onDelete && (
+
+                  <div className="flex items-center gap-2 flex-wrap max-[700px]:w-full max-[700px]:flex-nowrap">
+                    {!isIncomeLike && (
+                      <button
+                        type="button"
+                        onClick={() => onMarkPersonal()}
+                        disabled={saving}
+                        className="flex items-center justify-center gap-1.5 rounded-none bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40 max-[700px]:flex-1"
+                        title="Mark as personal (removes from inbox)"
+                      >
+                        <kbd className="kbd-hint kbd-warm !rounded-none !border-transparent">p</kbd>
+                        Personal
+                      </button>
+                    )}
+                    {/* Secondary personal button removed to avoid duplication */}
                     <button
                       type="button"
-                      onClick={() => onDelete()}
-                      className="flex items-center justify-center gap-1.5 rounded-none bg-white border border-red-200 px-3 py-2.5 text-xs font-medium text-red-600 hover:bg-red-50 transition"
-                      title="Delete transaction"
+                      onClick={() => onOpenManage?.(transaction)}
+                      className="flex items-center justify-center gap-1.5 rounded-none bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition max-[700px]:flex-1"
+                      title="View details"
                     >
-                      <span className="material-symbols-rounded !text-[14px] leading-none">delete</span>
-                      <kbd className="kbd-hint !rounded-none">⌫</kbd>
+                      <span className="material-symbols-rounded !text-[14px] leading-none">tune</span>
+                      <kbd className="kbd-hint kbd-warm !rounded-none !border-transparent">Enter</kbd>
                     </button>
-                  )}
+                    {onDelete && (
+                      <button
+                        type="button"
+                        onClick={() => onDelete()}
+                        className="flex items-center justify-center gap-1.5 rounded-none bg-white border border-red-200 px-3 py-2.5 text-xs font-medium text-red-600 hover:bg-red-50 transition max-[700px]:flex-1"
+                        title="Delete transaction"
+                      >
+                        <span className="material-symbols-rounded !text-[14px] leading-none">delete</span>
+                        <kbd className="kbd-hint kbd-warm !rounded-none !border-transparent">⌫</kbd>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

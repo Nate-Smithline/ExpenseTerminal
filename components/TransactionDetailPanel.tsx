@@ -70,7 +70,7 @@ function Tag({ children, variant = "default" }: { children: React.ReactNode; var
     red: "bg-red-50 text-red-600",
   };
   return (
-    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${colors[variant]}`}>
+    <span className={`inline-flex items-center rounded-none px-2 py-0.5 text-xs font-medium ${colors[variant]}`}>
       {children}
     </span>
   );
@@ -486,9 +486,9 @@ export function TransactionDetailPanel({
           {confPct != null && (
             <PropertyRow label="AI Confidence" alignTop>
               <div className="flex items-center gap-2">
-                <div className="h-1.5 w-20 rounded-full bg-bg-tertiary overflow-hidden">
+                <div className="h-1.5 w-20 bg-cool-stock overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-accent-sage transition-all"
+                    className="h-full bg-frost transition-all"
                     style={{ width: `${confPct}%` }}
                   />
                 </div>
@@ -611,7 +611,7 @@ export function TransactionDetailPanel({
             <button
               type="button"
               onClick={() => onReanalyze(transaction.id)}
-              className="w-full flex items-center gap-2.5 rounded-lg border border-bg-tertiary px-4 py-2.5 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition"
+              className="w-full flex items-center gap-2.5 rounded-none border border-bg-tertiary px-4 py-2.5 text-xs font-medium text-mono-medium hover:bg-bg-secondary transition"
             >
               <span className="material-symbols-rounded text-[16px]">auto_awesome</span>
               Re-analyze with AI

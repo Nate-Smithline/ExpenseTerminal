@@ -105,9 +105,11 @@ export function InboxPageClient({
   const [undoState, setUndoState] = useState<{
     id: string;
     previous: Transaction;
+    estimatedSavingsDollars?: number;
+    message?: string;
     expiresAt: number;
   } | null>(null);
-  const [undoSecondsLeft, setUndoSecondsLeft] = useState(0);
+  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [dismissedDuplicateKeys, setDismissedDuplicateKeys] = useState<Set<string>>(new Set());
 
@@ -129,25 +131,26 @@ export function InboxPageClient({
 
   const cardRefs = useRef<Map<string, TransactionCardRef>>(new Map());
 
+  function formatDollars(n: number): string {
+    return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
   useEffect(() => {
-    if (!undoState) {
-      setUndoSecondsLeft(0);
-      return;
+    if (undoTimeoutRef.current) {
+      clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = null;
     }
-
-    const expiresAt = undoState.expiresAt;
-
-    function tick() {
-      const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
-      setUndoSecondsLeft(remaining);
-      if (remaining <= 0) {
-        setUndoState(null);
+    if (!undoState) return;
+    const remainingMs = Math.max(0, undoState.expiresAt - Date.now());
+    undoTimeoutRef.current = setTimeout(() => {
+      setUndoState(null);
+    }, remainingMs);
+    return () => {
+      if (undoTimeoutRef.current) {
+        clearTimeout(undoTimeoutRef.current);
+        undoTimeoutRef.current = null;
       }
-    }
-
-    tick();
-    const id = window.setInterval(tick, 250);
-    return () => window.clearInterval(id);
+    };
   }, [undoState]);
 
   function duplicateKey(t: Transaction): string {
@@ -438,10 +441,26 @@ export function InboxPageClient({
     const tx = transactions.find((t) => t.id === id);
     if (!tx) return;
 
+    const nextType = update.transaction_type ?? tx.transaction_type ?? "expense";
+    const nextStatus = update.status ?? tx.status;
+    const isPersonal =
+      update.status === "personal" || (update.quick_label ?? "").trim().toLowerCase() === "personal";
+    const pct = update.deduction_percent ?? tx.deduction_percent ?? 0;
+    const isExpense = nextType === "expense";
+    const canEstimateSavings = !isPersonal && isExpense && pct > 0;
+    const amount = Math.abs(Number(update.amount ?? tx.amount));
+    const estimatedSavingsDollars = canEstimateSavings ? (amount * (pct / 100)) * taxRate : undefined;
+    const message =
+      nextType === "income"
+        ? (nextStatus === "personal" ? "Personal Income Logged" : "Business Income Logged")
+        : undefined;
+
     // Set undo window for this save (5 seconds, last transaction only)
     setUndoState({
       id,
       previous: tx,
+      estimatedSavingsDollars,
+      message,
       expiresAt: Date.now() + 5000,
     });
     setTransactions((prev) => prev.filter((t) => t.id !== id));
@@ -463,6 +482,7 @@ export function InboxPageClient({
           }
           throw new Error(message);
         }
+
         if (opts?.applyToSimilar) {
           await handleApplyToAllSimilar(tx, update);
         } else {
@@ -851,19 +871,26 @@ export function InboxPageClient({
       {/* Undo + Toast */}
       <div className="space-y-3">
         {undoState && (
-          <div className="flex items-center justify-between rounded-lg bg-mono-dark px-4 py-2.5 text-sm text-white">
+          <div className="flex items-center justify-between rounded-none bg-mono-dark px-4 py-2.5 text-sm text-white">
             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-              <span>Last sort saved.</span>
-              {undoSecondsLeft > 0 && (
+              {typeof undoState.message === "string" && undoState.message.trim() !== "" && (
+                <span className="text-white/90 font-medium">{undoState.message}</span>
+              )}
+              {!undoState.message &&
+                typeof undoState.estimatedSavingsDollars === "number" &&
+                undoState.estimatedSavingsDollars > 0 && (
                 <span className="text-white/70">
-                  Undo available for {undoSecondsLeft}s.
+                  <span className="text-sovereign-blue font-semibold tabular-nums text-base">
+                    {formatDollars(undoState.estimatedSavingsDollars)}
+                  </span>
+                  {" "}estimated saved
                 </span>
               )}
             </div>
             <button
               type="button"
               onClick={() => void handleUndoLast()}
-              className="inline-flex items-center gap-1 rounded-full border border-white/40 px-3 py-1.5 text-xs font-semibold hover:bg-white/10 transition"
+              className="inline-flex items-center gap-1 rounded-none border border-white/40 px-3 py-1.5 text-xs font-semibold hover:bg-white/10 transition"
             >
               Undo
               <kbd className="kbd-hint kbd-on-primary !rounded-none ml-1">z</kbd>
@@ -876,6 +903,8 @@ export function InboxPageClient({
             className={`px-4 py-2.5 text-sm font-medium ${
               /categorized/i.test(toast)
                 ? "bg-sovereign-blue text-black"
+                : /auto-sorted/i.test(toast)
+                  ? "bg-cool-stock text-black"
                 : "bg-accent-sage text-white"
             }`}
           >
