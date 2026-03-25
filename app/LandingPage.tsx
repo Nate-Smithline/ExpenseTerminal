@@ -251,36 +251,8 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing teaser with internal link */}
-      <section className="px-8 md:px-16 py-20 bg-white">
-        <div className="max-w-5xl mx-auto">
-          <div className="mb-8 text-center md:text-left">
-            <p className="text-xs uppercase tracking-[0.18em] text-mono-medium mb-2">
-              Pricing
-            </p>
-            <h2 className="font-display text-3xl md:text-4xl text-mono-dark mb-3">
-              One plan to unlock 20%+ tax savings
-            </h2>
-            <p className="text-mono-medium max-w-xl mx-auto md:mx-0">
-              Start with a trial, then upgrade when you&rsquo;re ready for deeper automation and bank connections.
-            </p>
-          </div>
-
-          <PricingPlansGrid />
-
-          <div className="mt-8">
-            <Link
-              href="/pricing"
-              className="inline-flex items-center justify-center bg-black text-white px-6 py-2.5 text-sm font-medium rounded-none hover:opacity-70 transition-opacity"
-            >
-              View full pricing
-            </Link>
-          </div>
-        </div>
-      </section>
-
       {/* About / Overview for answer engines */}
-      <section className="px-8 md:px-16 py-24 md:py-32" style={{ background: "#F0F1F7" }}>
+      <section className="px-8 md:px-16 py-24 md:py-32" style={{ background: "#FFFFFF" }}>
         <div className="max-w-2xl mx-auto text-center">
           <h2 className="font-display text-3xl md:text-4xl text-mono-dark mb-6">
             Enabling Organizations with<br />Intelligence &amp; Advice

@@ -58,7 +58,6 @@ interface RulesPageClientProps {
 const PREF_TABS = [
   { href: "/preferences/automations", label: "Automations" },
   { href: "/preferences/profile", label: "Profile" },
-  { href: "/preferences/billing", label: "Billing" },
 ] as const;
 
 export function RulesPageClient({

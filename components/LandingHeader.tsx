@@ -5,12 +5,16 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 
-const NAV_LINKS = [
-  { href: "/pricing", label: "Pricing" },
+const SHOW_PRICING_LINK = false;
+
+type NavLink = { href: string; label: string; primary?: true };
+
+const NAV_LINKS: NavLink[] = [
+  ...(SHOW_PRICING_LINK ? [{ href: "/pricing", label: "Pricing" } satisfies NavLink] : []),
   { href: "/request-demo", label: "Request Demo" },
   { href: "/login", label: "Login" },
   { href: "/signup", label: "Try Free", primary: true },
-] as const;
+];
 
 export function LandingHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
