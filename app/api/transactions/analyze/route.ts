@@ -283,6 +283,13 @@ export async function POST(req: Request) {
     );
   }
 
+  const { data: orgRow } = await (supabase as any)
+    .from("org_settings")
+    .select("business_industry")
+    .eq("user_id", userId)
+    .single();
+  const businessIndustry: string | null = orgRow?.business_industry ?? null;
+
   const { data: fetchedTransactions, error: fetchError } = await fetchTransactionsInChunks(
     supabase as any, ids, userId,
   );
@@ -433,12 +440,16 @@ export async function POST(req: Request) {
             }));
 
             try {
+              const effectiveSystemPrompt = businessIndustry
+                ? `${systemPrompt}\n\nBusiness context: The user's business industry is "${businessIndustry}". Use this as one factor when evaluating deductibility — expenses common in this industry are more likely business-related. This is guidance, not a hard rule; still evaluate each transaction individually.`
+                : systemPrompt;
+
               const message = await withRetry(
                 () =>
                   anthropic.messages.create({
                     model: "claude-sonnet-4-20250514",
                     max_tokens: 4096,
-                    system: systemPrompt,
+                    system: effectiveSystemPrompt,
                     messages: [{ role: "user", content: buildBatchPrompt(batchInput) }],
                   }),
                 { maxRetries: 3, initialMs: 1000, maxMs: 30_000 }

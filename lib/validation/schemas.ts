@@ -120,6 +120,7 @@ export function parseQueryTaxYear(value: string | null): number | null {
 export const taxYearSettingsPostSchema = z.object({
   tax_year: taxYearSchema,
   tax_rate: z.number().min(0, "Tax rate must be 0 or more").max(1, "Tax rate must be 1 or less"),
+  expected_income_range: z.string().trim().min(1).max(64).optional(),
 });
 
 export const deductionPostSchema = z.object({

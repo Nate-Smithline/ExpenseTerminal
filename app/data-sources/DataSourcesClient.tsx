@@ -166,6 +166,7 @@ export function DataSourcesClient({
 
   const stripeFc = searchParams.get("stripe_fc");
   const err = searchParams.get("error");
+  const openAdd = searchParams.get("add");
   const prevParamsRef = useRef<string>("");
   const [showPostConnectDateModal, setShowPostConnectDateModal] = useState(false);
   const [loadingNewAccounts, setLoadingNewAccounts] = useState(false);
@@ -206,6 +207,12 @@ export function DataSourcesClient({
       router.replace("/data-sources", { scroll: false });
     }
   }, [stripeFc, err, router]);
+
+  useEffect(() => {
+    if (openAdd !== "1") return;
+    setShowAdd(true);
+    router.replace("/data-sources", { scroll: false });
+  }, [openAdd, router]);
 
   const [showAdd, setShowAdd] = useState(false);
   type AddStep = "1" | "2a" | "2b";

@@ -87,16 +87,23 @@ export default async function DashboardPage() {
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId);
 
-  const { count: transactionsCount } = await (supabase as any)
-    .from("transactions")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("tax_year", taxYear);
-
   const { data: orgSettings } = await (supabase as any)
     .from("org_settings")
-    .select("id, filing_type")
+    .select("id, filing_type, personal_filing_status, business_industry")
     .eq("user_id", userId)
+    .single();
+
+  const { data: notificationPreferences } = await (supabase as any)
+    .from("notification_preferences")
+    .select("type, value")
+    .eq("user_id", userId)
+    .single();
+
+  const { data: taxYearSettings } = await (supabase as any)
+    .from("tax_year_settings")
+    .select("expected_income_range")
+    .eq("user_id", userId)
+    .eq("tax_year", taxYear)
     .single();
 
   const { data: profileRow } = await (supabase as any)
@@ -106,13 +113,13 @@ export default async function DashboardPage() {
     .single();
 
   const setupStatus = {
-    data_source: (dataSourcesCount ?? 0) > 0,
-    upload_csv: (transactionsCount ?? 0) > 0,
-    review_inbox: (completedTx?.length ?? 0) > 0 || (pendingCount ?? 0) === 0,
-    setup_deductions: (additionalDeductions?.length ?? 0) > 0,
+    notification_frequency: !!notificationPreferences?.type && !!notificationPreferences?.value,
     business_type: !!orgSettings?.filing_type,
-    org_profile: !!orgSettings,
+    filing_status: !!orgSettings?.personal_filing_status,
+    business_industry: !!orgSettings?.business_industry,
+    expected_income: !!taxYearSettings?.expected_income_range,
     what_can_i_deduct: false,
+    link_account: (dataSourcesCount ?? 0) > 0,
   };
 
   const pendingDeductionPotential =
@@ -163,7 +170,7 @@ export default async function DashboardPage() {
 
       {/* Getting Started */}
       <div className="-mt-4">
-        <GettingStartedChecklist setupStatus={setupStatus} />
+        <GettingStartedChecklist setupStatus={setupStatus} taxYear={taxYear} />
       </div>
 
       {/* Tax-ready PDF package export */}

@@ -280,6 +280,8 @@ export interface Database {
           business_state: string | null;
           business_zip: string | null;
           filing_type: string | null;
+          personal_filing_status: string | null;
+          business_industry: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -295,6 +297,8 @@ export interface Database {
           business_state?: string | null;
           business_zip?: string | null;
           filing_type?: string | null;
+          personal_filing_status?: string | null;
+          business_industry?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -306,6 +310,7 @@ export interface Database {
           user_id: string;
           tax_year: number;
           tax_rate: string;
+          expected_income_range: string | null;
           created_at: string;
         };
         Insert: {
@@ -313,6 +318,7 @@ export interface Database {
           user_id: string;
           tax_year: number;
           tax_rate: string;
+          expected_income_range?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["tax_year_settings"]["Insert"]>;

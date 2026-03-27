@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const taxYear = url.searchParams.get("tax_year");
 
-  const cols = "id,user_id,tax_year,tax_rate,created_at";
+  const cols = "id,user_id,tax_year,tax_rate,expected_income_range,created_at";
   let query = (supabase as any)
     .from("tax_year_settings")
     .select(cols)
@@ -89,15 +89,16 @@ export async function POST(req: Request) {
       status: 400, headers: { "Content-Type": "application/json" },
     });
   }
-  const { tax_year, tax_rate } = parsed.data;
+  const { tax_year, tax_rate, expected_income_range } = parsed.data;
 
-  const cols = "id,user_id,tax_year,tax_rate,created_at";
+  const cols = "id,user_id,tax_year,tax_rate,expected_income_range,created_at";
   const { data, error } = await (supabase as any)
     .from("tax_year_settings")
     .upsert({
       user_id: userId,
       tax_year,
       tax_rate,
+      expected_income_range: expected_income_range ?? null,
     }, { onConflict: "user_id,tax_year" })
     .select(cols)
     .single();
