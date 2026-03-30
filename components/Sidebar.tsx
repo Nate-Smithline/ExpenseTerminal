@@ -10,6 +10,7 @@ const mainNav = [
   { href: "/data-sources", label: "Accounts & Data", icon: "database" },
   { href: "/inbox", label: "Inbox", icon: "visibility" },
   { href: "/other-deductions", label: "Other Deductions", icon: "receipt_long" },
+  { href: "/tax-filing", label: "Tax Filing", icon: "description" },
 ];
 
 const bottomNav = [

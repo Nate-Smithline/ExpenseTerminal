@@ -28,6 +28,7 @@ export interface ActivityViewState {
     status: string | null;
     transaction_type: string | null;
     source: string | null;
+    data_source_id?: string | null;
     search: string;
     date_from: string;
     date_to: string;
@@ -60,7 +61,7 @@ const TYPE_OPTIONS = [
 
 const SOURCE_OPTIONS = [
   { value: "", label: "All sources" },
-  { value: "data_feed", label: "Stripe" },
+  { value: "data_feed", label: "Direct Feed" },
   { value: "csv_upload", label: "CSV" },
   { value: "manual", label: "Manual" },
 ];

@@ -4,9 +4,14 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
 import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
 import { getProfileOnboarding } from "@/lib/profile";
+import { uuidSchema } from "@/lib/validation/schemas";
 import { ActivityPageClient } from "./ActivityPageClient";
 
-export default async function ActivityPage() {
+export default async function ActivityPage({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const supabase = await createSupabaseServerClient();
   const userId = await getCurrentUserId(supabase);
 
@@ -17,19 +22,30 @@ export default async function ActivityPage() {
   const taxYear = getEffectiveTaxYear(cookieStore, profile);
   const db = supabase;
 
-  const { data: transactions } = await (db as any)
+  const dataSourceIdParam = searchParams?.data_source_id;
+  const dataSourceIdRaw = Array.isArray(dataSourceIdParam) ? dataSourceIdParam[0] : dataSourceIdParam;
+  const dataSourceId = dataSourceIdRaw && uuidSchema.safeParse(dataSourceIdRaw).success ? dataSourceIdRaw : null;
+
+  let txQuery = (db as any)
     .from("transactions")
     .select("*")
     .eq("user_id", userId)
-    .eq("tax_year", taxYear)
-    .order("date", { ascending: false })
-    .limit(100);
+    .order("date", { ascending: false });
+  if (dataSourceId) {
+    // Deep link from Accounts page: show all time for this data source.
+    txQuery = txQuery.eq("data_source_id", dataSourceId);
+  } else {
+    txQuery = txQuery.eq("tax_year", taxYear);
+  }
+  const { data: transactions } = await txQuery.limit(100);
 
-  const { count: totalCount } = await (db as any)
+  let countQuery = (db as any)
     .from("transactions")
     .select("*", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("tax_year", taxYear);
+    .eq("user_id", userId);
+  if (dataSourceId) countQuery = countQuery.eq("data_source_id", dataSourceId);
+  else countQuery = countQuery.eq("tax_year", taxYear);
+  const { count: totalCount } = await countQuery;
 
   return (
     <ActivityPageClient

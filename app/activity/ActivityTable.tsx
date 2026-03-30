@@ -24,7 +24,7 @@ function formatAiConfidence(val: number | null) {
 }
 
 function sourceTagLabel(source: string | null): string {
-  if (source === "data_feed") return "Stripe";
+  if (source === "data_feed") return "Direct Feed";
   if (source === "csv_upload") return "CSV";
   if (source === "manual") return "Manual";
   return source ?? "—";

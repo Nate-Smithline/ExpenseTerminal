@@ -195,6 +195,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <nav className="px-5 pt-1 pb-3 space-y-0 overflow-y-auto">
               {[
                 { href: "/other-deductions", label: "Other Deductions" },
+                { href: "/tax-filing", label: "Tax Filing" },
                 { href: "/activity", label: "All Activity" },
                 { href: "/preferences/automations", label: "Preferences" },
               ].map((item) => (

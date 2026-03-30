@@ -57,10 +57,13 @@ export async function POST(req: Request) {
   }
 
   const url = new URL(req.url);
-  const stripeMode = getStripeMode(url.hostname);
-  const result = await runSyncForDataSource(supabase, userId, dataSourceId, row.source_type, {
-    ...(row.source_type === "stripe" ? { stripeMode, startDate, endDate } : {}),
-  });
+  const xfHost = req.headers.get("x-forwarded-host");
+  const host = req.headers.get("host");
+  const hostname = (xfHost ?? host ?? "").split(",")[0]?.trim()?.split(":")[0] || url.hostname;
+  const syncOptions = row.source_type === "stripe"
+    ? { stripeMode: getStripeMode(hostname), startDate, endDate, hostname }
+    : { hostname };
+  const result = await runSyncForDataSource(supabase, userId, dataSourceId, row.source_type, syncOptions);
 
   if (result.success) {
     return new Response(
@@ -68,6 +71,7 @@ export async function POST(req: Request) {
         ok: true,
         message: result.message,
         ...(result.diagnostics ? { diagnostics: result.diagnostics } : {}),
+        ...(result.plaidDiagnostics ? { plaidDiagnostics: result.plaidDiagnostics } : {}),
       }),
       {
         headers: { "Content-Type": "application/json" },

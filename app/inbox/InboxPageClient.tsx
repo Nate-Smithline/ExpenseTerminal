@@ -453,7 +453,7 @@ export function InboxPageClient({
     const message =
       nextType === "income"
         ? (nextStatus === "personal" ? "Personal Income Logged" : "Business Income Logged")
-        : undefined;
+        : (isPersonal ? "Personal Expense saved" : undefined);
 
     // Set undo window for this save (5 seconds, last transaction only)
     setUndoState({

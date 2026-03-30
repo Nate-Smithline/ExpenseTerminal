@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { loadStripe } from "@stripe/stripe-js";
+import { usePlaidLink } from "react-plaid-link";
 import type { Database } from "@/lib/types/database";
 import { UploadModal } from "@/components/UploadModal";
 import { TaxYearSelector } from "@/components/TaxYearSelector";
@@ -32,11 +32,15 @@ function formatCurrency(n: number): string {
 }
 
 function sourceTypeLabel(sourceType: string): string {
-  return sourceType === "stripe" ? "Direct Feed" : "Manual";
+  return sourceType === "stripe" || sourceType === "plaid" ? "Direct Feed" : "Manual";
+}
+
+function isDirectFeed(sourceType: string): boolean {
+  return sourceType === "stripe" || sourceType === "plaid";
 }
 
 function formatLastPulled(source: DataSource): string | null {
-  if (source.source_type === "stripe") {
+  if (isDirectFeed(source.source_type)) {
     const t = source.last_successful_sync_at;
     if (!t) return "Never";
     try {
@@ -48,46 +52,44 @@ function formatLastPulled(source: DataSource): string | null {
   return null;
 }
 
-/** Payload from POST /api/data-sources/sync (matches server `StripeSyncDiagnostics`). */
-type StripeSyncDiag = {
-  rawTransactionsFromStripe: number;
-  postedIncludedInSync: number;
-  upsertCallsSucceeded: number;
+/** Payload from POST /api/data-sources/sync (matches server diagnostics). */
+type SyncDiag = {
   transactionCountForDataSource: number;
-  statusBreakdown: Record<string, number>;
-  transactedAtFilter?: { gteIso?: string; lteIso?: string; gteUnix?: number; lteUnix?: number };
-  stripeSyncStartDateStored?: string | null;
-  financialConnectionsAccountId?: string;
-  stripeMode?: string;
+  // Stripe legacy fields
+  rawTransactionsFromStripe?: number;
+  postedIncludedInSync?: number;
+  upsertCallsSucceeded?: number;
+  statusBreakdown?: Record<string, number>;
   apiListPages?: number;
-  transactionsListLimitPerPage?: number;
-  paginationPages?: Array<{
-    page: number;
-    rowCount: number;
-    has_more: boolean;
-    lastTransactionId?: string;
-  }>;
-  paginationStoppedBecause?: "empty_page" | "stripe_has_more_false";
-  earliestTransactionDateReturned?: string | null;
-  latestTransactionDateReturned?: string | null;
   startDateExceedsFcLookback?: boolean;
+  earliestTransactionDateReturned?: string | null;
+  // Plaid fields
+  addedCount?: number;
+  modifiedCount?: number;
+  removedCount?: number;
+  upsertedCount?: number;
+  updatedCount?: number;
+  deletedCount?: number;
+  syncPages?: number;
 };
 
-function logStripeSyncDiagnostics(d: StripeSyncDiag | undefined) {
+function logSyncDiagnostics(d: SyncDiag | undefined) {
   if (!d) return;
-  console.info(
-    "[ExpenseTerminal] Stripe sync diagnostics — compare rawTransactionsFromStripe & statusBreakdown to your bank export; postedIncludedInSync is what we save.",
-    d,
-  );
+  console.info("[ExpenseTerminal] Sync diagnostics", d);
 }
 
-function stripeSyncStatusMessage(d: StripeSyncDiag | undefined): string {
+function syncStatusMessage(d: SyncDiag | undefined): string {
   if (!d) return "Sync complete";
-  const pages = d.paginationPages?.length ?? d.apiListPages ?? 0;
-  let msg = `Sync complete · ${pages} list request(s) · ${d.rawTransactionsFromStripe} rows from Stripe → ${d.postedIncludedInSync} posted → ${d.upsertCallsSucceeded} saved · ${d.transactionCountForDataSource} total in app`;
+  // Plaid diagnostics
+  if (d.addedCount != null) {
+    return `Sync complete · ${d.addedCount} new, ${d.updatedCount ?? 0} updated, ${d.deletedCount ?? 0} removed · ${d.transactionCountForDataSource} total in app`;
+  }
+  // Stripe legacy diagnostics
+  const pages = d.apiListPages ?? 0;
+  let msg = `Sync complete · ${pages} request(s) · ${d.rawTransactionsFromStripe ?? 0} rows → ${d.upsertCallsSucceeded ?? 0} saved · ${d.transactionCountForDataSource} total in app`;
   if (d.startDateExceedsFcLookback) {
     const earliest = d.earliestTransactionDateReturned ?? "unknown";
-    msg += ` · ⚠ Start date is >180 days ago — Stripe only returned data from ${earliest}. Upload a bank CSV for older transactions.`;
+    msg += ` · Start date is >180 days ago — only returned data from ${earliest}. Upload a bank CSV for older transactions.`;
   }
   return msg;
 }
@@ -140,18 +142,81 @@ function formatMonthDayOrdinal(value: string): string {
   return `${month} ${dayPadded}${suffix}`;
 }
 
+/** Wrapper that fetches a link token (if needed) and opens Plaid Link. */
+function PlaidLinkButton({
+  plaidLinkToken,
+  loading,
+  onClose,
+  onBeforeOpen,
+  onRequestToken,
+  onSuccess,
+  onExit,
+}: {
+  plaidLinkToken: string | null;
+  loading: boolean;
+  onClose: () => void;
+  onBeforeOpen?: () => void;
+  onRequestToken: () => void;
+  onSuccess: (publicToken: string, metadata: any) => void;
+  onExit: () => void;
+}) {
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const { open, ready } = usePlaidLink({
+    token: plaidLinkToken,
+    onSuccess,
+    onExit,
+  });
+
+  // If the user clicked "Connect Bank" before we had a token, automatically open
+  // Plaid Link as soon as the token is set and Link is ready.
+  useEffect(() => {
+    if (!pendingOpen) return;
+    if (!plaidLinkToken) return;
+    if (!ready) return;
+    onBeforeOpen?.();
+    open();
+    setPendingOpen(false);
+  }, [pendingOpen, plaidLinkToken, ready, open, onBeforeOpen]);
+
+  return (
+    <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
+      <button
+        onClick={onClose}
+        disabled={loading}
+        className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
+      >
+        Close
+      </button>
+      <button
+        onClick={() => {
+          if (loading) return;
+          setPendingOpen(true);
+          if (plaidLinkToken && ready) {
+            onBeforeOpen?.();
+            open();
+            setPendingOpen(false);
+          } else {
+            onRequestToken();
+          }
+        }}
+        disabled={loading}
+        className="px-4 py-2.5 text-sm font-medium font-sans bg-[#2563EB] text-white rounded-none hover:bg-[#1D4ED8] transition-colors disabled:opacity-40"
+      >
+        {loading ? "Connecting\u2026" : "Connect Bank"}
+      </button>
+    </div>
+  );
+}
+
 export function DataSourcesClient({
   initialSources,
   initialStats = {},
   taxYear,
-  stripePublishableKey = null,
 }: {
   initialSources: DataSource[];
   initialStats?: Record<string, DataSourceStats>;
   /** Tax year used for earliest-date-on-card and transaction queries (cookie / profile). */
   taxYear: number;
-  /** Publishable key for Stripe.js Financial Connections (test or live based on host). */
-  stripePublishableKey?: string | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -164,49 +229,21 @@ export function DataSourcesClient({
     setStats(initialStats);
   }, [initialSources, initialStats]);
 
-  const stripeFc = searchParams.get("stripe_fc");
   const err = searchParams.get("error");
   const openAdd = searchParams.get("add");
   const prevParamsRef = useRef<string>("");
   const [showPostConnectDateModal, setShowPostConnectDateModal] = useState(false);
   const [loadingNewAccounts, setLoadingNewAccounts] = useState(false);
   useEffect(() => {
-    const key = `${stripeFc ?? ""}|${err ?? ""}`;
+    const key = `${err ?? ""}`;
     if (key === prevParamsRef.current) return;
     prevParamsRef.current = key;
-    if (stripeFc === "success") {
-      setToast("Bank account(s) connected.");
-      setTimeout(() => setToast(null), 5000);
-      setLoadingNewAccounts(true);
-      // Fetch sources first so new accounts appear in the list, then show date modal and clear URL
-      fetch("/api/data-sources")
-        .then((r) => r.ok ? r.json() : null)
-        .then((body) => {
-          if (body?.data) setSources(body.data);
-          setShowPostConnectDateModal(true);
-          router.replace("/data-sources", { scroll: false });
-        })
-        .catch(() => {})
-        .finally(() => setLoadingNewAccounts(false));
-    } else if (stripeFc === "already_linked") {
-      setToast("Account reconnected.");
-      setTimeout(() => setToast(null), 4000);
-      setLoadingNewAccounts(true);
-      fetch("/api/data-sources")
-        .then((r) => r.ok ? r.json() : null)
-        .then((body) => {
-          if (body?.data) setSources(body.data);
-          setShowPostConnectDateModal(true);
-          router.replace("/data-sources", { scroll: false });
-        })
-        .catch(() => {})
-        .finally(() => setLoadingNewAccounts(false));
-    } else if (err) {
+    if (err) {
       setToast(decodeURIComponent(err));
       setTimeout(() => setToast(null), 6000);
       router.replace("/data-sources", { scroll: false });
     }
-  }, [stripeFc, err, router]);
+  }, [err, router]);
 
   useEffect(() => {
     if (openAdd !== "1") return;
@@ -228,12 +265,11 @@ export function DataSourcesClient({
   const [editInstitution, setEditInstitution] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
-  // Bank Pulling step 2b state
-  const [lookback, setLookback] = useState<"2years" | "forward" | "custom">("2years");
-  const [customStartDate, setCustomStartDate] = useState("");
-  const [stripeConnectLoading, setStripeConnectLoading] = useState(false);
-  const [stripeConnectError, setStripeConnectError] = useState<string | null>(null);
-  const [stripeStatuses, setStripeStatuses] = useState<Record<string, "active" | "disconnected" | "inactive" | null>>({});
+  // Bank Pulling step 2b state (Plaid Link)
+  const [plaidLinkToken, setPlaidLinkToken] = useState<string | null>(null);
+  const [plaidConnectLoading, setPlaidConnectLoading] = useState(false);
+  const [plaidConnectError, setPlaidConnectError] = useState<string | null>(null);
+  const [connectionStatuses, setConnectionStatuses] = useState<Record<string, "good" | "login_required" | "error" | "disconnected" | "inactive" | null>>({});
   const [addModalLoading, setAddModalLoading] = useState(false);
   const [deleteConfirmSource, setDeleteConfirmSource] = useState<DataSource | null>(null);
   const [deleteAlsoTransactions, setDeleteAlsoTransactions] = useState(true);
@@ -242,41 +278,43 @@ export function DataSourcesClient({
   const [pullModalSource, setPullModalSource] = useState<DataSource | null>(null);
   type SyncStatusBar = { message: string; type: "syncing" | "success" | "error" } | null;
   const [syncStatusBar, setSyncStatusBar] = useState<SyncStatusBar>(null);
-  // Post-connect date modal (after Stripe accounts load)
-  const [postConnectLookback, setPostConnectLookback] = useState<"180days" | "forward" | "custom">("180days");
-  const [postConnectCustomStartDate, setPostConnectCustomStartDate] = useState("");
+  // Post-connect sync state
   const [postConnectPulling, setPostConnectPulling] = useState(false);
   const [postConnectError, setPostConnectError] = useState<string | null>(null);
+
+  const hasPlaid = sources.some((s) => s.source_type === "plaid");
+  const hasStripeLegacy = sources.some((s) => s.source_type === "stripe");
+  const hasDirectFeed = sources.some((s) => isDirectFeed(s.source_type));
 
   const addAccountInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (showPostConnectDateModal) {
-      setPostConnectLookback("180days");
-      setPostConnectCustomStartDate("");
       setPostConnectError(null);
     }
   }, [showPostConnectDateModal]);
 
-  const stripeIdsRef = useRef<string>("");
+  const directFeedIdsRef = useRef<string>("");
   useEffect(() => {
-    const stripeIds = sources.filter((s) => s.source_type === "stripe").map((s) => s.id);
-    const key = stripeIds.sort().join(",");
-    if (stripeIds.length === 0 || key === stripeIdsRef.current) return;
-    stripeIdsRef.current = key;
-    const updates: Record<string, "active" | "disconnected" | "inactive"> = {};
-    let pending = stripeIds.length;
-    stripeIds.forEach((id) => {
-      fetch(`/api/data-sources/stripe/status?data_source_id=${encodeURIComponent(id)}`)
+    const directFeedSources = sources.filter((s) => isDirectFeed(s.source_type));
+    const ids = directFeedSources.map((s) => s.id);
+    const key = ids.sort().join(",");
+    if (ids.length === 0 || key === directFeedIdsRef.current) return;
+    directFeedIdsRef.current = key;
+    const updates: Record<string, "good" | "login_required" | "error" | "disconnected" | "inactive"> = {};
+    let pending = ids.length;
+    directFeedSources.forEach((s) => {
+      const statusUrl = `/api/data-sources/plaid/status?data_source_id=${encodeURIComponent(s.id)}`;
+      fetch(statusUrl)
         .then((r) => r.json())
         .then((body) => {
-          if (body.status && body.status !== "n/a") updates[id] = body.status;
+          if (body.status && body.status !== "n/a") updates[s.id] = body.status;
         })
         .catch(() => {})
         .finally(() => {
           pending--;
           if (pending === 0 && Object.keys(updates).length > 0) {
-            setStripeStatuses((prev) => ({ ...prev, ...updates }));
+            setConnectionStatuses((prev) => ({ ...prev, ...updates }));
           }
         });
     });
@@ -302,11 +340,12 @@ export function DataSourcesClient({
         body: JSON.stringify({ data_source_id: sourceId }),
       });
       if (res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { diagnostics?: StripeSyncDiag };
-        logStripeSyncDiagnostics(data.diagnostics);
+        const data = (await res.json().catch(() => ({}))) as { diagnostics?: SyncDiag; plaidDiagnostics?: SyncDiag };
+        const diag = data.plaidDiagnostics ?? data.diagnostics;
+        logSyncDiagnostics(diag);
         await reloadSources();
         window.dispatchEvent(new CustomEvent("inbox-count-changed"));
-        setSyncStatusBar({ message: stripeSyncStatusMessage(data.diagnostics), type: "success" });
+        setSyncStatusBar({ message: syncStatusMessage(diag), type: "success" });
         setTimeout(() => setSyncStatusBar(null), 8000);
       } else {
         const data = await res.json().catch(() => ({}));
@@ -414,9 +453,8 @@ export function DataSourcesClient({
   const closeAdd = useCallback(() => {
     setShowAdd(false);
     setAddStep("1");
-    setLookback("2years");
-    setCustomStartDate("");
-    setStripeConnectError(null);
+    setPlaidConnectError(null);
+    setPlaidLinkToken(null);
   }, []);
   const closeEdit = useCallback(() => setEditSource(null), []);
 
@@ -428,7 +466,7 @@ export function DataSourcesClient({
           // (only closes the modal if already on step 1).
           if (addStep !== "1") {
             setAddStep("1");
-            setStripeConnectError(null);
+            setPlaidConnectError(null);
           } else {
             closeAdd();
           }
@@ -499,6 +537,27 @@ export function DataSourcesClient({
             <p className="text-base text-mono-medium mt-1 font-sans">
               Link your accounts and upload transactions
             </p>
+            {hasDirectFeed && (
+              <div className="mt-3 border border-[#F0F1F7] bg-white px-4 py-3 text-sm text-mono-medium">
+                <span className="font-medium text-mono-dark">Direct Feed lookback:</span>{" "}
+                {hasPlaid && <span>Plaid can import up to 24 months of history (varies by institution).</span>}
+                {!hasPlaid && <span>Direct Feed imports history based on your bank’s availability.</span>}
+                {hasStripeLegacy && (
+                  <span className="text-mono-light"> (Legacy Stripe feeds may be shorter.)</span>
+                )}{" "}
+                <span>
+                  Need older transactions?{" "}
+                  <button
+                    type="button"
+                    onClick={() => setShowAdd(true)}
+                    className="font-medium text-mono-dark underline underline-offset-2 decoration-black/20 hover:decoration-mono-dark"
+                  >
+                    Upload a CSV
+                  </button>
+                  .
+                </span>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -611,12 +670,12 @@ export function DataSourcesClient({
                       </kbd>
                     </div>
                     <p className="text-xs text-mono-light mt-1.5">
-                      Connect a bank via Stripe Financial Connections. After connecting, choose a date range and we’ll load transactions.
+                      Connect a bank via Plaid. We’ll automatically import up to 24 months of transaction history.
                     </p>
                   </button>
                 </div>
                 <a
-                  href="https://stripe.com"
+                  href="https://plaid.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mt-2 flex items-center justify-center gap-2 w-full py-3 text-sm font-medium text-mono-medium hover:text-mono-dark transition"
@@ -625,7 +684,7 @@ export function DataSourcesClient({
                   <span className="inline-flex items-center justify-center" style={{ color: "#2563EB", transform: "scale(0.75)", transformOrigin: "center" }}>
                     <span className="material-symbols-rounded text-[20px]">open_in_new</span>
                   </span>
-                  Learn about Stripe
+                  Learn about Plaid
                 </a>
               </div>
             )}
@@ -696,7 +755,7 @@ export function DataSourcesClient({
                   <button
                     type="button"
                     onClick={closeAdd}
-                    disabled={stripeConnectLoading}
+                    disabled={plaidConnectLoading}
                     className="text-sm font-medium text-mono-medium hover:text-mono-dark inline-flex items-center gap-2 disabled:opacity-50"
                   >
                     <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[11px] font-mono text-mono-dark">
@@ -705,138 +764,81 @@ export function DataSourcesClient({
                     Return
                   </button>
                 </div>
-                {stripeConnectLoading ? (
+                {plaidConnectLoading ? (
                   <div className="px-6 py-16 flex flex-col items-center justify-center gap-4">
                     <span className="material-symbols-rounded animate-spin text-4xl text-mono-medium">progress_activity</span>
-                    <p className="text-sm font-medium text-mono-dark">Connecting to Stripe…</p>
+                    <p className="text-sm font-medium text-mono-dark">Connecting…</p>
                     <p className="text-xs text-mono-light">Select your bank and accounts in the window that opened.</p>
                   </div>
                 ) : (
                   <div className="px-6 py-3 space-y-3">
                     <p className="text-sm text-mono-medium">
-                      You’ll choose your bank and accounts in Stripe. After they’re connected, you’ll pick how much history to pull and we’ll load transactions.
+                      Connect your bank account to automatically import up to 24 months of transaction history.
                     </p>
-                    {stripeConnectError && (
-                      <p className="text-sm text-red-600">{stripeConnectError}</p>
+                    {plaidConnectError && (
+                      <p className="text-sm text-red-600">{plaidConnectError}</p>
                     )}
                   </div>
                 )}
-                <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
-                  <button
-                    onClick={closeAdd}
-                    disabled={stripeConnectLoading}
-                    className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
-                  >
-                    Close
-                  </button>
-                  <button
-                    onClick={async () => {
-                      setStripeConnectError(null);
-                      setStripeConnectLoading(true);
-                      try {
-                        const res = await fetch("/api/data-sources/stripe/connect", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({}),
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (res.ok && data.url) {
-                          window.location.href = data.url;
-                          return;
-                        }
-                        if (res.ok && data.client_secret) {
-                          if (!stripePublishableKey) {
-                            setStripeConnectError("Stripe publishable key not configured. Set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY for production or NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY_TEST for localhost (and restart the dev server).");
-                            setStripeConnectLoading(false);
-                            return;
-                          }
-                          const stripe = await loadStripe(stripePublishableKey);
-                          if (!stripe) {
-                            setStripeConnectError("Could not load Stripe.");
-                            setStripeConnectLoading(false);
-                            return;
-                          }
-                          const collect = (stripe as { collectFinancialConnectionsAccounts?: (opts: { clientSecret: string }) => Promise<{ financialConnectionsSession?: { id: string }; error?: { message?: string } }> }).collectFinancialConnectionsAccounts;
-                          if (!collect) {
-                            setStripeConnectError("This Stripe.js version does not support Financial Connections. Please update @stripe/stripe-js.");
-                            setStripeConnectLoading(false);
-                            return;
-                          }
-                          try {
-                            const result = await collect({ clientSecret: data.client_secret });
-                            if (result?.error?.message) {
-                              setStripeConnectError(result.error.message);
-                              setStripeConnectLoading(false);
-                              return;
-                            }
-                            const sessionId = result?.financialConnectionsSession?.id;
-                            if (sessionId) {
-                              const callbackUrl = `${window.location.origin}/api/data-sources/stripe/callback?session_id=${encodeURIComponent(sessionId)}&format=json`;
-                              const cbRes = await fetch(callbackUrl, { credentials: "include" });
-                              const cbData = await cbRes.json().catch(() => ({}));
-                              if (cbData.success) {
-                                if ((cbData.accountCount ?? 0) > 0) {
-                                  setShowAdd(false);
-                                  setAddStep("1");
-                                  setStripeConnectError(null);
-                                  setToast("Bank account(s) connected.");
-                                  setTimeout(() => setToast(null), 5000);
-                                  await reloadSources();
-                                  setShowPostConnectDateModal(true);
-                                } else {
-                                  setStripeConnectError("No accounts were selected. Select at least one account and try again.");
-                                }
-                              } else {
-                                setStripeConnectError(cbData.error ?? "Could not save account.");
-                              }
-                              setStripeConnectLoading(false);
-                              return;
-                            }
-                            const initialStripeCount = sources.filter((s) => s.source_type === "stripe").length;
-                            const pollMs = 20000;
-                            const intervalMs = 2000;
-                            const deadline = Date.now() + pollMs;
-                            let found = false;
-                            while (Date.now() < deadline) {
-                              await new Promise((r) => setTimeout(r, intervalMs));
-                              const rRes = await fetch("/api/data-sources", { credentials: "include" });
-                              if (rRes.ok) {
-                                const { data: list } = await rRes.json();
-                                const newCount = (list ?? []).filter((s: { source_type?: string }) => s.source_type === "stripe").length;
-                                if (newCount > initialStripeCount) {
-                                  found = true;
-                                  break;
-                                }
-                              }
-                            }
-                            if (found) {
-                              setShowAdd(false);
-                              setAddStep("1");
-                              setStripeConnectError(null);
-                              setToast("Bank account(s) connected.");
-                              setTimeout(() => setToast(null), 5000);
-                              await reloadSources();
-                              setShowPostConnectDateModal(true);
-                            } else {
-                              setStripeConnectError("No accounts were linked. Would you like to try again?");
-                            }
-                          } catch (err) {
-                            setStripeConnectError(err instanceof Error ? err.message : "Connection failed");
-                          }
-                          setStripeConnectLoading(false);
-                          return;
-                        }
-                        setStripeConnectError(data.error ?? "Could not start connection");
-                      } finally {
-                        setStripeConnectLoading(false);
+                <PlaidLinkButton
+                  plaidLinkToken={plaidLinkToken}
+                  loading={plaidConnectLoading}
+                  onClose={closeAdd}
+                  onBeforeOpen={() => setShowAdd(false)}
+                  onRequestToken={async () => {
+                    setPlaidConnectError(null);
+                    setPlaidConnectLoading(true);
+                    try {
+                      const res = await fetch("/api/data-sources/plaid/create-link-token", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                      });
+                      const data = await res.json().catch(() => ({}));
+                      if (res.ok && data.link_token) {
+                        setPlaidLinkToken(data.link_token);
+                      } else {
+                        setPlaidConnectError(data.error ?? "Could not create link token");
                       }
-                    }}
-                    disabled={stripeConnectLoading}
-                    className="px-4 py-2.5 text-sm font-medium font-sans bg-[#2563EB] text-white rounded-none hover:bg-[#1D4ED8] transition-colors disabled:opacity-40"
-                  >
-                    {stripeConnectLoading ? "Connecting…" : "Connect with Stripe"}
-                  </button>
-                </div>
+                    } catch (e) {
+                      setPlaidConnectError(e instanceof Error ? e.message : "Connection failed");
+                    } finally {
+                      setPlaidConnectLoading(false);
+                    }
+                  }}
+                  onSuccess={async (publicToken: string, metadata: any) => {
+                    setPlaidConnectLoading(true);
+                    setPlaidConnectError(null);
+                    try {
+                      const res = await fetch("/api/data-sources/plaid/exchange-token", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ public_token: publicToken, metadata }),
+                      });
+                      const data = await res.json().catch(() => ({}));
+                      if (res.ok && data.success) {
+                        setShowAdd(false);
+                        setAddStep("1");
+                        setPlaidConnectError(null);
+                        setPlaidLinkToken(null);
+                        setToast("Bank account(s) connected.");
+                        setTimeout(() => setToast(null), 5000);
+                        await reloadSources();
+                        setShowPostConnectDateModal(true);
+                      } else {
+                        setPlaidConnectError(data.error ?? "Could not save account.");
+                      }
+                    } catch (e) {
+                      setPlaidConnectError(e instanceof Error ? e.message : "Exchange failed");
+                    } finally {
+                      setPlaidConnectLoading(false);
+                    }
+                  }}
+                  onExit={() => {
+                    setPlaidConnectLoading(false);
+                    setShowAdd(true);
+                    setAddStep("2b");
+                  }}
+                />
               </>
             )}
           </div>
@@ -889,7 +891,7 @@ export function DataSourcesClient({
                     value={editInstitution}
                     onChange={(e) => setEditInstitution(e.target.value)}
                     placeholder="e.g. Chase, Amex"
-                    disabled={editSource?.source_type === "stripe"}
+                    disabled={isDirectFeed(editSource?.source_type ?? "")}
                     className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60 disabled:bg-[#F0F1F7] disabled:text-mono-light disabled:cursor-not-allowed"
                   />
                 </div>
@@ -928,13 +930,6 @@ export function DataSourcesClient({
 
       {/* Pull transactions (date range) modal */}
       {pullModalSource && (() => {
-        const pullFcLookbackDate = (() => {
-          const d = new Date();
-          d.setDate(d.getDate() - 180);
-          return d.toISOString().slice(0, 10);
-        })();
-        const pullFromDate = pullDatesBySource[pullModalSource.id]?.start;
-        const pullExceedsFcLookback = !!pullFromDate && new Date(pullFromDate) < new Date(pullFcLookbackDate);
         return (
         <div
           className="fixed inset-0 min-h-[100dvh] z-[60] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
@@ -969,18 +964,7 @@ export function DataSourcesClient({
                   />
                 </div>
               </div>
-              {pullExceedsFcLookback ? (
-                <div className="border-0 bg-warm-stock px-3 py-3 space-y-1">
-                  <p className="text-xs font-medium text-black">
-                    Stripe provides up to ~180 days of history
-                  </p>
-                  <p className="text-xs text-black/80 leading-relaxed">
-                    Your &ldquo;from&rdquo; date is older than what Stripe can typically reach. Transactions before roughly {new Date(new Date().setDate(new Date().getDate() - 180)).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} may not be returned. For older history, upload a CSV export from your bank.
-                  </p>
-                </div>
-              ) : (
-                <p className="text-xs text-black/70">Leave dates empty to use default range. Duplicates are not added.</p>
-              )}
+              <p className="text-xs text-black/70">Leave dates empty to use default range. Duplicates are not added.</p>
             </div>
             <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
               <button
@@ -1010,13 +994,15 @@ export function DataSourcesClient({
                     if (res.ok) {
                       const data = (await res.json().catch(() => ({}))) as {
                         message?: string;
-                        diagnostics?: StripeSyncDiag;
+                        diagnostics?: SyncDiag;
+                        plaidDiagnostics?: SyncDiag;
                       };
-                      logStripeSyncDiagnostics(data.diagnostics);
+                      const diag = data.plaidDiagnostics ?? data.diagnostics;
+                      logSyncDiagnostics(diag);
                       setPullModalSource(null);
                       await reloadSources();
                       window.dispatchEvent(new CustomEvent("inbox-count-changed"));
-                      setSyncStatusBar({ message: stripeSyncStatusMessage(data.diagnostics), type: "success" });
+                      setSyncStatusBar({ message: syncStatusMessage(diag), type: "success" });
                       setTimeout(() => setSyncStatusBar(null), 8000);
                       setToast(data.message ?? "Sync completed. Duplicates are skipped.");
                       setTimeout(() => setToast(null), 4000);
@@ -1124,36 +1110,15 @@ export function DataSourcesClient({
         </div>
       )}
 
-      {/* Post-connect date range modal: choose history and pull after Stripe accounts load */}
+      {/* Post-connect modal: pull transactions for newly connected accounts */}
       {showPostConnectDateModal && (() => {
-        const unsyncedStripeSources = sources.filter(
-          (s) => s.source_type === "stripe" && s.last_successful_sync_at == null
+        const unsyncedSources = sources.filter(
+          (s) => isDirectFeed(s.source_type) && s.last_successful_sync_at == null
         );
-        if (unsyncedStripeSources.length === 0) {
+        if (unsyncedSources.length === 0) {
           return null;
         }
-        const fcLookbackDate = (() => {
-          const d = new Date();
-          d.setDate(d.getDate() - 180);
-          return d.toISOString().slice(0, 10);
-        })();
-        const fcLookbackLabel = (() => {
-          const [y, mo, day] = fcLookbackDate.split("-").map(Number);
-          return new Date(y, mo - 1, day).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          });
-        })();
-        const today = new Date().toISOString().slice(0, 10);
-        let startDate: string | null = null;
-        if (postConnectLookback === "180days") startDate = fcLookbackDate;
-        else if (postConnectLookback === "custom" && postConnectCustomStartDate) startDate = postConnectCustomStartDate;
-        const canPull =
-          postConnectLookback !== "custom" ||
-          (postConnectCustomStartDate && postConnectCustomStartDate >= fcLookbackDate);
-        const exceedsFcLookback = startDate ? new Date(startDate) < new Date(fcLookbackDate) : false;
-        const accountNames = unsyncedStripeSources.map((s) => s.name).join(", ");
+        const accountNames = unsyncedSources.map((s) => s.name).join(", ");
         return (
           <div
             className="fixed inset-0 min-h-[100dvh] z-[60] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
@@ -1169,7 +1134,7 @@ export function DataSourcesClient({
                     Loading transactions
                   </h2>
                   <p className="text-xs text-black/70 text-center">
-                    Pulling from {unsyncedStripeSources.length > 1 ? "your accounts" : accountNames}… This may take a minute.
+                    Pulling from {unsyncedSources.length > 1 ? "your accounts" : accountNames}… This may take a minute.
                   </p>
                 </div>
               ) : (
@@ -1179,28 +1144,13 @@ export function DataSourcesClient({
                       Pull Bank Transactions
                     </h2>
                   </div>
-                  {exceedsFcLookback && (
-                    <div className="px-6 pt-3">
-                      <div className="border-0 bg-warm-stock px-3 py-3">
-                        <p className="text-xs text-black/80 leading-relaxed">
-                          Transactions before roughly{" "}
-                          {new Date(new Date().setDate(new Date().getDate() - 180)).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })}{" "}
-                          may not be available through this connection. To include older transactions, upload a CSV export from your bank after setup.
-                        </p>
-                      </div>
-                    </div>
-                  )}
                   <div className="px-6 py-3 space-y-3">
                     <p className="text-xs text-black">
-                      Select a date range and we’ll pull transactions for the connected accounts.
+                      We’ll pull available transaction history for your newly connected accounts.
                     </p>
 
                     <div className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
-                      {unsyncedStripeSources.map((s) => (
+                      {unsyncedSources.map((s) => (
                         <div key={s.id} className="px-4 py-3 text-sm text-mono-dark">
                           {s.name}
                         </div>
@@ -1210,60 +1160,6 @@ export function DataSourcesClient({
                     {postConnectError && (
                       <p className="text-xs text-[#B91C1C] px-0 py-1">{postConnectError}</p>
                     )}
-
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => { setPostConnectLookback("180days"); setPostConnectError(null); }}
-                          className={`py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border-0 ${
-                            postConnectLookback === "180days"
-                              ? "bg-black text-white"
-                              : "bg-cool-stock text-black/80 hover:bg-frost"
-                          }`}
-                        >
-                          Last 180 days
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setPostConnectLookback("forward"); setPostConnectError(null); }}
-                          className={`py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border-0 ${
-                            postConnectLookback === "forward"
-                              ? "bg-black text-white"
-                              : "bg-cool-stock text-black/80 hover:bg-frost"
-                          }`}
-                        >
-                          Going forward
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { setPostConnectLookback("custom"); setPostConnectError(null); }}
-                        className={`w-full py-2.5 px-3 text-sm font-medium font-sans transition-colors rounded-none border-0 ${
-                          postConnectLookback === "custom"
-                            ? "bg-black text-white"
-                            : "bg-cool-stock text-black/80 hover:bg-frost"
-                        }`}
-                      >
-                        Custom start date
-                      </button>
-                      {postConnectLookback === "custom" && (
-                        <div>
-                          <label className="block text-xs text-black mb-1">Start date</label>
-                          <input
-                            type="date"
-                            value={postConnectCustomStartDate}
-                            onChange={(e) => setPostConnectCustomStartDate(e.target.value)}
-                            className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
-                          />
-                          {postConnectCustomStartDate && postConnectCustomStartDate < fcLookbackDate && (
-                            <p className="text-xs text-[#B91C1C] mt-1">
-                              Date must be after {fcLookbackLabel}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
                   </div>
                   <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
                     <button
@@ -1276,40 +1172,24 @@ export function DataSourcesClient({
                     </button>
                     <button
                       type="button"
-                      disabled={postConnectPulling || !canPull}
+                      disabled={postConnectPulling}
                       onClick={async () => {
                         setPostConnectPulling(true);
                         setPostConnectError(null);
                         try {
-                          const start = startDate ?? null;
                           const failed: { name: string }[] = [];
-                          let lastSuccessfulDiagnostics: StripeSyncDiag | undefined;
-                          for (const source of unsyncedStripeSources) {
-                            if (start) {
-                              const patchRes = await fetch("/api/data-sources", {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ id: source.id, stripe_sync_start_date: start }),
-                              });
-                              if (!patchRes.ok) {
-                                failed.push({ name: source.name });
-                                continue;
-                              }
-                            }
-                            const syncBody: { data_source_id: string; start_date?: string; end_date: string } = {
-                              data_source_id: source.id,
-                              end_date: today,
-                            };
-                            if (start) syncBody.start_date = start;
+                          let lastDiag: SyncDiag | undefined;
+                          for (const source of unsyncedSources) {
                             const res = await fetch("/api/data-sources/sync", {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify(syncBody),
+                              body: JSON.stringify({ data_source_id: source.id }),
                             });
                             if (res.ok) {
-                              const data = (await res.json().catch(() => ({}))) as { diagnostics?: StripeSyncDiag };
-                              logStripeSyncDiagnostics(data.diagnostics);
-                              lastSuccessfulDiagnostics = data.diagnostics ?? lastSuccessfulDiagnostics;
+                              const data = (await res.json().catch(() => ({}))) as { diagnostics?: SyncDiag; plaidDiagnostics?: SyncDiag };
+                              const diag = data.plaidDiagnostics ?? data.diagnostics;
+                              logSyncDiagnostics(diag);
+                              lastDiag = diag ?? lastDiag;
                             } else {
                               failed.push({ name: source.name });
                             }
@@ -1317,15 +1197,15 @@ export function DataSourcesClient({
                           setShowPostConnectDateModal(false);
                           await reloadSources();
                           window.dispatchEvent(new CustomEvent("inbox-count-changed"));
-                          const okCount = unsyncedStripeSources.length - failed.length;
+                          const okCount = unsyncedSources.length - failed.length;
                           if (okCount > 0) {
-                            const singleAccountOk = okCount === 1 && unsyncedStripeSources.length === 1 && failed.length === 0;
+                            const singleOk = okCount === 1 && unsyncedSources.length === 1 && failed.length === 0;
                             setSyncStatusBar({
-                              message: singleAccountOk && lastSuccessfulDiagnostics
-                                ? stripeSyncStatusMessage(lastSuccessfulDiagnostics)
+                              message: singleOk && lastDiag
+                                ? syncStatusMessage(lastDiag)
                                 : failed.length > 0
                                   ? `Loaded ${okCount} account${okCount === 1 ? "" : "s"}. ${failed.length} couldn’t be loaded — retry or reconnect from the card.`
-                                  : `Transactions loaded for ${okCount} account${okCount === 1 ? "" : "s"}. Open the browser console for Stripe sync diagnostics (pagination per account).`,
+                                  : `Transactions loaded for ${okCount} account${okCount === 1 ? "" : "s"}.`,
                               type: "success",
                             });
                             setToast(failed.length > 0
@@ -1405,7 +1285,7 @@ export function DataSourcesClient({
                   <div className="flex flex-wrap items-center gap-2 mb-2">
                     <span
                       className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium ${
-                        source.source_type === "stripe"
+                        isDirectFeed(source.source_type)
                           ? "bg-[#2563EB]/15 text-[#2563EB]"
                           : "bg-bg-tertiary text-mono-medium"
                       }`}
@@ -1428,10 +1308,10 @@ export function DataSourcesClient({
                       <span className="font-medium text-mono-dark">
                         {formatEarliestCompact(s.earliestTransactionDateInTaxYear)}
                       </span>
-                      {source.source_type === "stripe" && (
+                      {isDirectFeed(source.source_type) && (
                         <>
                           <span className="text-mono-light"> · </span>
-                          <span className="text-mono-light">~6 mo bank feed</span>
+                          <span className="text-mono-light">{source.source_type === "plaid" ? "up to 24 mo history" : "~6 mo bank feed"}</span>
                           {" · "}
                           <button
                             type="button"
@@ -1445,11 +1325,16 @@ export function DataSourcesClient({
                       .
                     </p>
                   )}
-                  {source.source_type === "stripe" && (
+                  {isDirectFeed(source.source_type) && (
                     <div className="text-xs text-mono-light mt-1 space-y-0.5">
                       {!source.last_successful_sync_at && totalTxCount === 0 && (
                         <p className="text-mono-medium">
                           Pull transactions to load activity from your bank.
+                        </p>
+                      )}
+                      {source.source_type === "plaid" && (
+                        <p className="text-mono-light">
+                          Lookback: up to <span className="font-medium text-mono-dark">24 months</span> (varies by institution).
                         </p>
                       )}
                       {source.last_successful_sync_at && totalTxCount === 0 && (
@@ -1459,10 +1344,10 @@ export function DataSourcesClient({
                       )}
                     </div>
                   )}
-                  {source.source_type === "stripe" && (stripeStatuses[source.id] === "disconnected" || stripeStatuses[source.id] === "inactive" || !source.financial_connections_account_id) && (
+                  {isDirectFeed(source.source_type) && (connectionStatuses[source.id] === "disconnected" || connectionStatuses[source.id] === "inactive" || connectionStatuses[source.id] === "login_required" || connectionStatuses[source.id] === "error" || !(source.financial_connections_account_id || source.plaid_item_id)) && (
                     <div className="mt-3 bg-[#F5F0E8] p-3">
                       <p className="text-sm font-medium text-mono-dark">
-                        {!source.financial_connections_account_id
+                        {!(source.financial_connections_account_id || source.plaid_item_id)
                           ? "This account isn't linked to a bank."
                           : "This connection is no longer active"}
                       </p>
@@ -1476,7 +1361,7 @@ export function DataSourcesClient({
                       </button>
                     </div>
                   )}
-                  {hasSyncFailure && !(source.source_type === "stripe" && (stripeStatuses[source.id] === "disconnected" || stripeStatuses[source.id] === "inactive" || !source.financial_connections_account_id)) && (
+                  {hasSyncFailure && !(isDirectFeed(source.source_type) && (connectionStatuses[source.id] === "disconnected" || connectionStatuses[source.id] === "inactive" || connectionStatuses[source.id] === "login_required" || connectionStatuses[source.id] === "error" || !(source.financial_connections_account_id || source.plaid_item_id))) && (
                     <div className="mt-3 bg-[#F5F0E8] p-3">
                       <p className="text-sm font-medium text-mono-dark">We&apos;re having trouble syncing your account</p>
                       <p className="text-xs text-mono-medium mt-1">
@@ -1501,7 +1386,7 @@ export function DataSourcesClient({
                       <span className="tabular-nums font-medium text-mono-dark">{reviewedTxCount}</span>
                       <span className="tabular-nums"> / {totalTxCount}</span>
                       {" transactions"}
-                      {source.source_type === "stripe" && (
+                      {isDirectFeed(source.source_type) && (
                         <>
                           <span className="mx-2">·</span>
                           <span className="tabular-nums">Synced: {formatLastPulled(source)}</span>
@@ -1529,7 +1414,19 @@ export function DataSourcesClient({
                     </>
                   )}
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {source.source_type === "stripe" && stripeStatuses[source.id] !== "disconnected" && stripeStatuses[source.id] !== "inactive" && source.financial_connections_account_id && (
+                    <Link
+                      href={`/activity?data_source_id=${encodeURIComponent(source.id)}`}
+                      className="inline-flex items-center gap-2 rounded-none border border-bg-tertiary/60 px-3 py-2 text-sm font-medium text-mono-medium hover:bg-bg-secondary/60 transition"
+                    >
+                      <span
+                        className="material-symbols-rounded leading-none"
+                        style={{ fontSize: 16 }}
+                      >
+                        list
+                      </span>
+                      View transactions
+                    </Link>
+                    {isDirectFeed(source.source_type) && connectionStatuses[source.id] !== "disconnected" && connectionStatuses[source.id] !== "inactive" && connectionStatuses[source.id] !== "login_required" && connectionStatuses[source.id] !== "error" && (source.financial_connections_account_id || source.plaid_item_id) && (
                       <button
                         type="button"
                         onClick={() => setPullModalSource(source)}
@@ -1548,7 +1445,7 @@ export function DataSourcesClient({
                       type="button"
                       onClick={() => setUploadSourceId(source.id)}
                       className={`inline-flex items-center gap-2 rounded-none px-3 py-2 text-sm font-medium transition ${
-                        source.source_type === "stripe"
+                        isDirectFeed(source.source_type)
                           ? "bg-cool-stock text-black hover:bg-frost"
                           : "bg-[#2563EB] text-white hover:opacity-90"
                       }`}
@@ -1594,7 +1491,7 @@ export function DataSourcesClient({
       {uploadSourceId && (
         <UploadModal
           dataSourceId={uploadSourceId}
-          directFeedAccount={sources.some((s) => s.id === uploadSourceId && s.source_type === "stripe")}
+          directFeedAccount={sources.some((s) => s.id === uploadSourceId && isDirectFeed(s.source_type))}
           onClose={() => setUploadSourceId(null)}
           onCompleted={async (result) => {
             setUploadSourceId(null);

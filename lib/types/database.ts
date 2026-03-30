@@ -245,6 +245,10 @@ export interface Database {
           last_upload_at: string | null;
           transaction_count: number;
           stripe_sync_start_date: string | null;
+          plaid_access_token: string | null;
+          plaid_item_id: string | null;
+          plaid_cursor: string | null;
+          plaid_institution_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -263,6 +267,10 @@ export interface Database {
           last_upload_at?: string | null;
           transaction_count?: number;
           stripe_sync_start_date?: string | null;
+          plaid_access_token?: string | null;
+          plaid_item_id?: string | null;
+          plaid_cursor?: string | null;
+          plaid_institution_id?: string | null;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["data_sources"]["Insert"]>;
@@ -374,6 +382,48 @@ export interface Database {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["subscriptions"]["Insert"]>;
+      };
+      tax_filing_overrides: {
+        Row: {
+          id: string;
+          user_id: string;
+          tax_year: number;
+          form_type: string;
+          line_key: string;
+          original_value: string | null;
+          override_value: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          tax_year: number;
+          form_type: string;
+          line_key: string;
+          original_value?: string | null;
+          override_value: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["tax_filing_overrides"]["Insert"]>;
+      };
+      disclaimer_acknowledgments: {
+        Row: {
+          id: string;
+          user_id: string;
+          action_type: string;
+          tax_year: number;
+          acknowledged_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          action_type: string;
+          tax_year: number;
+          acknowledged_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["disclaimer_acknowledgments"]["Insert"]>;
       };
       activity_view_settings: {
         Row: {

@@ -550,15 +550,7 @@ export function TransactionDetailPanel({
           <PropertyRow label="Data source">
             {transaction.source === "data_feed" ? (
               <span className="text-xs text-mono-medium">
-                Direct Feed through{" "}
-                <a
-                  href="https://stripe.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-semibold text-blue-600 hover:text-blue-700"
-                >
-                  Stripe
-                </a>
+                Direct Feed
               </span>
             ) : editable && onSave ? (
               <select

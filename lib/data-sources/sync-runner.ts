@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StripeMode } from "@/lib/stripe";
 import { getStripeClient } from "@/lib/stripe";
+import { getPlaidClient, decryptAccessToken } from "@/lib/plaid";
 import { normalizeVendor } from "@/lib/vendor-matching";
 
 /**
@@ -60,6 +61,31 @@ export type StripeSyncDiagnostics = {
   startDateExceedsFcLookback: boolean;
 };
 
+/** Returned on successful Plaid /transactions/sync. */
+export type PlaidSyncDiagnostics = {
+  plaidItemId: string;
+  /** Number of cursor-based sync pages fetched. */
+  syncPages: number;
+  /** Transactions returned in `added` across all pages. */
+  addedCount: number;
+  /** Transactions returned in `modified` across all pages. */
+  modifiedCount: number;
+  /** Transactions returned in `removed` across all pages. */
+  removedCount: number;
+  /** New rows upserted into the database. */
+  upsertedCount: number;
+  /** Rows updated in the database (modified transactions). */
+  updatedCount: number;
+  /** Rows deleted from the database (removed transactions). */
+  deletedCount: number;
+  /** Row count in DB for this data source after sync. */
+  transactionCountForDataSource: number;
+  /** Earliest transaction date returned in this sync batch. */
+  earliestTransactionDateReturned: string | null;
+  /** Latest transaction date returned in this sync batch. */
+  latestTransactionDateReturned: string | null;
+};
+
 export type SyncResult = {
   success: boolean;
   message?: string;
@@ -68,6 +94,8 @@ export type SyncResult = {
   status?: number;
   /** Present after a successful `stripe` sync. */
   diagnostics?: StripeSyncDiagnostics;
+  /** Present after a successful `plaid` sync. */
+  plaidDiagnostics?: PlaidSyncDiagnostics;
 };
 
 export type SyncOptions = {
@@ -76,6 +104,8 @@ export type SyncOptions = {
   startDate?: string | null;
   /** End date for this sync (Stripe FC transacted_at.lte). */
   endDate?: string | null;
+  /** Request hostname — used to resolve Plaid environment (localhost → PLAID_ENV, prod → production). */
+  hostname?: string;
 };
 
 /**
@@ -426,6 +456,195 @@ export async function runSyncForDataSource(
         success: true,
         message: `Sync completed. ${inserted} new transactions.${lookbackNote}`,
         diagnostics,
+      };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Sync failed";
+      await (supabase as any)
+        .from("data_sources")
+        .update({
+          last_failed_sync_at: new Date().toISOString(),
+          last_error_summary: message.slice(0, 500),
+        })
+        .eq("id", dataSourceId)
+        .eq("user_id", userId);
+      return { success: false, error: message, status: 500 };
+    }
+  }
+
+  if (sourceType === "plaid") {
+    try {
+      const { data: row, error: fetchError } = await (supabase as any)
+        .from("data_sources")
+        .select("id, plaid_access_token, plaid_item_id, plaid_cursor")
+        .eq("id", dataSourceId)
+        .eq("user_id", userId)
+        .single();
+
+      if (fetchError || !row?.plaid_access_token) {
+        await (supabase as any)
+          .from("data_sources")
+          .update({
+            last_failed_sync_at: new Date().toISOString(),
+            last_error_summary: "This account isn't linked to a bank. Use Repair connection to reconnect.",
+          })
+          .eq("id", dataSourceId)
+          .eq("user_id", userId);
+        return {
+          success: false,
+          error: "This account isn't linked via Plaid. Use Repair connection to reconnect.",
+          status: 400,
+        };
+      }
+
+      const plaid = getPlaidClient(options?.hostname);
+      const accessToken = decryptAccessToken(row.plaid_access_token as string);
+      let cursor: string | undefined = (row.plaid_cursor as string) || undefined;
+
+      let addedCount = 0;
+      let modifiedCount = 0;
+      let removedCount = 0;
+      let upsertedCount = 0;
+      let updatedCount = 0;
+      let deletedCount = 0;
+      let syncPages = 0;
+      let earliestDate: string | null = null;
+      let latestDate: string | null = null;
+      let firstInsertError: string | null = null;
+
+      // Plaid /transactions/sync uses cursor-based pagination: loop until has_more is false.
+      let hasMore = true;
+      while (hasMore) {
+        syncPages += 1;
+        const syncRes = await plaid.transactionsSync({
+          access_token: accessToken,
+          ...(cursor ? { cursor } : {}),
+        });
+        const data = syncRes.data;
+        hasMore = data.has_more;
+        cursor = data.next_cursor;
+
+        // Process added transactions
+        for (const tx of data.added) {
+          addedCount += 1;
+          const dateStr = tx.date;
+          const year = new Date(dateStr).getFullYear();
+          // Plaid: positive = money out (expense), negative = money in (income)
+          const amount = Number((-tx.amount).toFixed(2));
+          const vendor = (tx.merchant_name ?? tx.name ?? "Unknown").slice(0, 255);
+          const vendorNormalized = vendor.trim() ? normalizeVendor(vendor) : null;
+
+          if (!earliestDate || dateStr < earliestDate) earliestDate = dateStr;
+          if (!latestDate || dateStr > latestDate) latestDate = dateStr;
+
+          const { error: insErr } = await (supabase as any)
+            .from("transactions")
+            .upsert(
+              {
+                user_id: userId,
+                date: dateStr,
+                vendor,
+                vendor_normalized: vendorNormalized,
+                description: tx.name ?? null,
+                amount,
+                status: "pending",
+                tax_year: year,
+                source: "data_feed",
+                transaction_type: amount > 0 ? "income" : "expense",
+                data_source_id: dataSourceId,
+                data_feed_external_id: tx.transaction_id,
+                updated_at: new Date().toISOString(),
+              },
+              {
+                onConflict: "data_source_id,data_feed_external_id",
+                ignoreDuplicates: true,
+              },
+            );
+          if (insErr && !firstInsertError) {
+            firstInsertError = insErr.message ?? String(insErr);
+            console.warn("[sync-runner/plaid] First insert error", { dataSourceId, error: firstInsertError, txId: tx.transaction_id });
+          }
+          if (!insErr) upsertedCount++;
+        }
+
+        // Process modified transactions (update existing rows)
+        for (const tx of data.modified) {
+          modifiedCount += 1;
+          const amount = Number((-tx.amount).toFixed(2));
+          const vendor = (tx.merchant_name ?? tx.name ?? "Unknown").slice(0, 255);
+          const vendorNormalized = vendor.trim() ? normalizeVendor(vendor) : null;
+          const { error: updErr } = await (supabase as any)
+            .from("transactions")
+            .update({
+              date: tx.date,
+              vendor,
+              vendor_normalized: vendorNormalized,
+              description: tx.name ?? null,
+              amount,
+              transaction_type: amount > 0 ? "income" : "expense",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("data_source_id", dataSourceId)
+            .eq("data_feed_external_id", tx.transaction_id);
+          if (!updErr) updatedCount++;
+        }
+
+        // Process removed transactions
+        for (const tx of data.removed) {
+          removedCount += 1;
+          const txId = tx.transaction_id;
+          if (!txId) continue;
+          const { error: delErr } = await (supabase as any)
+            .from("transactions")
+            .delete()
+            .eq("data_source_id", dataSourceId)
+            .eq("data_feed_external_id", txId);
+          if (!delErr) deletedCount++;
+        }
+      }
+
+      // Save cursor for next incremental sync
+      const { count } = await (supabase as any)
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("data_source_id", dataSourceId);
+      const transactionCount = count ?? 0;
+
+      const hadAddedButNoInsert = addedCount > 0 && upsertedCount === 0 && firstInsertError;
+      await (supabase as any)
+        .from("data_sources")
+        .update({
+          plaid_cursor: cursor ?? null,
+          last_failed_sync_at: hadAddedButNoInsert ? new Date().toISOString() : null,
+          last_error_summary: hadAddedButNoInsert && firstInsertError ? `Transactions could not be saved: ${firstInsertError.slice(0, 400)}` : null,
+          last_successful_sync_at: new Date().toISOString(),
+          transaction_count: transactionCount,
+        })
+        .eq("id", dataSourceId)
+        .eq("user_id", userId);
+
+      const plaidDiagnostics: PlaidSyncDiagnostics = {
+        plaidItemId: (row.plaid_item_id as string) ?? "",
+        syncPages,
+        addedCount,
+        modifiedCount,
+        removedCount,
+        upsertedCount,
+        updatedCount,
+        deletedCount,
+        transactionCountForDataSource: transactionCount,
+        earliestTransactionDateReturned: earliestDate,
+        latestTransactionDateReturned: latestDate,
+      };
+      console.warn("[sync-runner/plaid] Sync completed", {
+        dataSourceId,
+        ...plaidDiagnostics,
+        firstInsertError: firstInsertError ?? undefined,
+      });
+
+      return {
+        success: true,
+        message: `Sync completed. ${upsertedCount} new, ${updatedCount} updated, ${deletedCount} removed.`,
+        plaidDiagnostics,
       };
     } catch (e) {
       const message = e instanceof Error ? e.message : "Sync failed";

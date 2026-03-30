@@ -6,7 +6,7 @@ const PRO_PRICE = "$400/year";
 
 const PRO_BENEFITS = [
   "Unlimited AI categorization",
-  "Multiple Stripe bank connections",
+  "Multiple bank connections",
   "Full transaction history (beyond 30 days)",
   "Rules & alerts automation",
 ];

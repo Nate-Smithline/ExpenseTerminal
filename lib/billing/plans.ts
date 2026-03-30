@@ -29,7 +29,7 @@ export const plans: Record<PlanId, PlanDefinition> = {
       "Inbox-first review of your business expenses",
       "CSV uploads for bank and card exports",
       "Unlimited AI-reviewed transactions",
-      "Live bank syncing with Stripe Financial Connections",
+      "Live bank syncing via Plaid (up to 24 months)",
       "Schedule C-focused categorization and notes",
     ],
     maxCsvTransactionsForAi: null,
@@ -62,7 +62,7 @@ export const plans: Record<PlanId, PlanDefinition> = {
     description: "For founders who want ExpenseTerminal woven directly into their banking.",
     highlights: [
       "Unlimited AI-reviewed transactions",
-      "Live bank syncing with Stripe Financial Connections",
+      "Live bank syncing via Plaid (up to 24 months)",
       "Rich Inbox workflows and keyboard shortcuts",
       "Export-ready summaries for your accountant",
     ],

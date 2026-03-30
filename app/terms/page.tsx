@@ -30,7 +30,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg text-[#5B82B4] mb-3">1. Platform Description &amp; Scope</h2>
             <p>
-              ExpenseTerminal is a software-as-a-service platform that enables users to upload financial data files (including CSV and similar formats) for the purpose of generating tax-related analysis, insights, and informational content. The Platform may integrate with third-party financial data aggregation services, including Stripe Financial Connections (&ldquo;Financial Data Partners&rdquo;).
+              ExpenseTerminal is a software-as-a-service platform that enables users to upload financial data files (including CSV and similar formats) for the purpose of generating tax-related analysis, insights, and informational content. The Platform may integrate with third-party financial data aggregation services, including Plaid (&ldquo;Financial Data Partners&rdquo;).
             </p>
           </section>
 
@@ -75,7 +75,7 @@ export default function TermsPage() {
             </p>
             <h3 className="text-base text-mono-dark mb-2 mt-4">4.2 Third-Party Financial Data Connections</h3>
             <p className="mb-2">
-              The Platform may connect to your financial accounts through Financial Data Partners (e.g., Stripe Financial Connections). By authorizing such connections, you acknowledge and agree:
+              The Platform may connect to your financial accounts through Financial Data Partners (e.g., Plaid). By authorizing such connections, you acknowledge and agree:
             </p>
             <ul className="list-disc pl-5 space-y-1 mb-3">
               <li>The Company is not responsible for the security, availability, or accuracy of data retrieved through Financial Data Partners</li>

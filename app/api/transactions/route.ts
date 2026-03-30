@@ -32,6 +32,9 @@ export async function GET(req: Request) {
   const limit = parseQueryLimit(searchParams.get("limit"));
   const offset = parseQueryOffset(searchParams.get("offset"));
   const vendorNormalized = searchParams.get("vendor_normalized");
+  const dataSourceIdRaw = searchParams.get("data_source_id");
+  const dataSourceId =
+    dataSourceIdRaw && uuidSchema.safeParse(dataSourceIdRaw).success ? dataSourceIdRaw : null;
   const excludeIdRaw = searchParams.get("exclude_id");
   const excludeId = excludeIdRaw && uuidSchema.safeParse(excludeIdRaw).success ? excludeIdRaw : null;
   const countOnly = searchParams.get("count_only") === "true";
@@ -60,6 +63,7 @@ export async function GET(req: Request) {
   if (status) query = query.eq("status", status);
   if (txType) query = query.eq("transaction_type", txType);
   if (source) query = query.eq("source", source);
+  if (dataSourceId) query = query.eq("data_source_id", dataSourceId);
   if (vendorNormalized) {
     query = query.or(`vendor_normalized.eq.${vendorNormalized},vendor_normalized.is.null`);
   }

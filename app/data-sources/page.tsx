@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
-import { getStripeModeForHostname, getStripePublishableKey } from "@/lib/stripe";
 import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
 import { getProfileOnboarding } from "@/lib/profile";
 import { DataSourcesClient } from "./DataSourcesClient";
@@ -107,17 +106,11 @@ export default async function DataSourcesPage() {
     }
   }
 
-  const headersList = await headers();
-  const host = headersList.get("host") ?? "";
-  const stripeMode = getStripeModeForHostname(host);
-  const stripePublishableKey = getStripePublishableKey(stripeMode);
-
   return (
     <DataSourcesClient
       initialSources={sources ?? []}
       initialStats={statsBySource}
       taxYear={taxYear}
-      stripePublishableKey={stripePublishableKey}
     />
   );
 }

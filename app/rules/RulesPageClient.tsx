@@ -17,7 +17,7 @@ type NotificationPrefs = {
 } | null;
 
 const SOURCE_LABELS: Record<string, string> = {
-  data_feed: "Stripe",
+  data_feed: "Direct Feed",
   csv_upload: "CSV",
   manual: "Manual",
 };

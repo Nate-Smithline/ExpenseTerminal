@@ -23,7 +23,7 @@ export default function PrivacyPage() {
         <div className="space-y-8 text-sm text-mono-medium leading-relaxed border-t border-bg-tertiary pt-8">
           <section>
             <p className="mb-4">
-              Sociatty LLC (&ldquo;Company,&rdquo; &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;) is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use the ExpenseTerminal platform (&ldquo;Platform&rdquo;), including when you connect financial accounts through third-party aggregators such as Stripe Financial Connections.
+              Sociatty LLC (&ldquo;Company,&rdquo; &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;) is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use the ExpenseTerminal platform (&ldquo;Platform&rdquo;), including when you connect financial accounts through third-party aggregators such as Plaid.
             </p>
           </section>
 
@@ -38,7 +38,7 @@ export default function PrivacyPage() {
             </ul>
             <h3 className="text-base text-mono-dark mb-2 mt-4">1.2 Financial Account Data via Third-Party Aggregators</h3>
             <p className="mb-2">
-              When you connect financial accounts through Stripe Financial Connections or similar services, we may receive:
+              When you connect financial accounts through Plaid or similar services, we may receive:
             </p>
             <ul className="list-disc pl-5 space-y-1 mb-3">
               <li>Account balances and transaction histories</li>
@@ -97,7 +97,7 @@ export default function PrivacyPage() {
             </p>
             <h3 className="text-base text-mono-dark mb-2 mt-4">4.2 Financial Data Partners</h3>
             <p className="mb-3">
-              Your financial account data may be shared with or retrieved through Stripe Financial Connections or other aggregators solely to facilitate account connectivity. These partners operate under their own privacy policies, which we encourage you to review.
+              Your financial account data may be shared with or retrieved through Plaid or other aggregators solely to facilitate account connectivity. These partners operate under their own privacy policies, which we encourage you to review.
             </p>
             <h3 className="text-base text-mono-dark mb-2 mt-4">4.3 Legal Requirements</h3>
             <p className="mb-3">

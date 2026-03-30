@@ -10,9 +10,16 @@ import type { TransactionUpdate } from "@/components/TransactionCard";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
+const PAGE_SIZE = 100;
+
 function defaultDateRange() {
   const y = new Date().getFullYear();
   return { date_from: `${y}-01-01`, date_to: `${y}-12-31` };
+}
+
+function allTimeDateRange() {
+  const today = new Date().toISOString().slice(0, 10);
+  return { date_from: "1970-01-01", date_to: today };
 }
 
 const DEFAULT_VIEW_STATE: ActivityViewState = {
@@ -23,6 +30,7 @@ const DEFAULT_VIEW_STATE: ActivityViewState = {
     status: null,
     transaction_type: null,
     source: null,
+    data_source_id: null,
     search: "",
     ...defaultDateRange(),
   },
@@ -62,15 +70,15 @@ export function ActivityPageClient({
   const [viewState, setViewState] = useState<ActivityViewState>(DEFAULT_VIEW_STATE);
   const [viewSettingsLoaded, setViewSettingsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [reanalyzing, setReanalyzing] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [sidebarTransaction, setSidebarTransaction] = useState<Transaction | null>(null);
   const patchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadTransactions = useCallback(async () => {
-    setLoading(true);
+  const baseQueryParams = useCallback((): Record<string, string> => {
     const params: Record<string, string> = {
-      limit: "100",
+      limit: String(PAGE_SIZE),
       sort_by: viewState.sort_column,
       sort_order: viewState.sort_asc ? "asc" : "desc",
       date_from: viewState.filters.date_from,
@@ -79,7 +87,24 @@ export function ActivityPageClient({
     if (viewState.filters.status) params.status = viewState.filters.status;
     if (viewState.filters.transaction_type) params.transaction_type = viewState.filters.transaction_type;
     if (viewState.filters.source) params.source = viewState.filters.source;
+    if (viewState.filters.data_source_id) params.data_source_id = viewState.filters.data_source_id;
     if (viewState.filters.search) params.search = viewState.filters.search;
+    return params;
+  }, [
+    viewState.sort_column,
+    viewState.sort_asc,
+    viewState.filters.status,
+    viewState.filters.transaction_type,
+    viewState.filters.source,
+    viewState.filters.data_source_id,
+    viewState.filters.search,
+    viewState.filters.date_from,
+    viewState.filters.date_to,
+  ]);
+
+  const loadTransactions = useCallback(async () => {
+    setLoading(true);
+    const params = baseQueryParams();
 
     const [txs, count] = await Promise.all([
       fetchTransactions(params),
@@ -89,7 +114,23 @@ export function ActivityPageClient({
     setTotalCount(count);
     setLoading(false);
     return txs;
-  }, [viewState.sort_column, viewState.sort_asc, viewState.filters.status, viewState.filters.transaction_type, viewState.filters.source, viewState.filters.search, viewState.filters.date_from, viewState.filters.date_to]);
+  }, [baseQueryParams]);
+
+  const canLoadMore = transactions.length < totalCount;
+  const loadMore = useCallback(async () => {
+    if (loading || loadingMore) return;
+    if (!canLoadMore) return;
+    setLoadingMore(true);
+    try {
+      const params = { ...baseQueryParams(), offset: String(transactions.length) };
+      const next = await fetchTransactions(params);
+      if (next.length > 0) {
+        setTransactions((prev) => [...prev, ...next]);
+      }
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loading, loadingMore, canLoadMore, baseQueryParams, transactions.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,6 +151,7 @@ export function ActivityPageClient({
                 status: data.filters?.status ?? null,
                 transaction_type: data.filters?.transaction_type ?? null,
                 source: data.filters?.source ?? null,
+                data_source_id: typeof data.filters?.data_source_id === "string" ? data.filters.data_source_id : null,
                 search: typeof data.filters?.search === "string" ? data.filters.search : "",
                 date_from: typeof data.filters?.date_from === "string" ? data.filters.date_from : defaultDateRange().date_from,
                 date_to: typeof data.filters?.date_to === "string" ? data.filters.date_to : defaultDateRange().date_to,
@@ -124,6 +166,25 @@ export function ActivityPageClient({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // If URL has ?data_source_id=, override filters (deep link from Accounts page).
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const ds = sp.get("data_source_id");
+      if (!ds) return;
+      setViewState((prev) => ({
+        ...prev,
+        filters: {
+          ...prev.filters,
+          data_source_id: ds,
+          ...allTimeDateRange(),
+        },
+      }));
+    } catch {
+      // ignore
+    }
   }, []);
 
   useEffect(() => {
@@ -424,6 +485,19 @@ export function ActivityPageClient({
           selectedId={sidebarTransaction?.id ?? null}
           onSelectRow={setSidebarTransaction}
         />
+      )}
+
+      {!loading && transactions.length > 0 && (
+        <div className="flex justify-center pt-2">
+          <button
+            type="button"
+            onClick={loadMore}
+            disabled={!canLoadMore || loadingMore}
+            className="inline-flex items-center gap-2 rounded-none border border-bg-tertiary/60 px-4 py-2.5 text-sm font-medium text-mono-medium hover:bg-bg-secondary/60 transition disabled:opacity-50"
+          >
+            {loadingMore ? "Loading…" : canLoadMore ? `Load more (${transactions.length}/${totalCount})` : "All transactions loaded"}
+          </button>
+        </div>
       )}
 
       {sidebarTransaction && (
