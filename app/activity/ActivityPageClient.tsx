@@ -1,12 +1,17 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import type { Database } from "@/lib/types/database";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import type { Database, Json } from "@/lib/types/database";
 import { normalizeVendor } from "@/lib/vendor-matching";
+import { createSupabaseClient } from "@/lib/supabase/client";
 import { ActivityToolbar, type ActivityViewState } from "./ActivityToolbar";
 import { ActivityTable } from "./ActivityTable";
 import { TransactionDetailPanel, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
+import type { TransactionPropertyDefinition } from "@/lib/transaction-property-definition";
+import type { OrgMemberOption } from "@/components/TransactionDetailCustomFields";
+import { useIntersectionLoadMore } from "@/lib/use-intersection-load-more";
 import type { TransactionUpdate } from "@/components/TransactionCard";
+import { parseColumnFiltersJson, serializeColumnFiltersForQuery } from "@/lib/activity-column-filters";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
@@ -26,12 +31,14 @@ const DEFAULT_VIEW_STATE: ActivityViewState = {
   sort_column: "date",
   sort_asc: false,
   visible_columns: ["date", "vendor", "amount", "transaction_type", "status", "category"],
+  column_widths: {},
   filters: {
     status: null,
     transaction_type: null,
     source: null,
     data_source_id: null,
     search: "",
+    column_filters: [],
     ...defaultDateRange(),
   },
 };
@@ -74,7 +81,17 @@ export function ActivityPageClient({
   const [reanalyzing, setReanalyzing] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [sidebarTransaction, setSidebarTransaction] = useState<Transaction | null>(null);
+  const [transactionProperties, setTransactionProperties] = useState<TransactionPropertyDefinition[]>([]);
+  const [orgMembers, setOrgMembers] = useState<OrgMemberOption[]>([]);
   const patchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const memberDisplayById = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const mem of orgMembers) {
+      m[mem.id] = mem.display_name?.trim() || mem.email?.trim() || mem.id.slice(0, 8);
+    }
+    return m;
+  }, [orgMembers]);
 
   const baseQueryParams = useCallback((): Record<string, string> => {
     const params: Record<string, string> = {
@@ -89,6 +106,9 @@ export function ActivityPageClient({
     if (viewState.filters.source) params.source = viewState.filters.source;
     if (viewState.filters.data_source_id) params.data_source_id = viewState.filters.data_source_id;
     if (viewState.filters.search) params.search = viewState.filters.search;
+    if (viewState.filters.column_filters?.length) {
+      params.column_filters = serializeColumnFiltersForQuery(viewState.filters.column_filters);
+    }
     return params;
   }, [
     viewState.sort_column,
@@ -100,6 +120,7 @@ export function ActivityPageClient({
     viewState.filters.search,
     viewState.filters.date_from,
     viewState.filters.date_to,
+    viewState.filters.column_filters,
   ]);
 
   const loadTransactions = useCallback(async () => {
@@ -132,6 +153,12 @@ export function ActivityPageClient({
     }
   }, [loading, loadingMore, canLoadMore, baseQueryParams, transactions.length]);
 
+  const loadMoreSentinelRef = useIntersectionLoadMore(
+    loadMore,
+    canLoadMore && !loading && transactions.length > 0,
+    transactions.length
+  );
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -147,6 +174,10 @@ export function ActivityPageClient({
               visible_columns: Array.isArray(data.visible_columns) && data.visible_columns.length > 0
                 ? data.visible_columns
                 : DEFAULT_VIEW_STATE.visible_columns,
+              column_widths:
+                data.column_widths && typeof data.column_widths === "object" && !Array.isArray(data.column_widths)
+                  ? data.column_widths
+                  : {},
               filters: {
                 status: data.filters?.status ?? null,
                 transaction_type: data.filters?.transaction_type ?? null,
@@ -155,12 +186,42 @@ export function ActivityPageClient({
                 search: typeof data.filters?.search === "string" ? data.filters.search : "",
                 date_from: typeof data.filters?.date_from === "string" ? data.filters.date_from : defaultDateRange().date_from,
                 date_to: typeof data.filters?.date_to === "string" ? data.filters.date_to : defaultDateRange().date_to,
+                column_filters: parseColumnFiltersJson(data.filters?.column_filters ?? []),
               },
             });
           }
         }
       } finally {
         if (!cancelled) setViewSettingsLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refreshTransactionProperties = useCallback(async () => {
+    const res = await fetch("/api/org/transaction-properties");
+    if (!res.ok) return;
+    const j = await res.json().catch(() => ({}));
+    setTransactionProperties(Array.isArray(j.properties) ? j.properties : []);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [pRes, mRes] = await Promise.all([
+        fetch("/api/org/transaction-properties"),
+        fetch("/api/orgs/members"),
+      ]);
+      if (cancelled) return;
+      if (pRes.ok) {
+        const j = await pRes.json().catch(() => ({}));
+        setTransactionProperties(Array.isArray(j.properties) ? j.properties : []);
+      }
+      if (mRes.ok) {
+        const j = await mRes.json().catch(() => ({}));
+        setOrgMembers(Array.isArray(j.members) ? j.members : []);
       }
     })();
     return () => {
@@ -196,6 +257,9 @@ export function ActivityPageClient({
     const next = {
       ...viewState,
       ...patch,
+      column_widths: patch.column_widths
+        ? { ...viewState.column_widths, ...patch.column_widths }
+        : viewState.column_widths,
       filters: patch.filters ?? viewState.filters,
     };
     setViewState(next);
@@ -209,6 +273,7 @@ export function ActivityPageClient({
           sort_column: next.sort_column,
           sort_asc: next.sort_asc,
           visible_columns: next.visible_columns,
+          column_widths: next.column_widths,
           filters: next.filters,
         }),
       });
@@ -220,6 +285,56 @@ export function ActivityPageClient({
       if (patchDebounceRef.current) clearTimeout(patchDebounceRef.current);
     };
   }, []);
+
+  // Realtime: subscribe to org-level activity_view_settings changes for cross-device sync
+  const lastPersistRef = useRef<number>(0);
+  useEffect(() => {
+    if (!viewSettingsLoaded) return;
+    let sub: ReturnType<ReturnType<typeof createSupabaseClient>["channel"]> | null = null;
+    try {
+      const supabase = createSupabaseClient();
+      sub = supabase
+        .channel("activity-view-settings-sync")
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "activity_view_settings" },
+          (payload) => {
+            if (Date.now() - lastPersistRef.current < 2000) return;
+            const row = payload.new as Record<string, unknown>;
+            setViewState((prev) => ({
+              sort_column: typeof row.sort_column === "string" ? row.sort_column : prev.sort_column,
+              sort_asc: typeof row.sort_asc === "boolean" ? row.sort_asc : prev.sort_asc,
+              visible_columns: Array.isArray(row.visible_columns) && row.visible_columns.length > 0
+                ? (row.visible_columns as string[])
+                : prev.visible_columns,
+              column_widths:
+                row.column_widths && typeof row.column_widths === "object" && !Array.isArray(row.column_widths)
+                  ? (row.column_widths as Record<string, number>)
+                  : prev.column_widths,
+              filters: prev.filters,
+            }));
+          }
+        )
+        .subscribe();
+    } catch {
+      // Realtime not available in this environment
+    }
+    return () => {
+      if (sub) {
+        try { createSupabaseClient().removeChannel(sub); } catch { /* ignore */ }
+      }
+    };
+  }, [viewSettingsLoaded]);
+
+  // Mark when we persist locally so we can skip echoed realtime events
+  const originalPersistViewState = persistViewState;
+  const persistViewStateWithMark = useCallback(
+    (patch: Partial<ActivityViewState>) => {
+      lastPersistRef.current = Date.now();
+      originalPersistViewState(patch);
+    },
+    [originalPersistViewState]
+  );
 
   async function handleReanalyze(id: string) {
     setReanalyzing(id);
@@ -426,6 +541,10 @@ export function ActivityPageClient({
         is_travel: null,
         data_source_id: null,
         data_feed_external_id: row.data_feed_external_id != null ? String(row.data_feed_external_id) : null,
+        custom_fields:
+          row.custom_fields && typeof row.custom_fields === "object" && !Array.isArray(row.custom_fields)
+            ? (row.custom_fields as Transaction["custom_fields"])
+            : ({} as Transaction["custom_fields"]),
       };
       setSidebarTransaction(normalized);
       const txs = await loadTransactions();
@@ -454,12 +573,14 @@ export function ActivityPageClient({
     <div className="space-y-6">
       <ActivityToolbar
         viewState={viewState}
-        onViewStateChange={persistViewState}
+        onViewStateChange={persistViewStateWithMark}
         onReanalyzeAll={handleReanalyzeAll}
         reanalyzing={reanalyzing === "all"}
         onNewTransaction={openNewTransaction}
         totalCount={totalCount}
         loading={loading}
+        title="All Activity"
+        transactionProperties={transactionProperties}
       />
 
       {toast && (
@@ -479,25 +600,29 @@ export function ActivityPageClient({
       )}
 
       {!loading && transactions.length > 0 && (
-        <ActivityTable
-          transactions={transactions}
-          visibleColumns={viewState.visible_columns}
-          selectedId={sidebarTransaction?.id ?? null}
-          onSelectRow={setSidebarTransaction}
-        />
-      )}
-
-      {!loading && transactions.length > 0 && (
-        <div className="flex justify-center pt-2">
-          <button
-            type="button"
-            onClick={loadMore}
-            disabled={!canLoadMore || loadingMore}
-            className="inline-flex items-center gap-2 rounded-none border border-bg-tertiary/60 px-4 py-2.5 text-sm font-medium text-mono-medium hover:bg-bg-secondary/60 transition disabled:opacity-50"
-          >
-            {loadingMore ? "Loading…" : canLoadMore ? `Load more (${transactions.length}/${totalCount})` : "All transactions loaded"}
-          </button>
-        </div>
+        <>
+          <ActivityTable
+            transactions={transactions}
+            visibleColumns={viewState.visible_columns}
+            columnWidths={viewState.column_widths}
+            selectedId={sidebarTransaction?.id ?? null}
+            onSelectRow={setSidebarTransaction}
+            onColumnWidthChange={(col, width) => {
+              persistViewStateWithMark({ column_widths: { [col]: width } });
+            }}
+            onColumnsReorder={(columns) => {
+              persistViewStateWithMark({ visible_columns: columns });
+            }}
+            transactionProperties={transactionProperties}
+            memberDisplayById={memberDisplayById}
+          />
+          {loadingMore && (
+            <div className="flex justify-center py-3 text-sm text-mono-light">Loading…</div>
+          )}
+          {canLoadMore && (
+            <div ref={loadMoreSentinelRef} className="h-4 w-full shrink-0" aria-hidden />
+          )}
+        </>
       )}
 
       {sidebarTransaction && (
@@ -514,13 +639,28 @@ export function ActivityPageClient({
             await handleSave(id, update);
             setSidebarTransaction((prev) => {
               if (!prev || prev.id !== id) return prev;
-              const next = { ...prev, ...update };
+              const { custom_fields: cfPatch, ...rest } = update;
+              let next = { ...prev, ...rest } as Transaction;
+              if (cfPatch && typeof cfPatch === "object" && !Array.isArray(cfPatch)) {
+                const prevCf =
+                  prev.custom_fields && typeof prev.custom_fields === "object" && !Array.isArray(prev.custom_fields)
+                    ? { ...(prev.custom_fields as Record<string, Json>) }
+                    : {};
+                next = {
+                  ...next,
+                  custom_fields: { ...prevCf, ...(cfPatch as Record<string, Json>) } as Transaction["custom_fields"],
+                };
+              }
               const amount: string =
                 typeof next.amount === "number" ? String(next.amount) : (next.amount ?? "");
               return { ...next, amount };
             });
           }}
           taxRate={0.24}
+          transactionProperties={transactionProperties}
+          orgMembers={orgMembers}
+          memberDisplayById={memberDisplayById}
+          onRefreshTransactionProperties={refreshTransactionProperties}
         />
       )}
     </div>

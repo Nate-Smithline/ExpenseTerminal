@@ -2,6 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { ActivityVisibleColumn } from "@/lib/validation/schemas";
+import type { TransactionPropertyDefinition } from "@/lib/transaction-property-definition";
+import { ActivityColumnFiltersBar } from "@/components/ActivityColumnFiltersBar";
+import { ActivityPropertyVisibilityPanel } from "@/components/ActivityPropertyVisibilityPanel";
+import type { ActivityColumnFilterRow } from "@/lib/activity-column-filters";
+import { serializeColumnFiltersForQuery } from "@/lib/activity-column-filters";
 
 const COLUMN_LABELS: Record<ActivityVisibleColumn, string> = {
   date: "Date",
@@ -24,6 +29,7 @@ export interface ActivityViewState {
   sort_column: string;
   sort_asc: boolean;
   visible_columns: string[];
+  column_widths: Record<string, number>;
   filters: {
     status: string | null;
     transaction_type: string | null;
@@ -32,6 +38,7 @@ export interface ActivityViewState {
     search: string;
     date_from: string;
     date_to: string;
+    column_filters?: ActivityColumnFilterRow[];
   };
 }
 
@@ -43,6 +50,15 @@ interface ActivityToolbarProps {
   onNewTransaction: () => void;
   totalCount: number;
   loading?: boolean;
+  /** When true, the large title block is omitted (e.g. page title lives in PageTopBar). */
+  hideTitle?: boolean;
+  title?: string;
+  titleEditable?: boolean;
+  titleValue?: string;
+  onTitleChange?: (value: string) => void;
+  transactionProperties?: TransactionPropertyDefinition[];
+  /** Match horizontal inset of ActivityTable wrapper (saved pages: pass same as table’s expandToContainer). */
+  expandToContainer?: boolean;
 }
 
 const STATUS_OPTIONS = [
@@ -166,15 +182,23 @@ export function ActivityToolbar({
   onNewTransaction,
   totalCount,
   loading = false,
+  hideTitle = false,
+  title = "All Activity",
+  titleEditable = false,
+  titleValue,
+  onTitleChange,
+  transactionProperties = [],
+  expandToContainer = false,
 }: ActivityToolbarProps) {
   const [searchInput, setSearchInput] = useState(viewState.filters.search);
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
-  const [dateOpen, setDateOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportToast, setExportToast] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const propertiesAnchorRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setSearchInput(viewState.filters.search);
@@ -201,30 +225,96 @@ export function ActivityToolbar({
     }
   }, [searchModalOpen]);
 
-  const toggleColumn = (key: ActivityVisibleColumn) => {
-    const next = viewState.visible_columns.includes(key)
-      ? viewState.visible_columns.filter((c) => c !== key)
-      : [...viewState.visible_columns, key];
-    onViewStateChange({ visible_columns: next });
-  };
+  const sortedOrgProperties = [...transactionProperties].sort((a, b) => a.position - b.position);
+
+  const buildExportSearchParams = useCallback(() => {
+    const params = new URLSearchParams({
+      date_from: viewState.filters.date_from,
+      date_to: viewState.filters.date_to,
+      sort_by: viewState.sort_column,
+      sort_order: viewState.sort_asc ? "asc" : "desc",
+    });
+    if (viewState.filters.status) params.set("status", viewState.filters.status);
+    if (viewState.filters.transaction_type) params.set("transaction_type", viewState.filters.transaction_type);
+    if (viewState.filters.source) params.set("source", viewState.filters.source);
+    if (viewState.filters.data_source_id) params.set("data_source_id", viewState.filters.data_source_id);
+    if (viewState.filters.search) params.set("search", viewState.filters.search);
+    if (viewState.filters.column_filters?.length) {
+      params.set("column_filters", serializeColumnFiltersForQuery(viewState.filters.column_filters));
+    }
+    return params;
+  }, [viewState]);
+
+  const downloadCsvExport = useCallback(async () => {
+    setExporting(true);
+    setExportToast(null);
+    try {
+      const params = buildExportSearchParams();
+      const res = await fetch(`/api/transactions/export?${params.toString()}`, {
+        credentials: "same-origin",
+      });
+      const contentType = res.headers.get("Content-Type") ?? "";
+      if (!res.ok) {
+        const errText =
+          contentType.includes("application/json") ? (await res.json().catch(() => null))?.error : null;
+        setExportToast(typeof errText === "string" ? errText : "Export failed");
+        setTimeout(() => setExportToast(null), 5000);
+        return;
+      }
+      const blob = await res.blob();
+      const fallbackName = `activity-export-${viewState.filters.date_from}-to-${viewState.filters.date_to}.csv`;
+      const dispo = res.headers.get("Content-Disposition");
+      let filename = fallbackName;
+      if (dispo) {
+        const m = /filename="([^"]+)"/.exec(dispo) ?? /filename=([^;\s]+)/.exec(dispo);
+        if (m?.[1]) filename = m[1].trim();
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportToast("Export failed");
+      setTimeout(() => setExportToast(null), 5000);
+    } finally {
+      setExporting(false);
+    }
+  }, [buildExportSearchParams, viewState.filters.date_from, viewState.filters.date_to]);
 
   const iconBtnClass = "flex h-7 w-7 items-center justify-center rounded text-mono-light transition-colors hover:bg-bg-tertiary/40 hover:text-mono-dark";
 
+  const tableAlignClass = expandToContainer
+    ? "w-full min-w-0"
+    : "-mx-2 px-2 md:mx-0 md:px-0 min-w-0";
+
   return (
     <div className="space-y-4">
-      {/* Header: title + count only */}
-      <div className="space-y-1.5">
-        <div
-          role="heading"
-          aria-level={1}
-          className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
-        >
-          All Activity
+      {!hideTitle && (
+        <div>
+          {titleEditable ? (
+            <input
+              value={titleValue ?? ""}
+              onChange={(e) => onTitleChange?.(e.target.value)}
+              placeholder="Untitled"
+              aria-label="Page title"
+              className="page-title-field w-full appearance-none bg-transparent text-[32px] leading-tight font-sans font-normal text-mono-dark rounded-none border-0 border-transparent shadow-none outline-none ring-0 ring-offset-0 focus:border-0 focus:border-transparent focus:shadow-none focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:outline-none focus-visible:ring-0"
+            />
+          ) : (
+            <div
+              role="heading"
+              aria-level={1}
+              className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
+            >
+              {title}
+            </div>
+          )}
         </div>
-        <p className="text-sm text-mono-medium mt-1 font-sans">
-          {totalCount} transaction{totalCount === 1 ? "" : "s"}
-        </p>
-      </div>
+      )}
 
       {/* Loading bar when scanning */}
       {loading && (
@@ -233,8 +323,8 @@ export function ActivityToolbar({
         </div>
       )}
 
-      {/* Toolbar row: icons left, New right */}
-      <div className="flex flex-wrap items-center gap-1 rounded-lg border border-bg-tertiary/30 bg-white/60 px-2 py-1.5">
+      {/* Toolbar row: icons left, New right — same horizontal box as ActivityTable wrapper */}
+      <div className={`flex flex-wrap items-center gap-1 py-1.5 ${tableAlignClass}`}>
         {/* Filter */}
         <button
           type="button"
@@ -259,6 +349,7 @@ export function ActivityToolbar({
 
         {/* Properties (columns) — eye icon */}
         <button
+          ref={propertiesAnchorRef}
           type="button"
           onClick={() => setPropertiesOpen(true)}
           title="Show or hide columns"
@@ -267,19 +358,6 @@ export function ActivityToolbar({
         >
           <span className={ICON_CLASS} style={ICON_STYLE}>visibility</span>
         </button>
-
-        {/* Date range — calendar opens modal */}
-        <button
-          type="button"
-          onClick={() => setDateOpen(true)}
-          title="Change date range"
-          className={iconBtnClass}
-          aria-label="Change date range"
-        >
-          <span className={ICON_CLASS} style={ICON_STYLE}>calendar_month</span>
-        </button>
-
-        <div className="h-4 w-px bg-bg-tertiary/40" aria-hidden />
 
         {/* Search */}
         <button
@@ -304,13 +382,14 @@ export function ActivityToolbar({
           <span className={ICON_CLASS} style={ICON_STYLE}>bolt</span>
         </button>
 
-        {/* Export */}
+        {/* Export — CSV only */}
         <button
           type="button"
-          onClick={() => setExportOpen(true)}
-          title="Export"
-          className={iconBtnClass}
-          aria-label="Export"
+          onClick={() => void downloadCsvExport()}
+          disabled={exporting}
+          title="Download CSV"
+          className={`${iconBtnClass} disabled:opacity-50 disabled:pointer-events-none shrink-0`}
+          aria-label="Download CSV"
         >
           <span className={ICON_CLASS} style={ICON_STYLE}>download</span>
         </button>
@@ -322,12 +401,19 @@ export function ActivityToolbar({
           type="button"
           onClick={onNewTransaction}
           title="New (n)"
-          className="inline-flex items-center gap-1.5 rounded-md bg-accent-sage px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-sage/90 transition-colors"
+          className="inline-flex items-center rounded-none bg-sovereign-blue px-3 py-1.5 text-xs font-medium text-black hover:bg-sovereign-blue/90 transition-colors"
         >
           New
-          <kbd className="ml-0.5 rounded bg-white/20 px-1 py-px text-[11px] font-medium">n</kbd>
         </button>
       </div>
+
+      <ActivityColumnFiltersBar
+        columnFilters={viewState.filters.column_filters ?? []}
+        onColumnFiltersChange={(column_filters) =>
+          onViewStateChange({ filters: { ...viewState.filters, column_filters } })
+        }
+        transactionProperties={transactionProperties}
+      />
 
       {/* Filter modal */}
       <ActivityModal
@@ -424,84 +510,14 @@ export function ActivityToolbar({
         </div>
       </ActivityModal>
 
-      {/* Properties (columns) modal */}
-      <ActivityModal
+      <ActivityPropertyVisibilityPanel
         open={propertiesOpen}
+        anchorRef={propertiesAnchorRef}
         onClose={() => setPropertiesOpen(false)}
-        title="Columns"
-        subtitle="Show or hide columns in the table."
-        aria-labelledby="activity-properties-title"
-      >
-        <div className="space-y-1 max-h-64 overflow-y-auto">
-          {(Object.keys(COLUMN_LABELS) as ActivityVisibleColumn[]).map((key) => (
-            <label
-              key={key}
-              className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer hover:bg-bg-secondary/80 text-sm text-mono-dark"
-            >
-              <input
-                type="checkbox"
-                checked={viewState.visible_columns.includes(key)}
-                onChange={() => toggleColumn(key)}
-                className="rounded border-bg-tertiary text-sm"
-              />
-              {COLUMN_LABELS[key]}
-            </label>
-          ))}
-        </div>
-      </ActivityModal>
-
-      {/* Date range modal — calendar icon opens this */}
-      <ActivityModal
-        open={dateOpen}
-        onClose={() => setDateOpen(false)}
-        title="Date range"
-        subtitle="Set the from and to dates for the activity list."
-        aria-labelledby="activity-date-title"
-      >
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label htmlFor="activity-date-from" className="text-sm font-medium text-mono-dark shrink-0 w-12">
-              From
-            </label>
-            <input
-              id="activity-date-from"
-              type="date"
-              value={viewState.filters.date_from}
-              onChange={(e) =>
-                onViewStateChange({
-                  filters: { ...viewState.filters, date_from: e.target.value },
-                })
-              }
-              className="flex-1 min-w-0 border border-bg-tertiary/60 rounded-lg px-3 py-2 text-sm text-mono-dark bg-white focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label htmlFor="activity-date-to" className="text-sm font-medium text-mono-dark shrink-0 w-8">
-              To
-            </label>
-            <input
-              id="activity-date-to"
-              type="date"
-              value={viewState.filters.date_to}
-              onChange={(e) =>
-                onViewStateChange({
-                  filters: { ...viewState.filters, date_to: e.target.value },
-                })
-              }
-              className="flex-1 min-w-0 border border-bg-tertiary/60 rounded-lg px-3 py-2 text-sm text-mono-dark bg-white focus:ring-2 focus:ring-accent-sage/20 focus:border-accent-sage/40 outline-none"
-            />
-          </div>
-        </div>
-        <div className="flex justify-end mt-4">
-          <button
-            type="button"
-            onClick={() => setDateOpen(false)}
-            className="rounded-md bg-mono-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-mono-dark/90 transition"
-          >
-            Done
-          </button>
-        </div>
-      </ActivityModal>
+        visibleColumns={viewState.visible_columns}
+        onVisibleColumnsChange={(visible_columns) => onViewStateChange({ visible_columns })}
+        transactionProperties={transactionProperties}
+      />
 
       {/* Search modal — Enter to search */}
       <ActivityModal
@@ -546,64 +562,33 @@ export function ActivityToolbar({
         </div>
       </ActivityModal>
 
-      {/* Export modal — CSV or PDF */}
-      <ActivityModal
-        open={exportOpen}
-        onClose={() => setExportOpen(false)}
-        title="Export"
-        subtitle="Export the current activity list (with your filters and date range) as CSV or PDF."
-        aria-labelledby="activity-export-title"
-      >
-        <div className="space-y-3">
-          <p className="text-sm text-mono-medium">
-            The export uses your current date range, filters, and sort order (up to 5,000 transactions).
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                const params = new URLSearchParams({
-                  format: "csv",
-                  date_from: viewState.filters.date_from,
-                  date_to: viewState.filters.date_to,
-                  sort_by: viewState.sort_column,
-                  sort_order: viewState.sort_asc ? "asc" : "desc",
-                });
-                if (viewState.filters.status) params.set("status", viewState.filters.status);
-                if (viewState.filters.transaction_type) params.set("transaction_type", viewState.filters.transaction_type);
-                if (viewState.filters.search) params.set("search", viewState.filters.search);
-                window.open(`/api/transactions/export?${params.toString()}`, "_blank");
-                setExportOpen(false);
-              }}
-              className="flex-1 flex items-center justify-center gap-2 rounded-lg border-2 border-bg-tertiary/60 px-4 py-3 text-sm font-medium text-mono-dark hover:bg-bg-secondary/80 transition"
+      {exporting && (
+        <div
+          className="fixed inset-0 min-h-[100dvh] z-[60] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
+          role="alert"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden border-0 px-6 py-12 flex flex-col items-center justify-center gap-4">
+            <span className="material-symbols-rounded animate-spin text-4xl text-black/40">progress_activity</span>
+            <h2
+              className="text-xl text-black font-medium text-center"
+              style={{ fontFamily: "var(--font-sans)" }}
             >
-              <span className="material-symbols-rounded text-lg">table_chart</span>
-              Export as CSV
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const params = new URLSearchParams({
-                  format: "pdf",
-                  date_from: viewState.filters.date_from,
-                  date_to: viewState.filters.date_to,
-                  sort_by: viewState.sort_column,
-                  sort_order: viewState.sort_asc ? "asc" : "desc",
-                });
-                if (viewState.filters.status) params.set("status", viewState.filters.status);
-                if (viewState.filters.transaction_type) params.set("transaction_type", viewState.filters.transaction_type);
-                if (viewState.filters.search) params.set("search", viewState.filters.search);
-                window.open(`/api/transactions/export?${params.toString()}`, "_blank");
-                setExportOpen(false);
-              }}
-              className="flex-1 flex items-center justify-center gap-2 rounded-lg border-2 border-bg-tertiary/60 px-4 py-3 text-sm font-medium text-mono-dark hover:bg-bg-secondary/80 transition"
-            >
-              <span className="material-symbols-rounded text-lg">picture_as_pdf</span>
-              Export as PDF
-            </button>
+              Preparing download
+            </h2>
+            <p className="text-xs text-black/70 text-center">
+              Building your CSV with the current filters. Large exports may take a minute.
+            </p>
           </div>
         </div>
-      </ActivityModal>
+      )}
+
+      {exportToast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] max-w-[min(90vw,28rem)] rounded-none bg-[#5B82B4] text-black px-4 py-2.5 text-sm shadow-lg text-center">
+          {exportToast}
+        </div>
+      )}
     </div>
   );
 }

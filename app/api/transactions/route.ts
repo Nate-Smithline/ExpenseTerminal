@@ -3,9 +3,23 @@ import { revalidatePath } from "next/cache";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
-import { parseQueryLimit, parseQueryOffset, parseQueryTaxYear, uuidSchema, transactionPostBodySchema, transactionDraftBodySchema, ACTIVITY_SORT_COLUMNS } from "@/lib/validation/schemas";
+import {
+  parseQueryLimit,
+  parseQueryOffset,
+  parseQueryTaxYear,
+  uuidSchema,
+  transactionPostBodySchema,
+  transactionDraftBodySchema,
+  ACTIVITY_SORT_COLUMNS,
+  ACTIVITY_FILTERABLE_STANDARD_COLUMNS,
+} from "@/lib/validation/schemas";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { safeErrorMessage } from "@/lib/api/safe-error";
+import { getActiveOrgId } from "@/lib/active-org";
+import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
+import { applyActivityColumnFilters, parseColumnFiltersQueryParam } from "@/lib/activity-column-filters";
+
+const STANDARD_FILTERABLE_COLS = new Set<string>(ACTIVITY_FILTERABLE_STANDARD_COLUMNS);
 
 /**
  * GET: Fetch transactions with filters.
@@ -49,9 +63,11 @@ export async function GET(req: Request) {
   const dateTo = searchParams.get("date_to")?.trim() || null;
   const source = searchParams.get("source")?.trim() || null;
   const inboxOnly = searchParams.get("inbox") === "true";
+  const columnFilters = parseColumnFiltersQueryParam(searchParams.get("column_filters"));
 
   const transactionColumns =
-    "id,user_id,date,vendor,description,amount,category,schedule_c_line,ai_confidence,ai_reasoning,ai_suggestions,status,business_purpose,quick_label,notes,vendor_normalized,auto_sort_rule_id,deduction_percent,is_meal,is_travel,tax_year,source,transaction_type,data_source_id,created_at,updated_at";
+    "id,user_id,date,vendor,description,amount,category,schedule_c_line,ai_confidence,ai_reasoning,ai_suggestions,status,business_purpose,quick_label,notes,vendor_normalized,auto_sort_rule_id,deduction_percent,is_meal,is_travel,tax_year,source,transaction_type,data_source_id,created_at,updated_at,custom_fields";
+
   let query = (supabase as any)
     .from("transactions")
     .select(countOnly ? "*" : transactionColumns, countOnly ? { count: "exact", head: true } : { count: "exact" })
@@ -81,6 +97,31 @@ export async function GET(req: Request) {
   if (searchTerm.length > 0) {
     const pattern = `%${searchTerm}%`;
     query = query.or(`vendor.ilike.${pattern},description.ilike.${pattern}`);
+  }
+
+  if (columnFilters.length > 0) {
+    const needsOrgDefs = columnFilters.some((f) => !STANDARD_FILTERABLE_COLS.has(f.column));
+    const orgTypes = new Map<string, string>();
+    if (needsOrgDefs) {
+      let orgId = await getActiveOrgId(supabase as any, userId);
+      if (!orgId) {
+        try {
+          orgId = await ensureActiveOrgForUser(userId);
+        } catch {
+          orgId = null;
+        }
+      }
+      if (orgId) {
+        const { data: defs } = await (supabase as any)
+          .from("transaction_property_definitions")
+          .select("id,type")
+          .eq("org_id", orgId);
+        for (const row of defs ?? []) {
+          if (row?.id && typeof row.type === "string") orgTypes.set(row.id, row.type);
+        }
+      }
+    }
+    query = applyActivityColumnFilters(query, columnFilters, orgTypes);
   }
 
   if (!countOnly) {

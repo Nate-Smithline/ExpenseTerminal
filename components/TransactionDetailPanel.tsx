@@ -1,21 +1,46 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { Database } from "@/lib/types/database";
+import type { Database, Json } from "@/lib/types/database";
 import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
+import type { TransactionPropertyDefinition } from "@/lib/transaction-property-definition";
+import {
+  TransactionDetailCustomFields,
+  type OrgMemberOption,
+} from "@/components/TransactionDetailCustomFields";
+import { TransactionPropertySidebarCreate } from "@/components/TransactionPropertySidebarCreate";
+import { NotionStylePropertyRow, NotionValuePill } from "@/components/NotionStylePropertyRow";
+import { CORE_FIELD_ICONS } from "@/lib/transaction-detail-property-icons";
 
 type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
 
 /** Partial transaction shape from tax details summary (no description, ai_* etc.) */
 export type PartialTransaction = Pick<
   TransactionRow,
-  "id" | "vendor" | "amount" | "date" | "status" | "transaction_type" | "category" | "schedule_c_line" | "deduction_percent" | "business_purpose" | "quick_label" | "notes" | "is_meal" | "is_travel"
+  | "id"
+  | "vendor"
+  | "amount"
+  | "date"
+  | "status"
+  | "transaction_type"
+  | "category"
+  | "schedule_c_line"
+  | "deduction_percent"
+  | "business_purpose"
+  | "quick_label"
+  | "notes"
+  | "is_meal"
+  | "is_travel"
 > & {
+  user_id?: string;
+  created_at?: string;
+  updated_at?: string;
   ai_confidence?: number | null;
   ai_reasoning?: string | null;
   description?: string | null;
   source?: string | null;
   vendor_normalized?: string | null;
+  custom_fields?: Json | null;
 };
 
 export type TransactionDetailUpdate = {
@@ -30,6 +55,7 @@ export type TransactionDetailUpdate = {
   transaction_type?: "expense" | "income";
   status?: "pending" | "completed" | "auto_sorted" | "personal";
   source?: "csv_upload" | "manual";
+  custom_fields?: Json;
 };
 
 interface TransactionDetailPanelProps {
@@ -42,6 +68,11 @@ interface TransactionDetailPanelProps {
   editable?: boolean;
   onSave?: (id: string, update: TransactionDetailUpdate) => Promise<void>;
   taxRate?: number;
+  transactionProperties?: TransactionPropertyDefinition[];
+  orgMembers?: OrgMemberOption[];
+  memberDisplayById?: Record<string, string>;
+  /** When set, sidebar shows “Add org property” (Activity / saved pages). */
+  onRefreshTransactionProperties?: () => Promise<void>;
 }
 
 const PANEL_MIN_WIDTH = 360;
@@ -51,29 +82,6 @@ const COLLAPSED_WIDTH = 72;
 function formatDate(date: string) {
   const d = new Date(date);
   return d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
-}
-
-function PropertyRow({ label, children, alignTop = false }: { label: string; children: React.ReactNode; alignTop?: boolean }) {
-  return (
-    <div className={`flex gap-4 py-2.5 ${alignTop ? "items-start" : "items-center"}`}>
-      <span className={`text-xs text-mono-light w-28 shrink-0 ${alignTop ? "pt-0.5" : ""}`}>{label}</span>
-      <div className="flex-1 min-w-0 text-sm text-mono-dark">{children}</div>
-    </div>
-  );
-}
-
-function Tag({ children, variant = "default" }: { children: React.ReactNode; variant?: "default" | "sage" | "amber" | "red" }) {
-  const colors = {
-    default: "bg-bg-tertiary/40 text-mono-medium",
-    sage: "bg-accent-sage/10 text-accent-sage",
-    amber: "bg-amber-50 text-amber-700",
-    red: "bg-red-50 text-red-600",
-  };
-  return (
-    <span className={`inline-flex items-center rounded-none px-2 py-0.5 text-xs font-medium ${colors[variant]}`}>
-      {children}
-    </span>
-  );
 }
 
 const SNAP_POINTS = [0, 25, 50, 75, 100];
@@ -87,8 +95,21 @@ export function TransactionDetailPanel({
   editable = false,
   onSave,
   taxRate = 0.24,
+  transactionProperties = [],
+  orgMembers = [],
+  memberDisplayById: memberDisplayByIdProp,
+  onRefreshTransactionProperties,
 }: TransactionDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const memberDisplayById =
+    memberDisplayByIdProp ??
+    Object.fromEntries(
+      orgMembers.map((m) => [
+        m.id,
+        m.display_name?.trim() || m.email?.trim() || m.id.slice(0, 8),
+      ])
+    );
 
   const [editCategory, setEditCategory] = useState(transaction.category ?? "");
   const [editScheduleLine, setEditScheduleLine] = useState(transaction.schedule_c_line ?? "");
@@ -110,6 +131,8 @@ export function TransactionDetailPanel({
   const [editSource, setEditSource] = useState<"csv_upload" | "manual">(
     (transaction.source === "manual" ? "manual" : "csv_upload") as "csv_upload" | "manual",
   );
+  const [editCustomFields, setEditCustomFields] = useState<Record<string, unknown>>({});
+  const baselineCustomFieldsRef = useRef<Record<string, unknown>>({});
   const [panelWidth, setPanelWidth] = useState(PANEL_MAX_WIDTH);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isEscapedDocked, setIsEscapedDocked] = useState(false);
@@ -126,6 +149,10 @@ export function TransactionDetailPanel({
     if (s === "personal") return "red";
     return "default";
   };
+
+  function stableFieldJson(v: unknown): string {
+    return JSON.stringify(v === undefined ? null : v);
+  }
 
   function getPendingUpdate(): TransactionDetailUpdate {
     const update: TransactionDetailUpdate = {};
@@ -147,6 +174,17 @@ export function TransactionDetailPanel({
     if (transaction.source !== "data_feed" && editSource !== currentSource) {
       update.source = editSource;
     }
+
+    const base = baselineCustomFieldsRef.current;
+    const cfPatch: Record<string, unknown> = {};
+    const keys = new Set([...Object.keys(base), ...Object.keys(editCustomFields)]);
+    for (const k of keys) {
+      if (stableFieldJson(base[k]) !== stableFieldJson(editCustomFields[k])) {
+        cfPatch[k] = editCustomFields[k];
+      }
+    }
+    if (Object.keys(cfPatch).length > 0) update.custom_fields = cfPatch as Json;
+
     return update;
   }
 
@@ -159,6 +197,9 @@ export function TransactionDetailPanel({
       const update = forcedUpdate ?? getPendingUpdate();
       if (Object.keys(update).length === 0) return;
       await onSave(transaction.id, update);
+      if (update.custom_fields) {
+        baselineCustomFieldsRef.current = { ...editCustomFields };
+      }
       setSaveState("saved");
     } catch (e) {
       setSaveState("error");
@@ -198,6 +239,14 @@ export function TransactionDetailPanel({
   ]);
 
   useEffect(() => {
+    const cf = (transaction as { custom_fields?: unknown }).custom_fields;
+    const parsed =
+      cf && typeof cf === "object" && !Array.isArray(cf) ? { ...(cf as Record<string, unknown>) } : {};
+    baselineCustomFieldsRef.current = parsed;
+    setEditCustomFields(parsed);
+  }, [transaction.id]);
+
+  useEffect(() => {
     if (!editable || !onSave || isCollapsed) return;
     const pending = getPendingUpdate();
     if (Object.keys(pending).length === 0) return;
@@ -221,6 +270,7 @@ export function TransactionDetailPanel({
     editTransactionType,
     editStatus,
     editSource,
+    editCustomFields,
     transaction.id,
   ]);
 
@@ -332,35 +382,38 @@ export function TransactionDetailPanel({
           )}
         </div>
         {/* Properties */}
-        {!isCollapsed && <div className="px-6 py-4">
-          <PropertyRow label="Vendor">
+        {!isCollapsed && <div className="px-4 py-3 sm:px-5">
+          <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wider text-mono-light">Transaction</p>
+          <NotionStylePropertyRow icon={CORE_FIELD_ICONS.vendor} label="Vendor" immutable>
             {editable && onSave ? (
               <input
                 type="text"
                 value={editVendor}
                 onChange={(e) => setEditVendor(e.target.value)}
-                placeholder="Transaction name / vendor"
-                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
+                placeholder="Empty"
+                className="w-full min-w-0 rounded-md border border-[#F0F1F7] bg-white px-2 py-1 text-sm focus:border-mono-medium/25 focus:outline-none"
               />
+            ) : transaction.vendor ? (
+              <span className="font-medium">{transaction.vendor}</span>
             ) : (
-              <span className="font-medium">{transaction.vendor || "—"}</span>
+              <span className="text-mono-light text-xs italic">Empty</span>
             )}
-          </PropertyRow>
+          </NotionStylePropertyRow>
 
-          <PropertyRow label="Date">
+          <NotionStylePropertyRow icon={CORE_FIELD_ICONS.date} label="Date" immutable>
             {editable && onSave ? (
               <input
                 type="date"
                 value={editDate}
                 onChange={(e) => setEditDate(e.target.value)}
-                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
+                className="w-full min-w-0 rounded-md border border-[#F0F1F7] bg-white px-2 py-1 text-sm focus:border-mono-medium/25 focus:outline-none"
               />
             ) : (
               formatDate(transaction.date)
             )}
-          </PropertyRow>
+          </NotionStylePropertyRow>
 
-          <PropertyRow label="Amount">
+          <NotionStylePropertyRow icon={CORE_FIELD_ICONS.amount} label="Amount" immutable>
             {editable && onSave ? (
               <input
                 type="number"
@@ -369,34 +422,36 @@ export function TransactionDetailPanel({
                 value={editAmount}
                 onChange={(e) => setEditAmount(e.target.value)}
                 placeholder="0.00"
-                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white tabular-nums"
+                className="w-full min-w-0 rounded-md border border-[#F0F1F7] bg-white px-2 py-1 text-sm tabular-nums focus:border-mono-medium/25 focus:outline-none"
               />
             ) : (
               <span className="font-semibold tabular-nums">${amount.toFixed(2)}</span>
             )}
-          </PropertyRow>
+          </NotionStylePropertyRow>
 
-          <PropertyRow label="Type">
+          <NotionStylePropertyRow icon={CORE_FIELD_ICONS.transaction_type} label="Flow" immutable>
             {editable && onSave ? (
               <select
                 value={editTransactionType}
                 onChange={(e) => setEditTransactionType(e.target.value as "expense" | "income")}
-                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
+                className="w-full min-w-0 rounded-md border border-[#F0F1F7] bg-white px-2 py-1 text-sm focus:border-mono-medium/25 focus:outline-none"
               >
                 <option value="expense">Expense</option>
                 <option value="income">Income</option>
               </select>
             ) : (
-              <Tag>{transaction.transaction_type === "income" ? "Income" : "Expense"}</Tag>
+              <NotionValuePill tone="neutral">
+                {transaction.transaction_type === "income" ? "Income" : "Expense"}
+              </NotionValuePill>
             )}
-          </PropertyRow>
+          </NotionStylePropertyRow>
 
-          <PropertyRow label="Status">
+          <NotionStylePropertyRow icon={CORE_FIELD_ICONS.status} label="Status" immutable>
             {editable && onSave ? (
               <select
                 value={editStatus}
                 onChange={(e) => setEditStatus(e.target.value as "pending" | "completed" | "auto_sorted" | "personal")}
-                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
+                className="w-full min-w-0 rounded-md border border-[#F0F1F7] bg-white px-2 py-1 text-sm focus:border-mono-medium/25 focus:outline-none"
               >
                 <option value="pending">Pending</option>
                 <option value="completed">Completed</option>
@@ -404,18 +459,24 @@ export function TransactionDetailPanel({
                 <option value="personal">Personal</option>
               </select>
             ) : (
-              <Tag variant={statusVariant(transaction.status)}>
-                {transaction.status === "auto_sorted" ? "Auto-sorted" : (transaction.status ?? "Pending")}
-              </Tag>
+              (() => {
+                const v = statusVariant(transaction.status);
+                const tone = v === "sage" ? "sage" : v === "amber" || v === "red" ? "amber" : "neutral";
+                return (
+                  <NotionValuePill tone={tone}>
+                    {transaction.status === "auto_sorted" ? "Auto-sorted" : (transaction.status ?? "Pending")}
+                  </NotionValuePill>
+                );
+              })()
             )}
-          </PropertyRow>
+          </NotionStylePropertyRow>
 
-          <PropertyRow label="Category">
+          <NotionStylePropertyRow icon={CORE_FIELD_ICONS.category} label="Category" immutable>
             {editable && onSave ? (
               <select
                 value={editCategory}
                 onChange={(e) => setEditCategory(e.target.value)}
-                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
+                className="w-full min-w-0 rounded-md border border-[#F0F1F7] bg-white px-2 py-1 text-sm focus:border-mono-medium/25 focus:outline-none"
               >
                 <option value="">Uncategorized</option>
                 {SCHEDULE_C_LINES.map((l) => (
@@ -425,18 +486,18 @@ export function TransactionDetailPanel({
                 ))}
               </select>
             ) : transaction.category ? (
-              <Tag variant="sage">{transaction.category}</Tag>
+              <NotionValuePill tone="sage">{transaction.category}</NotionValuePill>
             ) : (
-              <span className="text-mono-light text-xs">Uncategorized</span>
+              <span className="text-mono-light text-xs italic">Empty</span>
             )}
-          </PropertyRow>
+          </NotionStylePropertyRow>
 
-          <PropertyRow label="Schedule C Line">
+          <NotionStylePropertyRow icon={CORE_FIELD_ICONS.schedule_c_line} label="Schedule C" immutable>
             {editable && onSave ? (
               <select
                 value={editScheduleLine}
                 onChange={(e) => setEditScheduleLine(e.target.value)}
-                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
+                className="w-full min-w-0 rounded-md border border-[#F0F1F7] bg-white px-2 py-1 text-sm focus:border-mono-medium/25 focus:outline-none"
               >
                 <option value="">—</option>
                 {SCHEDULE_C_LINES.map((l) => (
@@ -448,28 +509,28 @@ export function TransactionDetailPanel({
             ) : transaction.schedule_c_line ? (
               <span className="text-xs">{transaction.schedule_c_line}</span>
             ) : (
-              <span className="text-mono-light text-xs">—</span>
+              <span className="text-mono-light text-xs italic">Empty</span>
             )}
-          </PropertyRow>
+          </NotionStylePropertyRow>
 
-          <PropertyRow label="Deduction" alignTop>
+          <NotionStylePropertyRow icon={CORE_FIELD_ICONS.deduction} label="Deduction" alignTop immutable>
             {editable && onSave ? (
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex flex-wrap items-center gap-2">
                 {SNAP_POINTS.map((pct) => (
                   <button
                     key={pct}
                     type="button"
                     onClick={() => setEditDeductionPct(pct)}
-                    className={`px-2 py-1 text-xs font-medium tabular-nums border ${
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium tabular-nums transition ${
                       editDeductionPct === pct
-                        ? "bg-warm-stock border-warm-stock text-mono-dark"
-                        : "border-bg-tertiary hover:bg-bg-secondary"
+                        ? "bg-mono-dark text-white"
+                        : "border border-bg-tertiary/80 text-mono-medium hover:bg-bg-secondary"
                     }`}
                   >
                     {pct}%
                   </button>
                 ))}
-                <span className="text-xs text-mono-light ml-1">
+                <span className="text-xs text-mono-light">
                   (${((amount * editDeductionPct) / 100).toFixed(2)} deductible)
                 </span>
               </div>
@@ -481,101 +542,118 @@ export function TransactionDetailPanel({
                 </span>
               </div>
             )}
-          </PropertyRow>
+          </NotionStylePropertyRow>
 
           {confPct != null && (
-            <PropertyRow label="AI Confidence" alignTop>
+            <NotionStylePropertyRow icon={CORE_FIELD_ICONS.ai_confidence} label="AI %" alignTop immutable>
               <div className="flex items-center gap-2">
-                <div className="h-1.5 w-20 bg-cool-stock overflow-hidden">
+                <div className="h-1.5 w-20 overflow-hidden rounded-full bg-cool-stock">
                   <div
-                    className="h-full bg-frost transition-all"
+                    className="h-full rounded-full bg-frost transition-all"
                     style={{ width: `${confPct}%` }}
                   />
                 </div>
                 <span className="text-xs tabular-nums">{confPct}%</span>
               </div>
-            </PropertyRow>
+            </NotionStylePropertyRow>
           )}
 
           {transaction.ai_reasoning != null && transaction.ai_reasoning !== "" && (
-            <PropertyRow label="AI Reasoning" alignTop>
+            <NotionStylePropertyRow icon={CORE_FIELD_ICONS.ai_reasoning} label="AI note" alignTop immutable>
               <p className="text-xs text-mono-medium leading-relaxed">{transaction.ai_reasoning}</p>
-            </PropertyRow>
+            </NotionStylePropertyRow>
           )}
 
-          <PropertyRow label="Business Purpose" alignTop>
+          <NotionStylePropertyRow icon={CORE_FIELD_ICONS.business_purpose} label="Purpose" alignTop immutable>
             {editable && onSave ? (
               <textarea
                 value={editBusinessPurpose}
                 onChange={(e) => setEditBusinessPurpose(e.target.value)}
-                placeholder="Business purpose"
+                placeholder="Empty"
                 rows={2}
-                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white resize-none"
+                className="w-full min-w-0 resize-none rounded-md border border-[#F0F1F7] bg-white px-2 py-1 text-sm focus:border-mono-medium/25 focus:outline-none"
               />
             ) : transaction.business_purpose ? (
               <p className="text-xs">{transaction.business_purpose}</p>
             ) : (
-              <span className="text-mono-light text-xs">—</span>
+              <span className="text-mono-light text-xs italic">Empty</span>
             )}
-          </PropertyRow>
+          </NotionStylePropertyRow>
 
           {transaction.quick_label != null && transaction.quick_label !== "" && (
-            <PropertyRow label="Label">
-              <Tag variant="sage">{transaction.quick_label}</Tag>
-            </PropertyRow>
+            <NotionStylePropertyRow icon={CORE_FIELD_ICONS.quick_label} label="Label" immutable>
+              <NotionValuePill tone="sage">{transaction.quick_label}</NotionValuePill>
+            </NotionStylePropertyRow>
           )}
 
           {transaction.description != null && transaction.description !== "" && (
-            <PropertyRow label="Description" alignTop>
+            <NotionStylePropertyRow icon={CORE_FIELD_ICONS.description} label="Description" alignTop immutable>
               <p className="text-xs text-mono-medium">{transaction.description}</p>
-            </PropertyRow>
+            </NotionStylePropertyRow>
           )}
 
-          <PropertyRow label="Notes" alignTop>
+          <NotionStylePropertyRow icon={CORE_FIELD_ICONS.notes} label="Notes" alignTop immutable>
             {editable && onSave ? (
               <textarea
                 value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}
-                placeholder="Notes"
+                placeholder="Empty"
                 rows={2}
-                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white resize-none"
+                className="w-full min-w-0 resize-none rounded-md border border-[#F0F1F7] bg-white px-2 py-1 text-sm focus:border-mono-medium/25 focus:outline-none"
               />
             ) : transaction.notes ? (
               <p className="text-xs text-mono-medium">{transaction.notes}</p>
             ) : (
-              <span className="text-mono-light text-xs">—</span>
+              <span className="text-mono-light text-xs italic">Empty</span>
             )}
-          </PropertyRow>
+          </NotionStylePropertyRow>
 
-          <PropertyRow label="Data source">
+          <NotionStylePropertyRow icon={CORE_FIELD_ICONS.source} label="Source" immutable>
             {transaction.source === "data_feed" ? (
-              <span className="text-xs text-mono-medium">
-                Direct Feed
-              </span>
+              <NotionValuePill tone="neutral">Direct Feed</NotionValuePill>
             ) : editable && onSave ? (
               <select
                 value={editSource}
                 onChange={(e) => setEditSource(e.target.value as "csv_upload" | "manual")}
-                className="w-full border border-[#F0F1F7] rounded-none px-2 py-1.5 text-sm bg-white"
+                className="w-full min-w-0 rounded-md border border-[#F0F1F7] bg-white px-2 py-1 text-sm focus:border-mono-medium/25 focus:outline-none"
               >
                 <option value="csv_upload">Uploaded via CSV</option>
                 <option value="manual">Entered manually</option>
               </select>
             ) : (
-              <span className="text-xs text-mono-medium">
+              <NotionValuePill tone="neutral">
                 {transaction.source === "manual"
                   ? "Entered manually"
                   : transaction.source === "csv_upload" || !transaction.source
                   ? "Uploaded via CSV"
                   : transaction.source}
-              </span>
+              </NotionValuePill>
             )}
-          </PropertyRow>
+          </NotionStylePropertyRow>
+
+          <TransactionDetailCustomFields
+            definitions={transactionProperties}
+            transaction={{
+              id: transaction.id,
+              user_id: transaction.user_id ?? "",
+              created_at: transaction.created_at ?? new Date().toISOString(),
+              updated_at: transaction.updated_at ?? new Date().toISOString(),
+            }}
+            editable={Boolean(editable && onSave)}
+            editCustomFields={editCustomFields}
+            setEditCustomFields={setEditCustomFields}
+            memberDisplayById={memberDisplayById}
+            orgMembers={orgMembers}
+          />
+
+          {editable && onSave && onRefreshTransactionProperties && (
+            <TransactionPropertySidebarCreate onRefresh={onRefreshTransactionProperties} />
+          )}
 
           {transaction.vendor_normalized != null && transaction.vendor_normalized !== "" && (
-            <PropertyRow label="Vendor Key">
-              <span className="text-xs text-mono-light font-mono">{transaction.vendor_normalized}</span>
-            </PropertyRow>
+            <NotionStylePropertyRow icon={CORE_FIELD_ICONS.vendor_normalized} label="Vendor key" immutable>
+              <span className="text-xs font-mono text-mono-medium">{transaction.vendor_normalized}</span>
+            </NotionStylePropertyRow>
           )}
         </div>}
 

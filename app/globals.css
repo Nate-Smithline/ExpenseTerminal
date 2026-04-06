@@ -131,6 +131,36 @@ button, [role="button"], a.btn-primary, a.btn-secondary, a.btn-pill, a.btn-warm 
   @apply border-black outline-none;
 }
 
+/* Page title (editable) — strip UA / focus ring chrome */
+input.page-title-field:focus,
+input.page-title-field:focus-visible,
+input.page-title-field:active {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+}
+
+/* Page top bar title (smaller Notion-style) */
+input.page-top-bar-title:focus,
+input.page-top-bar-title:focus-visible,
+input.page-top-bar-title:active {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+}
+
+/* Page icon picker search — no focus chrome */
+input.page-icon-picker-search:focus,
+input.page-icon-picker-search:focus-visible,
+input.page-icon-picker-search:active {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  -webkit-box-shadow: none !important;
+}
+
 /* ---- Custom range slider ---- */
 
 input[type="range"] {

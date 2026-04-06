@@ -3,11 +3,13 @@ import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
+import { getActiveOrgId } from "@/lib/active-org";
+import { activityViewSettingsPatchSchema, ACTIVITY_SORT_COLUMNS } from "@/lib/validation/schemas";
 import {
-  activityViewSettingsPatchSchema,
-  ACTIVITY_SORT_COLUMNS,
-  ACTIVITY_VISIBLE_COLUMNS,
-} from "@/lib/validation/schemas";
+  filterActivityVisibleColumns,
+  filterColumnWidthKeys,
+} from "@/lib/activity-visible-column-keys";
+import { parseColumnFiltersJson } from "@/lib/activity-column-filters";
 
 const DEFAULT_VISIBLE_COLUMNS: string[] = [
   "date",
@@ -24,6 +26,7 @@ function defaultSettings() {
     sort_column: "date",
     sort_asc: false,
     visible_columns: DEFAULT_VISIBLE_COLUMNS,
+    column_widths: {} as Record<string, number>,
     filters: {
       status: null,
       transaction_type: null,
@@ -32,6 +35,7 @@ function defaultSettings() {
       search: "",
       date_from: `${year}-01-01`,
       date_to: `${year}-12-31`,
+      column_filters: [] as unknown[],
     },
   };
 }
@@ -49,10 +53,15 @@ export async function GET(req: Request) {
   }
   const supabase = authClient;
 
+  const orgId = await getActiveOrgId(supabase, userId);
+  if (!orgId) {
+    return NextResponse.json(defaultSettings());
+  }
+
   const { data, error } = await (supabase as any)
     .from("activity_view_settings")
-    .select("sort_column,sort_asc,visible_columns,filters")
-    .eq("user_id", userId)
+    .select("sort_column,sort_asc,visible_columns,column_widths,filters")
+    .eq("org_id", orgId)
     .maybeSingle();
 
   if (error) {
@@ -68,9 +77,7 @@ export async function GET(req: Request) {
   }
 
   const visible = Array.isArray(data.visible_columns)
-    ? (data.visible_columns as string[]).filter((k: string) =>
-        (ACTIVITY_VISIBLE_COLUMNS as readonly string[]).includes(k)
-      )
+    ? filterActivityVisibleColumns(data.visible_columns as string[])
     : def.visible_columns;
   const filters =
     data.filters && typeof data.filters === "object"
@@ -82,8 +89,13 @@ export async function GET(req: Request) {
           search: typeof data.filters.search === "string" ? data.filters.search : "",
           date_from: typeof data.filters.date_from === "string" ? data.filters.date_from : def.filters.date_from,
           date_to: typeof data.filters.date_to === "string" ? data.filters.date_to : def.filters.date_to,
+          column_filters: parseColumnFiltersJson((data.filters as Record<string, unknown>).column_filters),
         }
       : def.filters;
+  const columnWidths =
+    data.column_widths && typeof data.column_widths === "object" && !Array.isArray(data.column_widths)
+      ? filterColumnWidthKeys(data.column_widths as Record<string, number>)
+      : def.column_widths;
 
   return NextResponse.json({
     sort_column: ACTIVITY_SORT_COLUMNS.includes(data.sort_column as any)
@@ -91,6 +103,7 @@ export async function GET(req: Request) {
       : def.sort_column,
     sort_asc: typeof data.sort_asc === "boolean" ? data.sort_asc : def.sort_asc,
     visible_columns: visible.length > 0 ? visible : def.visible_columns,
+    column_widths: columnWidths,
     filters,
   });
 }
@@ -108,6 +121,11 @@ export async function PATCH(req: Request) {
   }
   const supabase = authClient;
 
+  const orgId = await getActiveOrgId(supabase, userId);
+  if (!orgId) {
+    return NextResponse.json({ error: "No active org" }, { status: 400 });
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -121,39 +139,53 @@ export async function PATCH(req: Request) {
   }
 
   const def = defaultSettings();
-  const { sort_column, sort_asc, visible_columns, filters } = parsed.data;
+  const { sort_column, sort_asc, visible_columns, column_widths, filters } = parsed.data;
 
   const { data: existing } = await (supabase as any)
     .from("activity_view_settings")
-    .select("id,sort_column,sort_asc,visible_columns,filters")
-    .eq("user_id", userId)
+    .select("id,sort_column,sort_asc,visible_columns,column_widths,filters")
+    .eq("org_id", orgId)
     .maybeSingle();
 
   const nextSortColumn = sort_column ?? existing?.sort_column ?? def.sort_column;
   const nextSortAsc =
     sort_asc !== undefined ? sort_asc : (existing?.sort_asc ?? def.sort_asc);
-  const nextVisible =
+  const nextVisibleRaw =
     visible_columns ??
     (Array.isArray(existing?.visible_columns) ? existing.visible_columns : def.visible_columns);
+  const nextVisible = filterActivityVisibleColumns(nextVisibleRaw as string[]);
+  const existingWidths =
+    existing?.column_widths && typeof existing.column_widths === "object"
+      ? existing.column_widths
+      : {};
+  const nextColumnWidths = column_widths
+    ? filterColumnWidthKeys({ ...existingWidths, ...column_widths })
+    : filterColumnWidthKeys(
+        existingWidths && typeof existingWidths === "object" ? { ...existingWidths } : {}
+      );
+  const existingFilters =
+    existing?.filters && typeof existing.filters === "object" && !Array.isArray(existing.filters)
+      ? existing.filters
+      : {};
   const nextFilters = filters
-    ? { ...def.filters, ...filters }
-    : (existing?.filters && typeof existing.filters === "object"
-        ? { ...def.filters, ...existing.filters }
-        : def.filters);
+    ? { ...def.filters, ...existingFilters, ...filters }
+    : { ...def.filters, ...existingFilters };
 
   const payload = {
+    org_id: orgId,
     user_id: userId,
     sort_column: nextSortColumn,
     sort_asc: nextSortAsc,
-    visible_columns: nextVisible,
+    visible_columns: nextVisible.length > 0 ? nextVisible : def.visible_columns,
+    column_widths: nextColumnWidths,
     filters: nextFilters,
     updated_at: new Date().toISOString(),
   };
 
   const { data: saved, error } = await (supabase as any)
     .from("activity_view_settings")
-    .upsert(payload, { onConflict: "user_id" })
-    .select("sort_column,sort_asc,visible_columns,filters")
+    .upsert(payload, { onConflict: "org_id" })
+    .select("sort_column,sort_asc,visible_columns,column_widths,filters")
     .single();
 
   if (error) {
@@ -169,6 +201,10 @@ export async function PATCH(req: Request) {
     visible_columns: Array.isArray(saved.visible_columns)
       ? saved.visible_columns
       : def.visible_columns,
+    column_widths:
+      saved.column_widths && typeof saved.column_widths === "object"
+        ? saved.column_widths
+        : def.column_widths,
     filters:
       saved.filters && typeof saved.filters === "object"
         ? {
@@ -177,6 +213,9 @@ export async function PATCH(req: Request) {
             source: saved.filters.source ?? def.filters.source,
             date_from: saved.filters.date_from ?? def.filters.date_from,
             date_to: saved.filters.date_to ?? def.filters.date_to,
+            column_filters: parseColumnFiltersJson(
+              (saved.filters as Record<string, unknown>).column_filters
+            ),
           }
         : def.filters,
   });

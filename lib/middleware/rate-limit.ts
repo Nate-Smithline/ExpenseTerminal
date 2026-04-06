@@ -106,6 +106,13 @@ export const generalApiLimit = {
   keyPrefix: "api",
 };
 
+/** Published page (unauthenticated): per-IP cap to limit scraping */
+export const publishedPageApiLimit = {
+  limit: 120,
+  windowMs: 60 * 1000,
+  keyPrefix: "pub-page",
+};
+
 /** Expensive operations (analyze, export): 10 per hour per user */
 export const expensiveOpLimit = {
   limit: 10,

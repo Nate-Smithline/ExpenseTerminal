@@ -28,6 +28,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
   const isFullWidth = FULL_WIDTH_ROUTES.includes(pathname);
+  /** Saved activity pages: use full main column width (not max-w-[880px]) so headers span beside the sidebar. */
+  const isSavedPageRoute = pathname.startsWith("/pages/");
+  /** Public read-only published page — no app chrome */
+  const isPublishedPublicRoute = pathname.startsWith("/p/");
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
@@ -95,7 +99,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("inbox-count-changed", handleInboxChanged);
   }, [loadInboxCount]);
 
-  if (isAuthPage || isFullWidth) {
+  if (isAuthPage || isFullWidth || isPublishedPublicRoute) {
     return <>{children}</>;
   }
 
@@ -108,8 +112,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main content — extra bottom padding on mobile for footer */}
-      <main className="flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-14 pb-24 md:pb-14">
-        <div className="max-w-[880px] mx-auto">{children}</div>
+      <main
+        className={
+          isSavedPageRoute
+            ? "flex-1 min-h-0 min-w-0 overflow-y-auto pb-24 md:pb-14"
+            : "flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-14 pb-24 md:pb-14"
+        }
+      >
+        {isSavedPageRoute ? (
+          <div className="w-full min-w-0">{children}</div>
+        ) : (
+          <div className="max-w-[880px] mx-auto">{children}</div>
+        )}
       </main>
 
       {/* Mobile footer nav — stays underneath overlay when sidebar is open */}

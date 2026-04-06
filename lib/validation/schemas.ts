@@ -79,6 +79,8 @@ export const transactionUpdateBodySchema = z.object({
   description: descriptionSchema.nullable().optional(),
   transaction_type: z.enum(["income", "expense"]).optional(),
   source: z.enum(["csv_upload", "manual"]).optional(),
+  /** Partial patch: keys are transaction_property_definitions.id for the active org */
+  custom_fields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const transactionDeleteBodySchema = z.object({
@@ -167,22 +169,138 @@ export const ACTIVITY_VISIBLE_COLUMNS = [
 ] as const;
 export type ActivityVisibleColumn = (typeof ACTIVITY_VISIBLE_COLUMNS)[number];
 
+const visibleColumnKeySchema = z.union([z.enum(ACTIVITY_VISIBLE_COLUMNS), uuidSchema]);
+
+/** Standard activity columns that support Notion-style column filters */
+export const ACTIVITY_FILTERABLE_STANDARD_COLUMNS = [
+  "date",
+  "vendor",
+  "description",
+  "amount",
+  "transaction_type",
+  "status",
+  "category",
+  "schedule_c_line",
+  "source",
+  "ai_confidence",
+  "business_purpose",
+  "quick_label",
+  "notes",
+  "deduction_percent",
+  "vendor_normalized",
+  "data_source_id",
+  "created_at",
+] as const;
+export type ActivityFilterableStandardColumn = (typeof ACTIVITY_FILTERABLE_STANDARD_COLUMNS)[number];
+
+export const activityFilterableStandardColumnSchema = z.enum(ACTIVITY_FILTERABLE_STANDARD_COLUMNS);
+
+/** One persisted Notion-style column filter row */
+export const activityColumnFilterRowSchema = z.object({
+  id: uuidSchema,
+  column: z.union([activityFilterableStandardColumnSchema, uuidSchema]),
+  op: z.string().min(1).max(40),
+  value: z.string().max(500).optional(),
+  value2: z.string().max(500).optional(),
+});
+
+export const activityColumnFiltersArraySchema = z.array(activityColumnFilterRowSchema).max(20);
+
 /** Filters stored in activity_view_settings.filters */
 export const activityViewFiltersSchema = z.object({
   status: z.enum(["pending", "completed", "auto_sorted", "personal"]).nullable().optional(),
   transaction_type: z.enum(["expense", "income"]).nullable().optional(),
+  data_source_id: uuidSchema.nullable().optional(),
   search: z.string().max(500).optional(),
   date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   source: z.enum(["csv_upload", "manual", "data_feed"]).nullable().optional(),
+  column_filters: activityColumnFiltersArraySchema.optional(),
 });
+
+export const columnWidthsSchema = z
+  .record(z.string().max(40), z.number().int().min(40).max(800))
+  .optional();
 
 export const activityViewSettingsPatchSchema = z.object({
   sort_column: z.enum(ACTIVITY_SORT_COLUMNS).optional(),
   sort_asc: z.boolean().optional(),
-  visible_columns: z.array(z.enum(ACTIVITY_VISIBLE_COLUMNS)).optional(),
+  visible_columns: z.array(visibleColumnKeySchema).optional(),
+  column_widths: columnWidthsSchema,
   filters: activityViewFiltersSchema.optional(),
 });
+
+/** Org-wide transaction property definitions (Notion-style columns) */
+export const TRANSACTION_PROPERTY_TYPES = [
+  "multi_select",
+  "select",
+  "date",
+  "short_text",
+  "long_text",
+  "checkbox",
+  "org_user",
+  "number",
+  "files",
+  "phone",
+  "email",
+  "created_time",
+  "created_by",
+  "last_edited_date",
+  "last_edited_time",
+] as const;
+
+export type TransactionPropertyType = (typeof TRANSACTION_PROPERTY_TYPES)[number];
+
+export const transactionPropertyTypeSchema = z.enum(TRANSACTION_PROPERTY_TYPES);
+
+export const transactionPropertyDefinitionPostSchema = z.object({
+  name: z.string().min(1, "Name is required").max(200),
+  type: transactionPropertyTypeSchema,
+  config: z.record(z.string(), z.unknown()).optional(),
+  position: z.number().int().min(0).max(100000).optional(),
+});
+
+export const transactionPropertyDefinitionPatchSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+  position: z.number().int().min(0).max(100000).optional(),
+});
+
+// Pages (saved views)
+export const pageIconTypeSchema = z.enum(["emoji", "material"]);
+
+export const pageCreateSchema = z.object({
+  title: z.string().max(200).optional(),
+  icon_type: pageIconTypeSchema.optional(),
+  icon_value: z.string().max(64).optional(),
+  icon_color: z.string().max(32).optional(),
+});
+
+export const pageVisibilitySchema = z.enum(["org", "restricted"]);
+
+export const pagePatchSchema = z.object({
+  title: z.string().max(200).nullable().optional(),
+  icon_type: pageIconTypeSchema.optional(),
+  icon_value: z.string().max(64).optional(),
+  icon_color: z.string().max(32).optional(),
+  full_width: z.boolean().optional(),
+  visibility: pageVisibilitySchema.optional(),
+});
+
+export const pageSharePatchSchema = z.object({
+  visibility: pageVisibilitySchema,
+});
+
+export const pageShareInviteSchema = z.object({
+  user_id: z.string().uuid().optional(),
+  user_ids: z.array(z.string().uuid()).optional(),
+});
+
+export const pagePublishPatchSchema = z.object({
+  published: z.boolean(),
+});
+
+export const pageActivityViewSettingsPatchSchema = activityViewSettingsPatchSchema;
 
 // Notification preferences
 export const notificationPreferencesSchema = z.object({

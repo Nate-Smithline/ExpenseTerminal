@@ -24,6 +24,7 @@ export interface Database {
           onboarding_progress: Json | null;
           terms_accepted_at: string | null;
           password_changed_at: string | null;
+          active_org_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -41,10 +42,43 @@ export interface Database {
           onboarding_progress?: Json | null;
           terms_accepted_at?: string | null;
           password_changed_at?: string | null;
+          active_org_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+      };
+      orgs: {
+        Row: {
+          id: string;
+          name: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["orgs"]["Insert"]>;
+      };
+      org_memberships: {
+        Row: {
+          id: string;
+          org_id: string;
+          user_id: string;
+          role: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          user_id: string;
+          role?: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["org_memberships"]["Insert"]>;
       };
       email_verifications: {
         Row: {
@@ -112,6 +146,7 @@ export interface Database {
           eligible_for_ai: boolean;
           data_source_id: string | null;
           data_feed_external_id: string | null;
+          custom_fields: Json;
           created_at: string;
           updated_at: string;
         };
@@ -142,6 +177,7 @@ export interface Database {
           eligible_for_ai?: boolean;
           data_source_id?: string | null;
           data_feed_external_id?: string | null;
+          custom_fields?: Json;
           created_at?: string;
           updated_at?: string;
         };
@@ -429,24 +465,51 @@ export interface Database {
         Row: {
           id: string;
           user_id: string;
+          org_id: string | null;
           sort_column: string | null;
           sort_asc: boolean | null;
           visible_columns: Json | null;
+          column_widths: Json | null;
           filters: Json | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
-          user_id: string;
+          user_id?: string;
+          org_id?: string | null;
           sort_column?: string | null;
           sort_asc?: boolean | null;
           visible_columns?: Json | null;
+          column_widths?: Json | null;
           filters?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["activity_view_settings"]["Insert"]>;
+      };
+      transaction_property_definitions: {
+        Row: {
+          id: string;
+          org_id: string;
+          name: string;
+          type: string;
+          config: Json;
+          position: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          name: string;
+          type: string;
+          config?: Json;
+          position?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["transaction_property_definitions"]["Insert"]>;
       };
     };
   };

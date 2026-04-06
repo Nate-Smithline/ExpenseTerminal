@@ -55,6 +55,8 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = public
 AS $$
+DECLARE
+  new_org_id UUID;
 BEGIN
   INSERT INTO public.profiles (id, email, first_name, last_name, email_opt_in, terms_accepted_at)
   VALUES (
@@ -67,6 +69,15 @@ BEGIN
          THEN (NEW.raw_user_meta_data->>'terms_accepted_at')::timestamptz
          ELSE NULL END
   );
+
+  INSERT INTO public.orgs (name) VALUES ('My Organization')
+  RETURNING id INTO new_org_id;
+
+  INSERT INTO public.org_memberships (org_id, user_id, role)
+  VALUES (new_org_id, NEW.id, 'owner');
+
+  UPDATE public.profiles SET active_org_id = new_org_id WHERE id = NEW.id;
+
   RETURN NEW;
 END;
 $$;
@@ -164,6 +175,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_data_feed_external
 CREATE INDEX IF NOT EXISTS idx_transactions_user_year_status_type ON public.transactions(user_id, tax_year, status, transaction_type);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON public.transactions(date DESC);
 
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb;
+
 -- Auto-sort rules
 CREATE TABLE IF NOT EXISTS public.auto_sort_rules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -214,6 +227,60 @@ CREATE TABLE IF NOT EXISTS public.vendor_patterns (
 
 CREATE INDEX IF NOT EXISTS idx_vendor_patterns_user ON public.vendor_patterns(user_id, vendor_normalized);
 
+-- Orgs (multi-org model)
+CREATE TABLE IF NOT EXISTS public.orgs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL DEFAULT 'My Organization',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.org_memberships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES public.orgs(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'owner',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(org_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_org_memberships_user ON public.org_memberships(user_id);
+CREATE INDEX IF NOT EXISTS idx_org_memberships_org ON public.org_memberships(org_id);
+
+-- Org-wide custom columns for activity transactions (Notion-style properties)
+CREATE TABLE IF NOT EXISTS public.transaction_property_definitions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES public.orgs(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  config JSONB NOT NULL DEFAULT '{}'::jsonb,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT transaction_property_definitions_type_check CHECK (type IN (
+    'multi_select',
+    'select',
+    'date',
+    'short_text',
+    'long_text',
+    'checkbox',
+    'org_user',
+    'number',
+    'files',
+    'phone',
+    'email',
+    'created_time',
+    'created_by',
+    'last_edited_date',
+    'last_edited_time'
+  ))
+);
+
+CREATE INDEX IF NOT EXISTS idx_transaction_property_definitions_org
+  ON public.transaction_property_definitions(org_id, position);
+
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS active_org_id UUID REFERENCES public.orgs(id);
+
 -- Org settings (business profile)
 CREATE TABLE IF NOT EXISTS public.org_settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -261,6 +328,41 @@ ALTER TABLE public.vendor_patterns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.data_sources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.org_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tax_year_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.orgs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.org_memberships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transaction_property_definitions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Org members can view transaction property definitions"
+  ON public.transaction_property_definitions FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM public.org_memberships m
+    WHERE m.org_id = transaction_property_definitions.org_id AND m.user_id = auth.uid()
+  ));
+
+CREATE POLICY "Org members can insert transaction property definitions"
+  ON public.transaction_property_definitions FOR INSERT
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.org_memberships m
+    WHERE m.org_id = transaction_property_definitions.org_id AND m.user_id = auth.uid()
+  ));
+
+CREATE POLICY "Org members can update transaction property definitions"
+  ON public.transaction_property_definitions FOR UPDATE
+  USING (EXISTS (
+    SELECT 1 FROM public.org_memberships m
+    WHERE m.org_id = transaction_property_definitions.org_id AND m.user_id = auth.uid()
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.org_memberships m
+    WHERE m.org_id = transaction_property_definitions.org_id AND m.user_id = auth.uid()
+  ));
+
+CREATE POLICY "Org members can delete transaction property definitions"
+  ON public.transaction_property_definitions FOR DELETE
+  USING (EXISTS (
+    SELECT 1 FROM public.org_memberships m
+    WHERE m.org_id = transaction_property_definitions.org_id AND m.user_id = auth.uid()
+  ));
 
 CREATE POLICY "Users can manage own transactions"
   ON public.transactions FOR ALL
@@ -290,6 +392,35 @@ CREATE POLICY "Users can manage own org settings"
 CREATE POLICY "Users can manage own tax year settings"
   ON public.tax_year_settings FOR ALL
   USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view orgs they belong to"
+  ON public.orgs FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM public.org_memberships m
+    WHERE m.org_id = id AND m.user_id = auth.uid()
+  ));
+
+CREATE POLICY "Users can update orgs they own"
+  ON public.orgs FOR UPDATE
+  USING (EXISTS (
+    SELECT 1 FROM public.org_memberships m
+    WHERE m.org_id = id AND m.user_id = auth.uid() AND m.role = 'owner'
+  ))
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.org_memberships m
+    WHERE m.org_id = id AND m.user_id = auth.uid() AND m.role = 'owner'
+  ));
+
+CREATE POLICY "Users can view own memberships"
+  ON public.org_memberships FOR SELECT
+  USING (user_id = auth.uid());
+
+CREATE POLICY "Org owners can manage memberships"
+  ON public.org_memberships FOR ALL
+  USING (EXISTS (
+    SELECT 1 FROM public.org_memberships m
+    WHERE m.org_id = org_memberships.org_id AND m.user_id = auth.uid() AND m.role = 'owner'
+  ));
 
 -- =============================================================================
 -- NOTIFICATION PREFERENCES
@@ -396,3 +527,6 @@ ALTER TABLE public.transactions
 
 CREATE INDEX IF NOT EXISTS idx_transactions_ai_eligibility
   ON public.transactions(user_id, source, eligible_for_ai);
+
+-- Saved activity pages (pages, page_members, page_favorites, RLS, peer profile reads):
+-- see migration 202604031200_pages_sharing_favorites.sql
