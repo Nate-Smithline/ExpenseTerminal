@@ -14,7 +14,7 @@ export function BackToDeductionsLink({ children }: Props) {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        router.push("/other-deductions");
+        router.push("/deductions");
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -22,7 +22,7 @@ export function BackToDeductionsLink({ children }: Props) {
   }, [router]);
 
   return (
-    <Link href="/other-deductions" className="btn-secondary text-sm inline-flex items-center gap-1.5">
+    <Link href="/deductions" className="btn-secondary text-sm inline-flex items-center gap-1.5">
       {children}
       <kbd className="kbd-hint">Esc</kbd>
     </Link>

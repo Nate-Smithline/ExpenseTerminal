@@ -193,12 +193,9 @@
               ${mergedDeductions.toLocaleString("en-US", { minimumFractionDigits: 2 })}
              </p>
             <p className="text-xs text-mono-light mt-1">Transactions + additional deductions</p>
-            <div className="flex items-center gap-3 mt-2">
+            <div className="mt-2">
               <Link href="/inbox" className="text-xs text-accent-sage font-medium inline-block hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded">
                 Inbox
-              </Link>
-              <Link href="/other-deductions" className="text-xs text-accent-sage font-medium inline-block hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded">
-                Other Deductions
               </Link>
             </div>
            </div>
@@ -231,7 +228,7 @@
            </div>
          </div>
          <p className="text-xs text-mono-medium max-w-xl">
-           Savings: transaction deductions × {(taxRate * 100).toFixed(0)}% rate, plus additional deductions (QBI, home office, etc.) not multiplied by rate.
+           Savings: transaction deductions × {(taxRate * 100).toFixed(0)}% rate, plus additional deductions (home office, mileage, etc.) not multiplied by rate.
            <Link href="/preferences/org" className="text-accent-sage ml-1 hover:underline font-medium">Edit rate</Link>
          </p>
          <p className="text-xs text-mono-medium mt-2 pt-2 border-t border-bg-tertiary/40">

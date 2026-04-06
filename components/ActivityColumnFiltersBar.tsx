@@ -79,12 +79,15 @@ type Props = {
   columnFilters: ActivityColumnFilterRow[];
   onColumnFiltersChange: (next: ActivityColumnFilterRow[]) => void;
   transactionProperties: TransactionPropertyDefinition[];
+  /** When false, no filter UI (chips, + Filter, popovers) — toolbar filter icon is off. */
+  filterToolbarActive?: boolean;
 };
 
 export function ActivityColumnFiltersBar({
   columnFilters,
   onColumnFiltersChange,
   transactionProperties,
+  filterToolbarActive = false,
 }: Props) {
   const [openFilterId, setOpenFilterId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -127,6 +130,14 @@ export function ActivityColumnFiltersBar({
     };
   }, []);
 
+  useEffect(() => {
+    if (!filterToolbarActive) {
+      setAddOpen(false);
+      setOpenFilterId(null);
+      setMenuOpenId(null);
+    }
+  }, [filterToolbarActive]);
+
   const updateFilter = useCallback(
     (id: string, patch: Partial<ActivityColumnFilterRow>) => {
       onColumnFiltersChange(columnFilters.map((f) => (f.id === id ? { ...f, ...patch } : f)));
@@ -156,6 +167,10 @@ export function ActivityColumnFiltersBar({
   );
 
   useLayoutEffect(() => {
+    if (!filterToolbarActive) {
+      setPopoverPos(null);
+      return;
+    }
     if (addOpen && addBtnRef.current) {
       const r = addBtnRef.current.getBoundingClientRect();
       const width = 280;
@@ -175,9 +190,10 @@ export function ActivityColumnFiltersBar({
       return;
     }
     setPopoverPos(null);
-  }, [openFilterId, addOpen, columnFilters]);
+  }, [filterToolbarActive, openFilterId, addOpen, columnFilters]);
 
   useEffect(() => {
+    if (!filterToolbarActive) return;
     if (!openFilterId && !addOpen) return;
     function onDoc(e: MouseEvent) {
       const t = e.target as Node;
@@ -191,7 +207,7 @@ export function ActivityColumnFiltersBar({
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
-  }, [openFilterId, addOpen]);
+  }, [filterToolbarActive, openFilterId, addOpen]);
 
   const activeFilter = openFilterId ? columnFilters.find((f) => f.id === openFilterId) : null;
 
@@ -240,6 +256,10 @@ export function ActivityColumnFiltersBar({
         onMenuOpenChange={(o) => setMenuOpenId(o ? activeFilter.id : null)}
       />
     ) : null;
+
+  if (!filterToolbarActive) {
+    return null;
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">

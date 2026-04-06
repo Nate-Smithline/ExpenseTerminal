@@ -54,7 +54,6 @@ export async function POST(req: Request) {
   }
 
   revalidatePath("/dashboard");
-  revalidatePath("/deductions/qbi");
   return NextResponse.json(data);
 }
 
@@ -143,8 +142,7 @@ export async function DELETE(req: Request) {
 
   const count = deleted?.length ?? 0;
   revalidatePath("/dashboard");
-  revalidatePath("/other-deductions");
-  revalidatePath("/deductions/qbi");
+  revalidatePath("/deductions");
   revalidatePath("/deductions/mileage");
   return NextResponse.json({ deleted: count });
 }

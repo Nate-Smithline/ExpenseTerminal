@@ -196,8 +196,8 @@ export function CategoryBreakout({
       if (rows.length === 0) {
         return (
           <p className="text-xs text-mono-light px-2">
-            No calculator-based deductions yet. Add home office, QBI, mileage, and other additional
-            entries from the Other Deductions page.
+            No calculator-based deductions yet. Add home office, mileage, and other additional
+            entries from the Deductions page.
           </p>
         );
       }
@@ -206,11 +206,11 @@ export function CategoryBreakout({
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2 pb-1">
             <p className="text-xs text-mono-medium">
-              These amounts come from your deduction calculators (for example home office, QBI, and
+              These amounts come from your deduction calculators (for example home office and
               mileage) rather than individual card-sorted transactions.
             </p>
             <Link
-              href="/other-deductions"
+              href="/deductions"
               className="inline-flex items-center gap-1 text-xs font-medium text-accent-sage hover:underline shrink-0"
             >
               Open calculators
@@ -241,7 +241,7 @@ export function CategoryBreakout({
     if (!hasTransactions) {
       return (
         <p className="text-xs text-mono-light px-2">
-          This amount comes from your additional deduction entries (for example mileage, QBI, or
+          This amount comes from your additional deduction entries (for example mileage or
           other calculator-based amounts) rather than individual card-sorted transactions.
         </p>
       );
@@ -285,7 +285,7 @@ export function CategoryBreakout({
           <p className="text-xs text-mono-light mt-0.5">Expense distribution by category</p>
           <p className="text-[11px] text-mono-light mt-1 max-w-md">
             This total includes both card-sorted business expenses and any additional amounts you
-            have added via deduction calculators (like home office, QBI, and mileage).
+            have added via deduction calculators (like home office and mileage).
           </p>
         </div>
         <p className="text-sm font-medium text-mono-dark tabular-nums">

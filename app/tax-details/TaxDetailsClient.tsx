@@ -137,7 +137,7 @@ export function TaxDetailsClient({ defaultYear }: TaxDetailsClientProps) {
               {formatCurrency(data.totalExpenses)}
             </p>
             <p className="text-xs text-mono-light mt-1">
-              Transaction expenses plus additional deductions (QBI, home office, mileage, etc.).
+              Transaction expenses plus additional deductions (home office, mileage, etc.).
             </p>
           </div>
           <div className="card p-5 min-w-0">

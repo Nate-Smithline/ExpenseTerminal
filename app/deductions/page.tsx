@@ -5,7 +5,6 @@ import { getCurrentUserId } from "@/lib/get-current-user";
 
 const calculators = [
   { href: "/deductions/home-office", label: "Home Office", icon: "🏠", description: "Simplified or actual expense method" },
-  { href: "/deductions/qbi", label: "QBI", icon: "📋", description: "Qualified business income deduction" },
   { href: "/deductions/retirement", label: "Retirement", icon: "🏦", description: "Solo 401k, SEP-IRA, etc." },
   { href: "/deductions/health-insurance", label: "Health Insurance", icon: "🏥", description: "Self-employed health deduction" },
   { href: "/deductions/mileage", label: "Mileage", icon: "🚗", description: "Business mileage rate" },

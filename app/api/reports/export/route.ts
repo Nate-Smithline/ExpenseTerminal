@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, expensiveOpLimit } from "@/lib/middleware/rate-limit";
-import { filterByQuarter, calculateTaxSummary, calculateScheduleSE, filterDeductibleTransactions } from "@/lib/tax/form-calculations";
+import {
+  filterByQuarter,
+  calculateTaxSummary,
+  calculateScheduleSE,
+  filterDeductibleTransactions,
+  filterAdditionalDeductionsForTotals,
+} from "@/lib/tax/form-calculations";
 import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
 
 type TxRecord = {
@@ -143,12 +149,12 @@ export async function GET(req: Request) {
     );
 
     // Build summary used for all sections
-    const deductionsForSummary = (deductions ?? []).map(
-      (d: { type: string; amount: string }) => ({
-        type: d.type,
-        amount: d.amount,
-      }),
-    );
+    const deductionsForSummary = filterAdditionalDeductionsForTotals(
+      (deductions ?? []) as { type: string; amount: string }[],
+    ).map((d) => ({
+      type: d.type,
+      amount: d.amount,
+    }));
     const summary = calculateTaxSummary(
       quarterFilteredTx as any,
       deductionsForSummary as any,
@@ -173,13 +179,13 @@ export async function GET(req: Request) {
     });
 
     // Short additional-deductions note if present
-    if ((deductions ?? []).length > 0) {
+    if (deductionsForSummary.length > 0) {
       const lastTable = (doc as unknown as { lastAutoTable?: { finalY: number } })
         .lastAutoTable;
       const finalY = lastTable?.finalY ?? 34;
       doc.setFontSize(10);
       doc.text(
-        "Additional deductions from calculators (for example QBI, home office, mileage) are included in the totals above and in the sections that follow.",
+        "Additional deductions from calculators (for example home office and mileage) are included in the totals above and in the sections that follow.",
         20,
         finalY + 8,
       );

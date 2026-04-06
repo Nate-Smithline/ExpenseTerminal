@@ -13,7 +13,7 @@ const mobileFooterNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/data-sources", label: "Accounts & Data", icon: "database" },
   { href: "/inbox", label: "Inbox", icon: "inbox" },
-  { href: "/other-deductions", label: "Deductions", icon: "receipt_long" },
+  { href: "/deductions", label: "Deductions", icon: "receipt_long" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -208,7 +208,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             <nav className="px-5 pt-1 pb-3 space-y-0 overflow-y-auto">
               {[
-                { href: "/other-deductions", label: "Other Deductions" },
+                { href: "/deductions", label: "Deductions" },
                 { href: "/tax-filing", label: "Tax Filing" },
                 { href: "/activity", label: "All Activity" },
                 { href: "/preferences/automations", label: "Preferences" },

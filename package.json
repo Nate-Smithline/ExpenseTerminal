@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 127.0.0.1 --webpack",
+    "dev:unlock": "node -e \"const fs=require('fs'); try { fs.unlinkSync('.next/dev/lock'); console.log('Removed .next/dev/lock'); } catch (e) { if (e.code!=='ENOENT') throw e; else console.log('No lock file'); }\"",
+    "dev:turbo": "next dev -H 127.0.0.1",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

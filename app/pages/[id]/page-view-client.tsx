@@ -99,6 +99,7 @@ export function PageViewClient({ page }: { page: ServerPage }) {
   const [orgMembers, setOrgMembers] = useState<OrgMemberOption[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const patchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savePayloadRef = useRef<ActivityViewState | null>(null);
 
   const memberDisplayById = useMemo(() => {
     const m: Record<string, string> = {};
@@ -292,42 +293,62 @@ export function PageViewClient({ page }: { page: ServerPage }) {
     loadTransactions();
   }, [viewSettingsLoaded, loadTransactions]);
 
-  const persistViewState = useCallback(
-    (patch: Partial<ActivityViewState>) => {
-      const next = {
-        ...viewState,
+  const persistViewState = useCallback((patch: Partial<ActivityViewState>) => {
+    setViewState((prev) => {
+      const next: ActivityViewState = {
+        ...prev,
         ...patch,
         column_widths: patch.column_widths
-          ? { ...viewState.column_widths, ...patch.column_widths }
-          : viewState.column_widths,
-        filters: patch.filters ?? viewState.filters,
+          ? { ...prev.column_widths, ...patch.column_widths }
+          : prev.column_widths,
+        filters: patch.filters ?? prev.filters,
       };
-      setViewState(next);
+      savePayloadRef.current = next;
       if (patchDebounceRef.current) clearTimeout(patchDebounceRef.current);
-      patchDebounceRef.current = setTimeout(async () => {
+      patchDebounceRef.current = setTimeout(() => {
         patchDebounceRef.current = null;
-        await fetch(`/api/pages/${page.id}/activity-view-settings`, {
+        const p = savePayloadRef.current;
+        if (!p) return;
+        void fetch(`/api/pages/${page.id}/activity-view-settings`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            sort_column: next.sort_column,
-            sort_asc: next.sort_asc,
-            visible_columns: next.visible_columns,
-            column_widths: next.column_widths,
-            filters: next.filters,
+            sort_column: p.sort_column,
+            sort_asc: p.sort_asc,
+            visible_columns: p.visible_columns,
+            column_widths: p.column_widths,
+            filters: p.filters,
           }),
         });
       }, 400);
-    },
-    [page.id, viewState]
-  );
+      return next;
+    });
+  }, [page.id]);
 
   useEffect(() => {
     return () => {
-      if (patchDebounceRef.current) clearTimeout(patchDebounceRef.current);
+      if (patchDebounceRef.current) {
+        clearTimeout(patchDebounceRef.current);
+        patchDebounceRef.current = null;
+      }
       if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current);
+      const p = savePayloadRef.current;
+      if (p) {
+        void fetch(`/api/pages/${page.id}/activity-view-settings`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          keepalive: true,
+          body: JSON.stringify({
+            sort_column: p.sort_column,
+            sort_asc: p.sort_asc,
+            visible_columns: p.visible_columns,
+            column_widths: p.column_widths,
+            filters: p.filters,
+          }),
+        });
+      }
     };
-  }, []);
+  }, [page.id]);
 
   const onReanalyzeAll = useCallback(() => {
     setToast("Batch re-analysis is available on All Activity for now");
@@ -435,6 +456,7 @@ export function PageViewClient({ page }: { page: ServerPage }) {
             totalCount={totalCount}
             loading={loading}
             hideTitle
+            exportFilenameBase={pageMeta.title?.trim() || "Untitled"}
             transactionProperties={transactionProperties}
             expandToContainer={fullWidth}
           />

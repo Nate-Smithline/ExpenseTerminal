@@ -58,7 +58,7 @@ const FEATURES = [
   {
     icon: "savings",
     title: "Deduction Calculators",
-    description: "Built-in tools for QBI, mileage, home office, health insurance, retirement, and more.",
+    description: "Built-in tools for mileage, home office, health insurance, retirement, and more.",
   },
   {
     icon: "lock",

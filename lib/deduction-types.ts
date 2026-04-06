@@ -7,13 +7,6 @@ export const DEDUCTION_TYPE_CARDS = [
     typeKey: "home_office" as const,
   },
   {
-    href: "/deductions/qbi",
-    label: "QBI",
-    icon: "summarize",
-    description: "Qualified business income deduction",
-    typeKey: "qbi" as const,
-  },
-  {
     href: "/deductions/retirement",
     label: "Retirement",
     icon: "account_balance",
@@ -35,10 +28,3 @@ export const DEDUCTION_TYPE_CARDS = [
     typeKey: "mileage" as const,
   },
 ] as const;
-
-export const OTHER_DEDUCTIONS_CARD = {
-  href: "/other-deductions",
-  label: "Other deductions",
-  icon: "folder_open",
-  description: "See other deduction calculators and examples of additional write-offs",
-} as const;

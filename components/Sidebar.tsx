@@ -18,8 +18,6 @@ type PageNavItem = {
 const mainNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
   { href: "/data-sources", label: "Accounts & Data", icon: "database" },
-  { href: "/inbox", label: "Inbox", icon: "visibility" },
-  { href: "/other-deductions", label: "Other Deductions", icon: "receipt_long" },
 ];
 
 const bottomNav = [{ href: "/preferences/automations", label: "Preferences", icon: "tune" }];
@@ -27,7 +25,6 @@ const bottomNav = [{ href: "/preferences/automations", label: "Preferences", ico
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [inboxCount, setInboxCount] = useState<number | null>(null);
   const [pages, setPages] = useState<PageNavItem[]>([]);
   const [pagesLoaded, setPagesLoaded] = useState(false);
   const [creatingPage, setCreatingPage] = useState(false);
@@ -39,17 +36,37 @@ export function Sidebar() {
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
-  const loadInboxCount = () => {
-    // Count pending across all tax years so sync'd transactions show up regardless of date
-    fetch(`/api/transactions?status=pending&count_only=true`)
-      .then((r) => r.json())
-      .then((d) => setInboxCount(d.count ?? 0))
-      .catch(() => {});
+  const navLink = (item: { href: string; label: string; icon: string }) => {
+    const active = isActive(item.href);
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={`flex items-center gap-2 ml-5 mr-2 rounded-md pl-3 pr-2 py-1.5 text-[13px] font-medium transition-colors ${
+          active
+            ? "text-mono-dark bg-mono-dark/[0.06]"
+            : "text-mono-medium hover:text-mono-dark hover:bg-mono-dark/[0.04]"
+        }`}
+      >
+        <span
+          className={`shrink-0 flex h-5 w-5 items-center justify-start ${
+            active ? "text-mono-dark" : "text-mono-light"
+          }`}
+        >
+          <span
+            className="material-symbols-rounded leading-none"
+            style={{
+              fontSize: 18,
+              fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20",
+            }}
+          >
+            {item.icon}
+          </span>
+        </span>
+        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      </Link>
+    );
   };
-
-  useEffect(() => {
-    loadInboxCount();
-  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,14 +166,6 @@ export function Sidebar() {
     window.addEventListener("page-favorite-changed", onFavoriteChanged);
     return () => window.removeEventListener("page-favorite-changed", onFavoriteChanged);
   }, [loadFavorites]);
-
-  useEffect(() => {
-    function handleInboxChanged() {
-      loadInboxCount();
-    }
-    window.addEventListener("inbox-count-changed", handleInboxChanged);
-    return () => window.removeEventListener("inbox-count-changed", handleInboxChanged);
-  }, []);
 
   useEffect(() => {
     function onPageMeta(e: Event) {
@@ -291,35 +300,7 @@ export function Sidebar() {
       {/* Main nav - block extends to left edge; content stays aligned (pl-8 = 5+3) */}
       <nav className="flex-1 pl-0 pr-5">
         <div className="space-y-1">
-          {mainNav.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 ml-5 mr-2 rounded-md pl-3 pr-2 py-2 text-[13px] font-medium transition-colors ${
-                isActive(item.href)
-                  ? "text-mono-dark bg-mono-dark/[0.06]"
-                  : "text-mono-medium hover:text-mono-dark hover:bg-mono-dark/[0.04]"
-              }`}
-            >
-              <span
-                className={`material-symbols-rounded leading-none transition-colors ${
-                  isActive(item.href) ? "text-mono-dark" : ""
-                }`}
-                style={{
-                  fontSize: 20,
-                  fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20",
-                }}
-              >
-                {item.icon}
-              </span>
-              <span className="flex-1">{item.label}</span>
-              {item.href === "/inbox" && inboxCount != null && inboxCount > 0 && (
-                <span className="bg-[#2563EB] text-white text-[11px] font-semibold rounded-none px-2 py-0.5 tabular-nums">
-                  <span className="relative top-px">{inboxCount}</span>
-                </span>
-              )}
-            </Link>
-          ))}
+          {mainNav.map(navLink)}
         </div>
 
         {favoritesLoaded && (favoritePages.length > 0 || favoritesError) && (

@@ -33,16 +33,16 @@ const TIP_SLIDES = [
     title: "Home office & vehicle",
     detail:
       "Home office: If you use part of your home regularly and exclusively for business, you can deduct a portion of rent, utilities, insurance, and similar costs—either with a simplified per-square-foot method or actual expenses. Vehicle: Business miles at the IRS standard rate (or actual expenses) are deductible; commuting from home to a regular workplace usually isn't. Use our Home Office and Mileage calculators to lock in these deductions with the right documentation.",
-    href: "/other-deductions",
+    href: "/deductions",
     linkLabel: "Set up home office & mileage",
   },
   {
     key: "other",
     title: "Other common deductions",
     detail:
-      "Beyond the big buckets, many everyday costs can be deductible when they're ordinary and necessary: business share of phone and internet, continuing education, professional tools and software, and similar expenses. There's no single list—it depends on your trade. Use Other deductions to add and track these so nothing slips through.",
-    href: "/other-deductions",
-    linkLabel: "Other deductions",
+      "Beyond the big buckets, many everyday costs can be deductible when they're ordinary and necessary: business share of phone and internet, continuing education, professional tools and software, and similar expenses. There's no single list—it depends on your trade. Track them in your transactions and use the Deductions page for calculator-based amounts so nothing slips through.",
+    href: "/deductions",
+    linkLabel: "Open Deductions",
   },
 ];
 

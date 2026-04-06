@@ -84,6 +84,7 @@ export function ActivityPageClient({
   const [transactionProperties, setTransactionProperties] = useState<TransactionPropertyDefinition[]>([]);
   const [orgMembers, setOrgMembers] = useState<OrgMemberOption[]>([]);
   const patchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savePayloadRef = useRef<ActivityViewState | null>(null);
 
   const memberDisplayById = useMemo(() => {
     const m: Record<string, string> = {};
@@ -254,35 +255,58 @@ export function ActivityPageClient({
   }, [viewSettingsLoaded, loadTransactions]);
 
   const persistViewState = useCallback((patch: Partial<ActivityViewState>) => {
-    const next = {
-      ...viewState,
-      ...patch,
-      column_widths: patch.column_widths
-        ? { ...viewState.column_widths, ...patch.column_widths }
-        : viewState.column_widths,
-      filters: patch.filters ?? viewState.filters,
-    };
-    setViewState(next);
-    if (patchDebounceRef.current) clearTimeout(patchDebounceRef.current);
-    patchDebounceRef.current = setTimeout(async () => {
-      patchDebounceRef.current = null;
-      await fetch("/api/activity-view-settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sort_column: next.sort_column,
-          sort_asc: next.sort_asc,
-          visible_columns: next.visible_columns,
-          column_widths: next.column_widths,
-          filters: next.filters,
-        }),
-      });
-    }, 400);
-  }, [viewState]);
+    setViewState((prev) => {
+      const next: ActivityViewState = {
+        ...prev,
+        ...patch,
+        column_widths: patch.column_widths
+          ? { ...prev.column_widths, ...patch.column_widths }
+          : prev.column_widths,
+        filters: patch.filters ?? prev.filters,
+      };
+      savePayloadRef.current = next;
+      if (patchDebounceRef.current) clearTimeout(patchDebounceRef.current);
+      patchDebounceRef.current = setTimeout(() => {
+        patchDebounceRef.current = null;
+        const p = savePayloadRef.current;
+        if (!p) return;
+        void fetch("/api/activity-view-settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sort_column: p.sort_column,
+            sort_asc: p.sort_asc,
+            visible_columns: p.visible_columns,
+            column_widths: p.column_widths,
+            filters: p.filters,
+          }),
+        });
+      }, 400);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     return () => {
-      if (patchDebounceRef.current) clearTimeout(patchDebounceRef.current);
+      if (patchDebounceRef.current) {
+        clearTimeout(patchDebounceRef.current);
+        patchDebounceRef.current = null;
+      }
+      const p = savePayloadRef.current;
+      if (p) {
+        void fetch("/api/activity-view-settings", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          keepalive: true,
+          body: JSON.stringify({
+            sort_column: p.sort_column,
+            sort_asc: p.sort_asc,
+            visible_columns: p.visible_columns,
+            column_widths: p.column_widths,
+            filters: p.filters,
+          }),
+        });
+      }
     };
   }, []);
 

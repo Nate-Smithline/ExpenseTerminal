@@ -173,9 +173,9 @@ export function TaxFormCard({
           <p className="text-xs text-mono-light mt-0.5">{subtitle}</p>
           <p className="text-[11px] text-mono-light mt-1">
             This card is a Schedule C-only view. It shows expenses that land directly on Schedule C
-            lines; other items you add through calculators (like QBI, home office, retirement, or
-            health insurance) roll into the totals at the top of this page and in Other Deductions,
-            not as separate Schedule C line items here.
+            lines; other items you add through calculators (like home office, retirement, or
+            health insurance) roll into the totals at the top of this page and in your dashboard
+            deductions summary, not as separate Schedule C line items here.
           </p>
         </div>
         <div className="text-right">

@@ -34,7 +34,7 @@ function formatPercent(n: number): string {
 }
 
 export function FilingPathSelector(props: FilingPathSelectorProps) {
-  const { data, overrides, filingType, onDownloadRequest } = props;
+  const { data, overrides, onDownloadRequest } = props;
   const [vendorAccordionOpen, setVendorAccordionOpen] = useState(false);
 
   const missingLines = SCHEDULE_C_LINES.filter((l) => {
@@ -51,11 +51,6 @@ export function FilingPathSelector(props: FilingPathSelectorProps) {
     .filter(([, v]) => v > 0)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 3);
-
-  // TODO: QBI eligibility logic — basic flag; full check needs SSTB status from user
-  const qbiEligible =
-    (filingType === "sole_proprietor" || filingType === "single_llc" || !filingType) &&
-    data.netProfit > 0;
 
   return (
     <div id="filing-path-selector" className="space-y-6 scroll-mt-8">
@@ -268,31 +263,6 @@ export function FilingPathSelector(props: FilingPathSelectorProps) {
                 <span className="text-xs text-mono-medium">Effective rate on side income</span>
                 <span className="text-sm font-medium text-mono-dark tabular-nums">
                   {formatPercent(data.effectiveTaxRate)}
-                </span>
-              </div>
-
-              {/* QBI eligibility */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-mono-medium">QBI deduction eligible</span>
-                  <span
-                    className="material-symbols-rounded text-[14px] text-mono-light cursor-help"
-                    style={{
-                      fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20",
-                    }}
-                    title="Section 199A Qualified Business Income deduction — up to 20% of qualified business income. Eligibility depends on income level, filing status, and business type."
-                  >
-                    info
-                  </span>
-                </div>
-                <span
-                  className={`text-xs font-medium px-2 py-0.5 rounded-sm ${
-                    qbiEligible
-                      ? "text-accent-sage bg-accent-sage/10"
-                      : "text-mono-light bg-bg-tertiary/30"
-                  }`}
-                >
-                  {qbiEligible ? "Likely yes" : "Check eligibility"}
                 </span>
               </div>
 

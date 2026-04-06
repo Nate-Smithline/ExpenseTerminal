@@ -37,6 +37,13 @@ interface Deduction {
   amount: string | number;
 }
 
+/** Additional deduction types excluded from totals while the feature is paused. */
+const EXCLUDED_ADDITIONAL_DEDUCTION_TYPES = new Set<string>(["qbi"]);
+
+export function filterAdditionalDeductionsForTotals<T extends { type: string }>(deductions: T[]): T[] {
+  return deductions.filter((d) => !EXCLUDED_ADDITIONAL_DEDUCTION_TYPES.has(d.type));
+}
+
 /**
  * Calculate deductible amount considering meal rule and deduction percent.
  */
@@ -98,6 +105,7 @@ export function calculateTaxSummary(
   deductions: Deduction[],
   taxRate: number = 0.24
 ): TaxSummary {
+  const activeDeductions = filterAdditionalDeductionsForTotals(deductions);
   const expenses = filterDeductibleTransactions(transactions);
   const income = transactions.filter((t) => t.transaction_type === "income");
 
@@ -117,14 +125,14 @@ export function calculateTaxSummary(
   }
 
   // Additional deductions
-  for (const d of deductions) {
+  for (const d of activeDeductions) {
     const amt = Math.abs(Number(d.amount));
     categoryBreakdown[d.type] = (categoryBreakdown[d.type] || 0) + amt;
   }
 
   const totalExpenses =
     Object.values(lineBreakdown).reduce((a, b) => a + b, 0) +
-    deductions.reduce((sum, d) => sum + Math.abs(Number(d.amount)), 0);
+    activeDeductions.reduce((sum, d) => sum + Math.abs(Number(d.amount)), 0);
 
   const netProfit = grossIncome - totalExpenses;
 

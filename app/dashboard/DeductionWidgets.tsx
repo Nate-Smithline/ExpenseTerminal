@@ -12,10 +12,6 @@ const INPUT_CLS =
   "w-full border border-bg-tertiary rounded-lg px-3 py-2.5 text-sm bg-white focus:ring-1 focus:ring-accent-sage/30 outline-none tabular-nums";
 
 export function DeductionWidgets({ currentYear, taxRate }: DeductionWidgetsProps) {
-  const [qbiIncome, setQbiIncome] = useState(0);
-  const [qbiSaving, setQbiSaving] = useState(false);
-  const [qbiSaved, setQbiSaved] = useState(false);
-
   const [miles, setMiles] = useState("");
   const [mileageSaving, setMileageSaving] = useState(false);
   const [mileageSaved, setMileageSaved] = useState(false);
@@ -46,7 +42,6 @@ export function DeductionWidgets({ currentYear, taxRate }: DeductionWidgetsProps
   const [vehicleSaving, setVehicleSaving] = useState(false);
   const [vehicleSaved, setVehicleSaved] = useState(false);
 
-  const qbiAmount = qbiIncome > 0 ? qbiIncome * 0.2 : 0;
   const mileageRate = 0.7;
   const mileageAmount = parseFloat(miles) > 0 ? parseFloat(miles) * mileageRate : 0;
   const officeAmount = Math.min(parseFloat(sqFt) || 0, 300) * 5;
@@ -125,20 +120,6 @@ export function DeductionWidgets({ currentYear, taxRate }: DeductionWidgetsProps
       <h2 className="text-lg font-semibold text-mono-dark">Deduction Calculators</h2>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* QBI */}
-        <div className="card p-6 space-y-4">
-          <div>
-            <h3 className="text-base font-semibold text-mono-dark">QBI Deduction</h3>
-            <p className="text-xs text-mono-light mt-0.5">20% of qualified business income</p>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-mono-medium block mb-1">Net Business Income</label>
-            <CurrencyInput value={qbiIncome} onChange={setQbiIncome} min={0} placeholder="e.g. 80,000" className={INPUT_CLS} />
-          </div>
-          <ResultBox amount={qbiAmount} />
-          <SaveBtn onClick={() => saveDeduction("qbi", qbiAmount, setQbiSaving, setQbiSaved)} disabled={qbiSaving || qbiAmount <= 0} saving={qbiSaving} saved={qbiSaved} label="Save QBI Deduction" />
-        </div>
-
         {/* Mileage */}
         <div className="card p-6 space-y-4">
           <div>

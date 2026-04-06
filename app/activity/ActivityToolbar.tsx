@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { ActivityVisibleColumn } from "@/lib/validation/schemas";
 import type { TransactionPropertyDefinition } from "@/lib/transaction-property-definition";
 import { ActivityColumnFiltersBar } from "@/components/ActivityColumnFiltersBar";
 import { ActivityPropertyVisibilityPanel } from "@/components/ActivityPropertyVisibilityPanel";
 import type { ActivityColumnFilterRow } from "@/lib/activity-column-filters";
-import { serializeColumnFiltersForQuery } from "@/lib/activity-column-filters";
 
 const COLUMN_LABELS: Record<ActivityVisibleColumn, string> = {
   date: "Date",
@@ -59,28 +58,9 @@ interface ActivityToolbarProps {
   transactionProperties?: TransactionPropertyDefinition[];
   /** Match horizontal inset of ActivityTable wrapper (saved pages: pass same as table’s expandToContainer). */
   expandToContainer?: boolean;
+  /** Base name for CSV download (no extension). Saved pages: pass the page title. */
+  exportFilenameBase?: string;
 }
-
-const STATUS_OPTIONS = [
-  { value: "", label: "All statuses" },
-  { value: "pending", label: "Pending" },
-  { value: "completed", label: "Completed" },
-  { value: "auto_sorted", label: "Auto-sorted" },
-  { value: "personal", label: "Personal" },
-];
-
-const TYPE_OPTIONS = [
-  { value: "", label: "All types" },
-  { value: "expense", label: "Expense" },
-  { value: "income", label: "Income" },
-];
-
-const SOURCE_OPTIONS = [
-  { value: "", label: "All sources" },
-  { value: "data_feed", label: "Direct Feed" },
-  { value: "csv_upload", label: "CSV" },
-  { value: "manual", label: "Manual" },
-];
 
 const SORT_OPTIONS: [string, boolean, string][] = [
   ["date", false, "Date (newest)"],
@@ -189,9 +169,10 @@ export function ActivityToolbar({
   onTitleChange,
   transactionProperties = [],
   expandToContainer = false,
+  exportFilenameBase,
 }: ActivityToolbarProps) {
   const [searchInput, setSearchInput] = useState(viewState.filters.search);
-  const [filterOpen, setFilterOpen] = useState(false);
+  const [filtersToolbarActive, setFiltersToolbarActive] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [propertiesOpen, setPropertiesOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
@@ -227,31 +208,44 @@ export function ActivityToolbar({
 
   const sortedOrgProperties = [...transactionProperties].sort((a, b) => a.position - b.position);
 
-  const buildExportSearchParams = useCallback(() => {
-    const params = new URLSearchParams({
+  const csvDownloadBasename = useMemo(() => {
+    const fromPage = exportFilenameBase?.trim();
+    if (fromPage) return fromPage;
+    if (titleEditable && titleValue?.trim()) return titleValue.trim();
+    const t = title.trim();
+    return t || "Activity";
+  }, [exportFilenameBase, titleEditable, titleValue, title]);
+
+  const buildExportRequestBody = useCallback(() => {
+    const colsForExport =
+      viewState.visible_columns.length > 0
+        ? viewState.visible_columns
+        : (["date", "vendor", "amount", "status"] as const);
+    return {
       date_from: viewState.filters.date_from,
       date_to: viewState.filters.date_to,
       sort_by: viewState.sort_column,
       sort_order: viewState.sort_asc ? "asc" : "desc",
-    });
-    if (viewState.filters.status) params.set("status", viewState.filters.status);
-    if (viewState.filters.transaction_type) params.set("transaction_type", viewState.filters.transaction_type);
-    if (viewState.filters.source) params.set("source", viewState.filters.source);
-    if (viewState.filters.data_source_id) params.set("data_source_id", viewState.filters.data_source_id);
-    if (viewState.filters.search) params.set("search", viewState.filters.search);
-    if (viewState.filters.column_filters?.length) {
-      params.set("column_filters", serializeColumnFiltersForQuery(viewState.filters.column_filters));
-    }
-    return params;
-  }, [viewState]);
+      export_columns: [...colsForExport],
+      download_basename: csvDownloadBasename,
+      ...(viewState.filters.status ? { status: viewState.filters.status } : {}),
+      ...(viewState.filters.transaction_type ? { transaction_type: viewState.filters.transaction_type } : {}),
+      ...(viewState.filters.source ? { source: viewState.filters.source } : {}),
+      ...(viewState.filters.data_source_id ? { data_source_id: viewState.filters.data_source_id } : {}),
+      ...(viewState.filters.search.trim() ? { search: viewState.filters.search.trim() } : {}),
+      column_filters: viewState.filters.column_filters ?? [],
+    };
+  }, [viewState, csvDownloadBasename]);
 
   const downloadCsvExport = useCallback(async () => {
     setExporting(true);
     setExportToast(null);
     try {
-      const params = buildExportSearchParams();
-      const res = await fetch(`/api/transactions/export?${params.toString()}`, {
+      const res = await fetch("/api/transactions/export", {
+        method: "POST",
         credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildExportRequestBody()),
       });
       const contentType = res.headers.get("Content-Type") ?? "";
       if (!res.ok) {
@@ -262,7 +256,7 @@ export function ActivityToolbar({
         return;
       }
       const blob = await res.blob();
-      const fallbackName = `activity-export-${viewState.filters.date_from}-to-${viewState.filters.date_to}.csv`;
+      const fallbackName = `${csvDownloadBasename}.csv`;
       const dispo = res.headers.get("Content-Disposition");
       let filename = fallbackName;
       if (dispo) {
@@ -284,7 +278,7 @@ export function ActivityToolbar({
     } finally {
       setExporting(false);
     }
-  }, [buildExportSearchParams, viewState.filters.date_from, viewState.filters.date_to]);
+  }, [buildExportRequestBody, csvDownloadBasename]);
 
   const iconBtnClass = "flex h-7 w-7 items-center justify-center rounded text-mono-light transition-colors hover:bg-bg-tertiary/40 hover:text-mono-dark";
 
@@ -325,13 +319,14 @@ export function ActivityToolbar({
 
       {/* Toolbar row: icons left, New right — same horizontal box as ActivityTable wrapper */}
       <div className={`flex flex-wrap items-center gap-1 py-1.5 ${tableAlignClass}`}>
-        {/* Filter */}
+        {/* Filter — toggles column filter bar “+ Filter” */}
         <button
           type="button"
-          onClick={() => setFilterOpen(true)}
-          title="Filter by status and type"
-          className={iconBtnClass}
-          aria-label="Filter by status and type"
+          onClick={() => setFiltersToolbarActive((v) => !v)}
+          title={filtersToolbarActive ? "Hide add filter" : "Add column filters"}
+          className={`${iconBtnClass} ${filtersToolbarActive ? "bg-bg-tertiary/50 text-mono-dark" : ""}`}
+          aria-label={filtersToolbarActive ? "Column filters active" : "Column filters"}
+          aria-pressed={filtersToolbarActive}
         >
           <span className={ICON_CLASS} style={ICON_STYLE}>filter_list</span>
         </button>
@@ -413,77 +408,8 @@ export function ActivityToolbar({
           onViewStateChange({ filters: { ...viewState.filters, column_filters } })
         }
         transactionProperties={transactionProperties}
+        filterToolbarActive={filtersToolbarActive}
       />
-
-      {/* Filter modal */}
-      <ActivityModal
-        open={filterOpen}
-        onClose={() => setFilterOpen(false)}
-        title="Filter"
-        subtitle="Filter by status, type, and account."
-        aria-labelledby="activity-filter-title"
-      >
-        <div className="space-y-4">
-          <div>
-            <p className="text-[10px] font-medium text-mono-light uppercase tracking-wider mb-2">Status</p>
-            <div className="flex flex-wrap gap-1.5">
-              {STATUS_OPTIONS.map((o) => (
-                <button
-                  key={o.value || "all"}
-                  type="button"
-                  onClick={() => {
-                    onViewStateChange({ filters: { ...viewState.filters, status: o.value || null } });
-                    setFilterOpen(false);
-                  }}
-                  className="rounded-md border border-bg-tertiary/60 px-3 py-1.5 text-xs text-mono-dark hover:bg-bg-secondary/80 transition"
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="text-[10px] font-medium text-mono-light uppercase tracking-wider mb-2">Type</p>
-            <div className="flex flex-wrap gap-1.5">
-              {TYPE_OPTIONS.map((o) => (
-                <button
-                  key={o.value || "all"}
-                  type="button"
-                  onClick={() => {
-                    onViewStateChange({
-                      filters: { ...viewState.filters, transaction_type: o.value || null },
-                    });
-                    setFilterOpen(false);
-                  }}
-                  className="rounded-md border border-bg-tertiary/60 px-3 py-1.5 text-xs text-mono-dark hover:bg-bg-secondary/80 transition"
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="text-[10px] font-medium text-mono-light uppercase tracking-wider mb-2">Data source</p>
-            <div className="flex flex-wrap gap-1.5">
-              {SOURCE_OPTIONS.map((o) => (
-                <button
-                  key={o.value || "all"}
-                  type="button"
-                  onClick={() => {
-                    onViewStateChange({
-                      filters: { ...viewState.filters, source: o.value || null },
-                    });
-                    setFilterOpen(false);
-                  }}
-                  className="rounded-md border border-bg-tertiary/60 px-3 py-1.5 text-xs text-mono-dark hover:bg-bg-secondary/80 transition"
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </ActivityModal>
 
       {/* Sort modal */}
       <ActivityModal

@@ -128,6 +128,8 @@ export function ActivityPropertyVisibilityPanel({
   const [pos, setPos] = useState({ top: 0, right: 0 });
   const [orderedKeys, setOrderedKeys] = useState<string[]>([]);
   const [visibleSet, setVisibleSet] = useState<Set<string>>(() => new Set());
+  const orderedKeysRef = useRef<string[]>([]);
+  const visibleSetRef = useRef<Set<string>>(new Set());
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const wasOpen = useRef(false);
@@ -168,6 +170,14 @@ export function ActivityPropertyVisibilityPanel({
     }
     wasOpen.current = open;
   }, [open, visibleColumns, transactionProperties]);
+
+  useEffect(() => {
+    orderedKeysRef.current = orderedKeys;
+  }, [orderedKeys]);
+
+  useEffect(() => {
+    visibleSetRef.current = visibleSet;
+  }, [visibleSet]);
 
   useEffect(() => {
     if (!open) return;
@@ -213,20 +223,16 @@ export function ActivityPropertyVisibilityPanel({
 
   const toggleVisible = useCallback(
     (key: string) => {
-      setVisibleSet((prev) => {
-        const next = new Set(prev);
-        if (next.has(key)) {
-          if (next.size <= 1) return prev;
-          next.delete(key);
-        } else {
-          next.add(key);
-        }
-        setOrderedKeys((ord) => {
-          onVisibleColumnsChange(ord.filter((k) => next.has(k)));
-          return ord;
-        });
-        return next;
-      });
+      const prev = visibleSetRef.current;
+      const next = new Set(prev);
+      if (next.has(key)) {
+        if (next.size <= 1) return;
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      setVisibleSet(next);
+      onVisibleColumnsChange(orderedKeysRef.current.filter((k) => next.has(k)));
     },
     [onVisibleColumnsChange]
   );
@@ -235,12 +241,11 @@ export function ActivityPropertyVisibilityPanel({
     const keep = "date";
     const nextVis = new Set([keep]);
     setVisibleSet(nextVis);
-    setOrderedKeys((prev) => {
-      const rest = prev.filter((k) => k !== keep);
-      const ord = [keep, ...rest];
-      onVisibleColumnsChange(ord.filter((k) => nextVis.has(k)));
-      return ord;
-    });
+    const prev = orderedKeysRef.current;
+    const rest = prev.filter((k) => k !== keep);
+    const ord = [keep, ...rest];
+    setOrderedKeys(ord);
+    onVisibleColumnsChange(ord.filter((k) => nextVis.has(k)));
   }, [onVisibleColumnsChange]);
 
   const onDragStart = useCallback((e: React.DragEvent, key: string) => {
@@ -262,19 +267,16 @@ export function ActivityPropertyVisibilityPanel({
       setDragKey(null);
       setDropTarget(null);
       if (!sourceKey || sourceKey === targetKey) return;
-      setOrderedKeys((prev) => {
-        const oldIdx = prev.indexOf(sourceKey);
-        const newIdx = prev.indexOf(targetKey);
-        if (oldIdx === -1 || newIdx === -1) return prev;
-        const nextOrder = [...prev];
-        nextOrder.splice(oldIdx, 1);
-        nextOrder.splice(newIdx, 0, sourceKey);
-        setVisibleSet((vis) => {
-          onVisibleColumnsChange(nextOrder.filter((k) => vis.has(k)));
-          return vis;
-        });
-        return nextOrder;
-      });
+      const prev = orderedKeysRef.current;
+      const oldIdx = prev.indexOf(sourceKey);
+      const newIdx = prev.indexOf(targetKey);
+      if (oldIdx === -1 || newIdx === -1) return;
+      const nextOrder = [...prev];
+      nextOrder.splice(oldIdx, 1);
+      nextOrder.splice(newIdx, 0, sourceKey);
+      setOrderedKeys(nextOrder);
+      const vis = visibleSetRef.current;
+      onVisibleColumnsChange(nextOrder.filter((k) => vis.has(k)));
     },
     [onVisibleColumnsChange]
   );

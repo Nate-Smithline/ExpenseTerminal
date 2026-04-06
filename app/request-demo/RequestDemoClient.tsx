@@ -40,7 +40,7 @@ const PLATFORM_FEATURES = [
   {
     icon: "savings",
     title: "Deduction Calculators",
-    description: "QBI, mileage, home office, health insurance, retirement & more.",
+    description: "Mileage, home office, health insurance, retirement & more.",
   },
 ];
 

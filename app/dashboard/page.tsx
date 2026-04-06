@@ -15,6 +15,14 @@ import { ExportCallout } from "./ExportCallout";
 import { ForYourAwareness } from "./ForYourAwareness";
 import { DashboardPeriodBar } from "./DashboardPeriodBar";
 import { TaxDetailsSections } from "./TaxDetailsSections";
+import { filterAdditionalDeductionsForTotals } from "@/lib/tax/form-calculations";
+
+type DashboardAdditionalDeduction = {
+  id: string;
+  type: string;
+  amount: string;
+  tax_savings: string;
+};
 
 function deductibleAmount(t: { amount: string; deduction_percent?: number | null; is_meal?: boolean; is_travel?: boolean }): number {
   const amt = Math.abs(Number(t.amount));
@@ -59,11 +67,15 @@ export default async function DashboardPage() {
     .eq("transaction_type", "income")
     .in("status", ["completed", "auto_sorted"]);
 
-  const { data: additionalDeductions } = await (supabase as any)
+  const { data: additionalDeductionsRaw } = await (supabase as any)
     .from("deductions")
-    .select("type, amount, tax_savings")
+    .select("id, type, amount, tax_savings")
     .eq("user_id", userId)
     .eq("tax_year", taxYear);
+
+  const additionalDeductions = filterAdditionalDeductionsForTotals(
+    (additionalDeductionsRaw ?? []) as DashboardAdditionalDeduction[],
+  );
 
   const { count: pendingCount } = await (supabase as any)
     .from("transactions")
@@ -148,7 +160,7 @@ export default async function DashboardPage() {
 
   const totalDeductions = fromTransactions + additionalTotal;
   const transactionSavings = fromTransactions * taxRate;
-  // Other deductions (QBI, home office, mileage, etc.) are not multiplied by tax rate; add their amounts directly.
+  // Additional deductions (home office, mileage, etc.) are not multiplied by tax rate; add their amounts directly.
   const totalSavings = transactionSavings + additionalTotal;
 
   return (
@@ -253,10 +265,9 @@ export default async function DashboardPage() {
             Additional Deductions
           </p>
           <ul className="space-y-2.5 text-sm text-mono-medium">
-            {additionalDeductions?.map(
-              (d: { type: string; amount: string; tax_savings: string }) => (
+            {additionalDeductions?.map((d: DashboardAdditionalDeduction) => (
                 <li
-                  key={d.type + d.amount}
+                  key={d.id}
                   className="flex justify-between items-baseline gap-4 py-1 border-b border-[#F0F1F7] last:border-0"
                 >
                   <span className="capitalize text-mono-dark">

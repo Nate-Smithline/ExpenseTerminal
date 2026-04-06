@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { DEDUCTION_TYPE_CARDS, OTHER_DEDUCTIONS_CARD } from "@/lib/deduction-types";
+import { DEDUCTION_TYPE_CARDS } from "@/lib/deduction-types";
 
 interface AdditionalDeductionsListProps {
   additionalDeductions?: { type: string }[] | null;
@@ -25,7 +25,7 @@ export function AdditionalDeductionsList({ additionalDeductions }: AdditionalDed
             Additional Deductions
           </div>
           <p className="text-xs text-mono-medium mt-1 font-sans">
-            Set up deduction calculators like home office, QBI, and mileage.
+            Set up deduction calculators like home office and mileage.
           </p>
         </div>
       </div>
@@ -67,14 +67,14 @@ export function AdditionalDeductionsList({ additionalDeductions }: AdditionalDed
             className="w-full text-left flex items-center gap-4 py-4 first:pt-0 last:pb-0 -mx-1 px-1 rounded-none hover:bg-[#F0F1F7]/60 transition-colors group"
           >
             <span className="material-symbols-rounded text-[16px] text-[#5B82B4] shrink-0 group-hover:text-[#5B82B4] transition-colors duration-300 ease-in-out">
-              {OTHER_DEDUCTIONS_CARD.icon}
+              folder_open
             </span>
             <div className="min-w-0 flex-1">
               <span className="block text-xs md:text-sm font-medium font-sans text-mono-dark">
-                {OTHER_DEDUCTIONS_CARD.label}
+                Other deductions
               </span>
               <span className="block text-[11px] text-mono-medium font-sans mt-0.5 mb-1">
-                {OTHER_DEDUCTIONS_CARD.description}
+                See examples of additional write-offs and what counts as deductible
               </span>
             </div>
           </button>
