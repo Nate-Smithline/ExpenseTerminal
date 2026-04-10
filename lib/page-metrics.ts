@@ -1,6 +1,6 @@
 import { getActiveOrgId } from "@/lib/active-org";
 
-function num(v: string | number | null | undefined): number {
+function num(v: unknown): number {
   if (v == null) return 0;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : 0;
