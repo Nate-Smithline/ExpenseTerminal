@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- cron uses service client typing */
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { sendUnsortedReminder } from "@/lib/email/send-unsorted-reminder";
@@ -11,6 +12,9 @@ function parseNotificationValue(
   type: string,
   value: string
 ): { threshold?: number; interval?: string } {
+  if (type === "never") {
+    return {};
+  }
   if (type === "count_based") {
     const n = parseInt(value, 10);
     return { threshold: Number.isFinite(n) ? n : 10 };
@@ -96,7 +100,9 @@ export async function GET(req: Request) {
     const lastNotified = pref.last_notified_at as string | null;
 
     let shouldSend = false;
-    if (pref.type === "count_based" && parsed.threshold != null) {
+    if (pref.type === "never") {
+      shouldSend = false;
+    } else if (pref.type === "count_based" && parsed.threshold != null) {
       shouldSend = unsorted >= parsed.threshold;
     } else if (pref.type === "interval_based" && parsed.interval) {
       shouldSend = intervalElapsed(parsed.interval, lastNotified);

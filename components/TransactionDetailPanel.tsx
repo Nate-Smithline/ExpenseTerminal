@@ -11,6 +11,7 @@ import {
 import { TransactionPropertySidebarCreate } from "@/components/TransactionPropertySidebarCreate";
 import { NotionStylePropertyRow, NotionValuePill } from "@/components/NotionStylePropertyRow";
 import { CORE_FIELD_ICONS } from "@/lib/transaction-detail-property-icons";
+import { brandColorHex } from "@/lib/brand-palette";
 
 type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
 
@@ -35,6 +36,7 @@ export type PartialTransaction = Pick<
   user_id?: string;
   created_at?: string;
   updated_at?: string;
+  data_source_id?: string | null;
   ai_confidence?: number | null;
   ai_reasoning?: string | null;
   description?: string | null;
@@ -62,7 +64,6 @@ interface TransactionDetailPanelProps {
   transaction: TransactionRow | PartialTransaction;
   onClose: () => void;
   onReanalyze?: (id: string) => Promise<void>;
-  onMarkPersonal?: () => Promise<void>;
   onDelete?: () => Promise<void>;
   /** When set, show editable tax fields and call onSave when user saves */
   editable?: boolean;
@@ -73,10 +74,23 @@ interface TransactionDetailPanelProps {
   memberDisplayById?: Record<string, string>;
   /** When set, sidebar shows “Add org property” (Activity / saved pages). */
   onRefreshTransactionProperties?: () => Promise<void>;
+  /** Resolve data_source_id → account name for Account property row. */
+  dataSourceNameById?: Record<string, string>;
+  /** Resolve data_source_id → brand_color_id for Account property row. */
+  dataSourceBrandColorIdById?: Record<string, string>;
 }
 
 const PANEL_MIN_WIDTH = 360;
 const PANEL_MAX_WIDTH = 500;
+
+function rgba(hex: string, alpha: number) {
+  const h = hex.replace("#", "");
+  if (h.length !== 6) return `rgba(0,0,0,${alpha})`;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 const COLLAPSED_WIDTH = 72;
 
 function formatDate(date: string) {
@@ -90,7 +104,6 @@ export function TransactionDetailPanel({
   transaction,
   onClose,
   onReanalyze,
-  onMarkPersonal,
   onDelete,
   editable = false,
   onSave,
@@ -99,6 +112,8 @@ export function TransactionDetailPanel({
   orgMembers = [],
   memberDisplayById: memberDisplayByIdProp,
   onRefreshTransactionProperties,
+  dataSourceNameById = {},
+  dataSourceBrandColorIdById = {},
 }: TransactionDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -324,7 +339,7 @@ export function TransactionDetailPanel({
       {/* Panel */}
       <div
         ref={panelRef}
-        className="relative bg-white border-l border-[#F0F1F7] shadow-xl h-full overflow-y-auto animate-in pointer-events-auto"
+        className="relative h-full overflow-y-auto border-l border-black/[0.06] bg-white/95 shadow-[-20px_0_60px_-24px_rgba(0,0,0,0.12)] backdrop-blur-xl animate-in pointer-events-auto"
         style={{
           animation: "slideInRight 0.2s ease-out",
           width: isCollapsed ? COLLAPSED_WIDTH : `min(${panelWidth}px, 100vw)`,
@@ -339,26 +354,23 @@ export function TransactionDetailPanel({
           aria-label="Resize transaction panel"
         />
         {/* Panel header */}
-        <div className="sticky top-0 z-10 bg-white px-4 py-3 space-y-2">
+        <div className="sticky top-0 z-10 space-y-2 border-b border-black/[0.06] bg-white/90 px-4 py-3 backdrop-blur-md">
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
               onClick={() => setIsCollapsed((v) => !v)}
-              className="h-8 w-8 text-black flex items-center justify-center transition hover:bg-warm-stock"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100/80 text-[#007aff] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] transition-colors hover:bg-neutral-100 active:scale-[0.97]"
               title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
-              <span className="material-symbols-rounded text-[18px] text-mono-medium">keyboard_double_arrow_right</span>
+              <span
+                className="material-symbols-rounded text-[15px]"
+                style={{ fontVariationSettings: "'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 20" }}
+              >
+                keyboard_double_arrow_right
+              </span>
             </button>
             {!isCollapsed && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void onMarkPersonal?.()}
-                  className="h-8 px-3 border border-warm-stock text-black text-xs font-medium flex items-center justify-center transition hover:bg-warm-stock"
-                  title="Mark as personal"
-                >
-                  Mark Personal
-                </button>
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={async () => {
@@ -367,23 +379,40 @@ export function TransactionDetailPanel({
                     onClose();
                   }}
                   disabled={!onDelete}
-                  className="h-8 w-8 text-black flex items-center justify-center transition hover:bg-warm-stock disabled:opacity-40"
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100/80 text-red-600 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] transition-colors hover:bg-red-50 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-35"
                   title="Delete transaction"
                 >
-                  <span className="material-symbols-rounded text-[12px]">delete</span>
+                  <span
+                    className="material-symbols-rounded text-[14px]"
+                    style={{ fontVariationSettings: "'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 20" }}
+                  >
+                    delete
+                  </span>
                 </button>
               </div>
             )}
           </div>
           {!isCollapsed && (
             <div className="flex items-start gap-2 pt-4">
-              <h2 className="text-2xl leading-tight font-semibold font-sans text-mono-dark truncate">{transaction.vendor || "New transaction"}</h2>
+              {editable && onSave ? (
+                <input
+                  type="text"
+                  value={editVendor}
+                  onChange={(e) => setEditVendor(e.target.value)}
+                  placeholder="New transaction"
+                  className="w-full min-w-0 appearance-none bg-transparent text-2xl leading-tight font-semibold font-sans text-mono-dark placeholder:text-neutral-400 border-0 p-0 shadow-none outline-none focus:outline-none focus:ring-0"
+                  aria-label="Transaction title"
+                />
+              ) : (
+                <h2 className="text-2xl leading-tight font-semibold font-sans text-mono-dark truncate">
+                  {transaction.vendor || "New transaction"}
+                </h2>
+              )}
             </div>
           )}
         </div>
         {/* Properties */}
         {!isCollapsed && <div className="px-4 py-3 sm:px-5">
-          <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wider text-mono-light">Transaction</p>
           <NotionStylePropertyRow icon={CORE_FIELD_ICONS.vendor} label="Vendor" immutable>
             {editable && onSave ? (
               <input
@@ -425,7 +454,13 @@ export function TransactionDetailPanel({
                 className="w-full min-w-0 rounded-md border border-[#F0F1F7] bg-white px-2 py-1 text-sm tabular-nums focus:border-mono-medium/25 focus:outline-none"
               />
             ) : (
-              <span className="font-semibold tabular-nums">${amount.toFixed(2)}</span>
+              <span className="font-semibold tabular-nums">
+                {"$" +
+                  Math.abs(amount).toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+              </span>
             )}
           </NotionStylePropertyRow>
 
@@ -631,6 +666,26 @@ export function TransactionDetailPanel({
             )}
           </NotionStylePropertyRow>
 
+          {(() => {
+            const id = transaction.data_source_id ?? null;
+            if (!id) return null;
+            const accountName = dataSourceNameById?.[id] ?? "Account";
+            const accountHex = brandColorHex(dataSourceBrandColorIdById?.[id]);
+            return (
+              <NotionStylePropertyRow icon="database" label="Account" immutable>
+                <span
+                  className="inline-flex max-w-full items-center truncate rounded-full px-2 py-0.5 text-xs font-medium"
+                  style={{
+                    backgroundColor: rgba(accountHex, 0.14),
+                    color: accountHex,
+                  }}
+                >
+                  {accountName}
+                </span>
+              </NotionStylePropertyRow>
+            );
+          })()}
+
           <TransactionDetailCustomFields
             definitions={transactionProperties}
             transaction={{
@@ -638,22 +693,18 @@ export function TransactionDetailPanel({
               user_id: transaction.user_id ?? "",
               created_at: transaction.created_at ?? new Date().toISOString(),
               updated_at: transaction.updated_at ?? new Date().toISOString(),
+              data_source_id: transaction.data_source_id ?? null,
             }}
             editable={Boolean(editable && onSave)}
             editCustomFields={editCustomFields}
             setEditCustomFields={setEditCustomFields}
             memberDisplayById={memberDisplayById}
             orgMembers={orgMembers}
+            dataSourceNameById={dataSourceNameById}
           />
 
           {editable && onSave && onRefreshTransactionProperties && (
             <TransactionPropertySidebarCreate onRefresh={onRefreshTransactionProperties} />
-          )}
-
-          {transaction.vendor_normalized != null && transaction.vendor_normalized !== "" && (
-            <NotionStylePropertyRow icon={CORE_FIELD_ICONS.vendor_normalized} label="Vendor key" immutable>
-              <span className="text-xs font-mono text-mono-medium">{transaction.vendor_normalized}</span>
-            </NotionStylePropertyRow>
           )}
         </div>}
 

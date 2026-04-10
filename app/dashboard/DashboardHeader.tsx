@@ -11,6 +11,7 @@ interface DashboardHeaderProps {
 export function DashboardHeader({ pendingCount, userName }: DashboardHeaderProps) {
   const displayName = userName?.trim() || "there";
   const [greeting, setGreeting] = useState<string | null>(null);
+  const [todayLabel, setTodayLabel] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -22,6 +23,18 @@ export function DashboardHeader({ pendingCount, userName }: DashboardHeaderProps
     else if (hour < 21) label = "Good Evening";
     else label = "Good Night";
     setGreeting(label);
+    try {
+      setTodayLabel(
+        now.toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        }),
+      );
+    } catch {
+      setTodayLabel(null);
+    }
 
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -41,6 +54,11 @@ export function DashboardHeader({ pendingCount, userName }: DashboardHeaderProps
         <h1 className="text-2xl md:text-3xl font-display font-normal text-mono-dark tracking-tight">
           {(greeting ?? "Welcome back")}, {displayName}
         </h1>
+        {todayLabel ? (
+          <p className="mt-1 text-xs text-mono-medium">
+            {todayLabel}
+          </p>
+        ) : null}
       </div>
       {(pendingCount ?? 0) > 0 && (
         <Link

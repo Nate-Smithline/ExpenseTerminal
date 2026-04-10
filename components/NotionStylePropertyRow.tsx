@@ -18,19 +18,19 @@ export function NotionStylePropertyRow({ icon, label, children, alignTop = false
   return (
     <div
       title={immutable ? "Built-in transaction field" : undefined}
-      className={`group flex gap-2 rounded-md py-1.5 pl-1 pr-1 -mx-1 hover:bg-bg-secondary/50 ${alignTop ? "items-start" : "items-center"}`}
+      className={`group grid grid-cols-[28px_minmax(140px,180px)_1fr] gap-2 rounded-md py-1.5 pl-1 pr-1 -mx-1 hover:bg-bg-secondary/50 ${
+        alignTop ? "items-start" : "items-center"
+      }`}
     >
       <span
-        className="material-symbols-rounded flex h-7 w-7 shrink-0 items-center justify-center text-mono-medium"
+        className="material-symbols-rounded flex h-7 w-7 items-center justify-center text-mono-medium"
         style={ICON_SX}
         aria-hidden
       >
         {icon}
       </span>
-      <div className={`flex min-w-0 flex-1 gap-2 sm:gap-3 ${alignTop ? "items-start pt-0.5" : "items-center"}`}>
-        <span className="min-w-0 max-w-[38%] shrink-0 truncate text-xs text-mono-medium sm:max-w-[42%]">{label}</span>
-        <div className={`min-w-0 flex-1 text-sm text-mono-dark ${alignTop ? "pt-0" : ""}`}>{children}</div>
-      </div>
+      <span className={`min-w-0 truncate text-xs text-mono-medium ${alignTop ? "pt-0.5" : ""}`}>{label}</span>
+      <div className={`min-w-0 text-sm text-mono-dark ${alignTop ? "pt-0" : ""}`}>{children}</div>
     </div>
   );
 }

@@ -6,8 +6,38 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { usePlaidLink } from "react-plaid-link";
 import type { Database } from "@/lib/types/database";
 import { UploadModal } from "@/components/UploadModal";
-import { TaxYearSelector } from "@/components/TaxYearSelector";
 import type { DataSourceStats } from "./page";
+import { AccountsShareModal } from "@/components/AccountsShareModal";
+import { pageIconTextClass } from "@/lib/page-icon-colors";
+import { BRAND_COLOR_OPTIONS, brandColorHex, normalizeBrandColorId } from "@/lib/brand-palette";
+
+const topBarShareActionClass =
+  "inline-flex h-8 items-center rounded-none border-0 bg-transparent px-2.5 text-[13px] font-medium text-mono-dark hover:bg-bg-secondary/50 transition-colors";
+
+const appleOverlayClass =
+  "fixed inset-0 z-[70] flex min-h-[100dvh] items-center justify-center bg-black/40 px-4 backdrop-blur-md";
+const applePanelClass =
+  "relative w-full max-w-md overflow-hidden rounded-2xl border border-black/[0.08] bg-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.18)]";
+const appleModalHeadClass = "px-5 pt-5 pb-1";
+const appleModalBodyClass = "px-5 py-3";
+const appleModalFooterClass = "flex justify-end gap-2 border-t border-black/[0.06] bg-[#fafafa]/80 px-5 py-4";
+const appleBtnPrimary =
+  "rounded-full bg-[#0071e3] px-5 py-2.5 text-[15px] font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40";
+const appleBtnSecondary =
+  "rounded-full bg-[#e5e5ea] px-5 py-2.5 text-[15px] font-medium text-[#1d1d1f] transition hover:bg-[#d8d8dc] disabled:opacity-40";
+const appleInputClass =
+  "w-full rounded-xl border border-black/[0.12] bg-white px-3 py-2.5 text-sm text-mono-dark outline-none transition focus:border-[#0071e3] focus:ring-1 focus:ring-[#0071e3]/25";
+const appleChoiceCardClass =
+  "w-full rounded-xl border border-black/[0.10] px-4 py-3 text-left transition hover:bg-[#f5f5f7]";
+
+function rgba(hex: string, alpha: number) {
+  const h = hex.replace("#", "");
+  if (h.length !== 6) return `rgba(0,0,0,${alpha})`;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 type DataSource = Database["public"]["Tables"]["data_sources"]["Row"];
 
@@ -18,17 +48,131 @@ const ACCOUNT_TYPES = [
   { value: "other", label: "Other" },
 ];
 
+const ROLLUP_CLASS_OPTIONS = [
+  { value: "asset", label: "Asset" },
+  { value: "liability", label: "Liability" },
+] as const;
+
+const BALANCE_PREF_OPTIONS = [
+  { value: "current", label: "Current" },
+  { value: "available", label: "Available" },
+  { value: "manual", label: "Manual" },
+] as const;
+
 function accountTypeLabel(type: string): string {
   return ACCOUNT_TYPES.find((a) => a.value === type)?.label ?? type;
 }
 
-function formatCurrency(n: number): string {
+function formatCurrency(n: number, currency = "USD"): string {
+  const code = currency && currency.length === 3 ? currency : "USD";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
+    currency: code,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n);
+}
+
+function numericOrNull(v: unknown): number | null {
+  if (v == null) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Common ISO 4217 codes for manual account currency (edit / create). */
+const COMMON_CURRENCY_OPTIONS: { code: string; label: string }[] = [
+  { code: "USD", label: "USD — US dollar" },
+  { code: "EUR", label: "EUR — Euro" },
+  { code: "GBP", label: "GBP — British pound" },
+  { code: "CAD", label: "CAD — Canadian dollar" },
+  { code: "AUD", label: "AUD — Australian dollar" },
+  { code: "JPY", label: "JPY — Japanese yen" },
+  { code: "CHF", label: "CHF — Swiss franc" },
+  { code: "CNY", label: "CNY — Chinese yuan" },
+  { code: "INR", label: "INR — Indian rupee" },
+  { code: "MXN", label: "MXN — Mexican peso" },
+  { code: "BRL", label: "BRL — Brazilian real" },
+  { code: "SEK", label: "SEK — Swedish krona" },
+  { code: "NOK", label: "NOK — Norwegian krone" },
+  { code: "DKK", label: "DKK — Danish krone" },
+  { code: "NZD", label: "NZD — New Zealand dollar" },
+  { code: "SGD", label: "SGD — Singapore dollar" },
+  { code: "HKD", label: "HKD — Hong Kong dollar" },
+  { code: "PLN", label: "PLN — Polish złoty" },
+];
+
+function formatEditBalanceWholeInput(raw: string): string {
+  const noComma = raw.replace(/,/g, "");
+  if (noComma === "" || noComma === "-") return noComma === "-" ? "-" : "";
+  const neg = noComma.startsWith("-");
+  const digitsOnly = (neg ? noComma.slice(1) : noComma).replace(/\D/g, "");
+  if (digitsOnly === "") return neg ? "-" : "";
+  const n = parseInt(digitsOnly, 10);
+  if (!Number.isFinite(n)) return neg ? "-" : "";
+  return (neg ? "-" : "") + n.toLocaleString("en-US");
+}
+
+function sanitizeEditBalanceWholeTyping(raw: string): string {
+  // Preserve the user's caret position while typing by avoiding formatting onChange.
+  // Allow digits, comma, and a single leading "-".
+  const v = raw.replace(/[^\d,-]/g, "");
+  const neg = v.includes("-");
+  const withoutMinus = v.replace(/-/g, "");
+  const digitsAndCommas = withoutMinus.replace(/[^\d,]/g, "");
+  return `${neg ? "-" : ""}${digitsAndCommas}`;
+}
+
+/**
+ * Whole part (comma-grouped) + cents (0–99). Returns null for cleared balance, NaN for invalid cents.
+ */
+function parseEditBalanceWholeAndCents(wholeDisplay: string, centsInput: string): number | null {
+  const wTrim = wholeDisplay.replace(/,/g, "").trim();
+  const neg = wTrim.startsWith("-");
+  const wDigits = (neg ? wTrim.slice(1) : wTrim).replace(/\D/g, "");
+  const cDigits = centsInput.replace(/\D/g, "").slice(0, 2);
+
+  const centsEmpty = cDigits === "";
+  const wholeEmpty = wDigits === "" && (wTrim === "" || wTrim === "-");
+
+  if (wholeEmpty && centsEmpty) return null;
+
+  const wholeNum = wDigits === "" ? 0 : parseInt(wDigits, 10);
+  if (!Number.isFinite(wholeNum)) return NaN;
+
+  const centsNum = centsEmpty ? 0 : parseInt(cDigits, 10);
+  if (!Number.isFinite(centsNum) || centsNum > 99) return NaN;
+
+  let val = wholeNum + centsNum / 100;
+  if (neg && (wholeNum !== 0 || centsNum !== 0)) val = -val;
+  return val;
+}
+
+function splitManualBalanceForEdit(m: number): { whole: string; cents: string } {
+  const neg = m < 0;
+  const abs = Math.abs(m);
+  const whole = Math.floor(abs + 1e-8);
+  const cents = Math.round((abs - whole) * 100 + 1e-8);
+  return {
+    whole: (neg ? "-" : "") + whole.toLocaleString("en-US"),
+    cents: String(Math.min(99, Math.max(0, cents))).padStart(2, "0"),
+  };
+}
+
+function formatBalanceAsOf(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return null;
+  }
 }
 
 function sourceTypeLabel(sourceType: string): string {
@@ -109,17 +253,17 @@ function formatEarliestCompact(iso: string): string {
 }
 
 /**
- * Oldest tx is already near the start of the calendar tax year — no need to surface “how far back” copy.
+ * Oldest tx is already near the start of the calendar year — no need to surface “how far back” copy.
  * Uses Mar 1 as the cutoff (Jan–Feb = well covered from the year’s opening).
  */
-function isEarliestNearStartOfTaxYear(iso: string, taxYear: number): boolean {
+function isEarliestNearStartOfCalendarYear(iso: string, year: number): boolean {
   const parts = iso.split("-").map(Number);
   const y = parts[0];
   const m = parts[1];
   const d = parts[2];
   if (!y || !m || !d) return false;
   const earliest = new Date(y, m - 1, d);
-  const marchFirst = new Date(taxYear, 2, 1);
+  const marchFirst = new Date(year, 2, 1);
   return earliest < marchFirst;
 }
 
@@ -179,15 +323,12 @@ function PlaidLinkButton({
   }, [pendingOpen, plaidLinkToken, ready, open, onBeforeOpen]);
 
   return (
-    <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
-      <button
-        onClick={onClose}
-        disabled={loading}
-        className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
-      >
+    <div className={`${appleModalFooterClass} mt-0 border-t-0 bg-transparent px-5 pb-5 pt-2`}>
+      <button type="button" onClick={onClose} disabled={loading} className={appleBtnSecondary}>
         Close
       </button>
       <button
+        type="button"
         onClick={() => {
           if (loading) return;
           setPendingOpen(true);
@@ -200,7 +341,7 @@ function PlaidLinkButton({
           }
         }}
         disabled={loading}
-        className="px-4 py-2.5 text-sm font-medium font-sans bg-[#2563EB] text-white rounded-none hover:bg-[#1D4ED8] transition-colors disabled:opacity-40"
+        className={appleBtnPrimary}
       >
         {loading ? "Connecting\u2026" : "Connect Bank"}
       </button>
@@ -211,12 +352,9 @@ function PlaidLinkButton({
 export function DataSourcesClient({
   initialSources,
   initialStats = {},
-  taxYear,
 }: {
   initialSources: DataSource[];
   initialStats?: Record<string, DataSourceStats>;
-  /** Tax year used for earliest-date-on-card and transaction queries (cookie / profile). */
-  taxYear: number;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -265,6 +403,15 @@ export function DataSourcesClient({
   const [editInstitution, setEditInstitution] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [balanceRefreshingId, setBalanceRefreshingId] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [manualBalanceInput, setManualBalanceInput] = useState("");
+  const [manualCurrencyCreate, setManualCurrencyCreate] = useState("USD");
+  const [editBalanceWhole, setEditBalanceWhole] = useState("");
+  const [editBalanceCents, setEditBalanceCents] = useState("");
+  const [editManualCurrency, setEditManualCurrency] = useState("USD");
+  const editBalanceWholeRef = useRef<HTMLInputElement>(null);
+  const editBalanceCentsRef = useRef<HTMLInputElement>(null);
   // Bank Pulling step 2b state (Plaid Link)
   const [plaidLinkToken, setPlaidLinkToken] = useState<string | null>(null);
   const [plaidConnectLoading, setPlaidConnectLoading] = useState(false);
@@ -274,6 +421,8 @@ export function DataSourcesClient({
   const [deleteConfirmSource, setDeleteConfirmSource] = useState<DataSource | null>(null);
   const [deleteAlsoTransactions, setDeleteAlsoTransactions] = useState(true);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [viewTxConfirmSource, setViewTxConfirmSource] = useState<DataSource | null>(null);
+  const [creatingAccountPage, setCreatingAccountPage] = useState(false);
   const [pullDatesBySource, setPullDatesBySource] = useState<Record<string, { start: string; end: string }>>({});
   const [pullModalSource, setPullModalSource] = useState<DataSource | null>(null);
   type SyncStatusBar = { message: string; type: "syncing" | "success" | "error" } | null;
@@ -282,9 +431,7 @@ export function DataSourcesClient({
   const [postConnectPulling, setPostConnectPulling] = useState(false);
   const [postConnectError, setPostConnectError] = useState<string | null>(null);
 
-  const hasPlaid = sources.some((s) => s.source_type === "plaid");
-  const hasStripeLegacy = sources.some((s) => s.source_type === "stripe");
-  const hasDirectFeed = sources.some((s) => isDirectFeed(s.source_type));
+  const calendarYear = new Date().getFullYear();
 
   const addAccountInputRef = useRef<HTMLInputElement>(null);
 
@@ -329,6 +476,28 @@ export function DataSourcesClient({
     setAddModalLoading(false);
   }, [showAdd]);
 
+  async function handleRefreshPlaidBalance(sourceId: string) {
+    setBalanceRefreshingId(sourceId);
+    try {
+      const res = await fetch("/api/data-sources/plaid/refresh-balances", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data_source_id: sourceId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setToast(data.error ?? "Could not refresh bank balance");
+        setTimeout(() => setToast(null), 5000);
+        return;
+      }
+      await reloadSources();
+      setToast("Bank balance updated.");
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setBalanceRefreshingId(null);
+    }
+  }
+
   async function handleRetrySync(sourceId: string) {
     const source = sources.find((s) => s.id === sourceId);
     setSyncingId(sourceId);
@@ -365,15 +534,22 @@ export function DataSourcesClient({
     setSaving(true);
     setToast(null);
     try {
+      const payload: Record<string, unknown> = {
+        name: trimmedName,
+        account_type: "other",
+        institution: institution.trim() || null,
+        source_type: "manual",
+        manual_balance_iso_currency_code: manualCurrencyCreate.trim().slice(0, 3).toUpperCase() || "USD",
+      };
+      const balRaw = manualBalanceInput.trim();
+      if (balRaw !== "") {
+        const n = parseFloat(balRaw);
+        if (Number.isFinite(n)) payload.manual_balance = Number(n.toFixed(2));
+      }
       const res = await fetch("/api/data-sources", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: trimmedName,
-          account_type: "other",
-          institution: institution.trim() || null,
-          source_type: "manual",
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.data) {
@@ -391,6 +567,8 @@ export function DataSourcesClient({
         }));
         setName("");
         setInstitution("");
+        setManualBalanceInput("");
+        setManualCurrencyCreate("USD");
         setShowAdd(false);
         setAddStep("1");
         setToast("Account created.");
@@ -408,6 +586,16 @@ export function DataSourcesClient({
     setEditSource(source);
     setEditName(source.name);
     setEditInstitution(source.institution ?? "");
+    const m = numericOrNull(source.manual_balance);
+    if (m == null) {
+      setEditBalanceWhole("");
+      setEditBalanceCents("");
+    } else {
+      const { whole, cents } = splitManualBalanceForEdit(m);
+      setEditBalanceWhole(whole);
+      setEditBalanceCents(cents);
+    }
+    setEditManualCurrency((source.manual_balance_iso_currency_code ?? "USD").toUpperCase().slice(0, 3));
   }
 
   async function handleSaveEdit() {
@@ -417,14 +605,31 @@ export function DataSourcesClient({
     setEditSaving(true);
     setToast(null);
     try {
+      const patch: Record<string, unknown> = {
+        id: editSource.id,
+        name: trimmedName,
+        institution: editInstitution.trim() || null,
+      };
+      if (editSource.source_type === "manual") {
+        const n = parseEditBalanceWholeAndCents(editBalanceWhole, editBalanceCents);
+        if (Number.isNaN(n)) {
+          setToast("Enter a valid balance (cents are 0–99) or clear both fields");
+          setTimeout(() => setToast(null), 4000);
+          setEditSaving(false);
+          return;
+        }
+        if (n === null) {
+          patch.manual_balance = null;
+        } else {
+          patch.manual_balance = Number(n.toFixed(2));
+        }
+        patch.manual_balance_iso_currency_code =
+          editManualCurrency.trim().slice(0, 3).toUpperCase() || "USD";
+      }
       const res = await fetch("/api/data-sources", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: editSource.id,
-          name: trimmedName,
-          institution: editInstitution.trim() || null,
-        }),
+        body: JSON.stringify(patch),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.data) {
@@ -446,8 +651,92 @@ export function DataSourcesClient({
     if (res.ok) {
       const { data } = await res.json();
       setSources(data ?? []);
+      window.dispatchEvent(new CustomEvent("accounts-changed"));
     }
     router.refresh();
+  }
+
+  async function patchRollupFields(sourceId: string, patch: Record<string, unknown>) {
+    try {
+      const res = await fetch("/api/data-sources", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sourceId, ...patch }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.data) {
+        setSources((prev) => prev.map((s) => (s.id === data.data.id ? { ...s, ...data.data } : s)));
+        window.dispatchEvent(new CustomEvent("accounts-changed"));
+        return;
+      }
+      setToast(data?.error ?? "Failed to update");
+      setTimeout(() => setToast(null), 5000);
+    } catch {
+      setToast("Failed to update");
+      setTimeout(() => setToast(null), 5000);
+    }
+  }
+
+  async function createFilteredPageForAccount(source: DataSource) {
+    if (creatingAccountPage) return;
+    setCreatingAccountPage(true);
+    setToast(null);
+    try {
+      const title = `${source.name}`.trim() || "Account";
+      const createRes = await fetch("/api/pages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          icon_type: "material",
+          icon_value: "list",
+          icon_color: "grey",
+        }),
+      });
+      const createJson = (await createRes.json().catch(() => ({}))) as { error?: string; page?: { id: string } };
+      if (!createRes.ok || !createJson.page?.id) {
+        setToast(createJson.error ?? "Could not create page");
+        setTimeout(() => setToast(null), 5000);
+        return;
+      }
+
+      const pageId = createJson.page.id;
+      const filterId =
+        (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `f-${Date.now()}-${Math.random().toString(16).slice(2)}`) as string;
+      const patchRes = await fetch(`/api/pages/${encodeURIComponent(pageId)}/activity-view-settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filters: {
+            // Persist as a Notion-style filter row so it appears in the Filters UI.
+            column_filters: [
+              {
+                id: filterId,
+                column: "data_source_id",
+                op: "is",
+                value: source.id,
+                value2: "",
+              },
+            ],
+          },
+        }),
+      });
+      const patchJson = (await patchRes.json().catch(() => ({}))) as { error?: string };
+      if (!patchRes.ok) {
+        setToast(patchJson.error ?? "Page created but could not set account filter");
+        setTimeout(() => setToast(null), 6000);
+      }
+
+      setViewTxConfirmSource(null);
+      // Sidebar listens for this to refresh its pages list.
+      window.dispatchEvent(new CustomEvent("pages-changed"));
+      router.refresh();
+      router.push(`/pages/${pageId}`);
+    } finally {
+      setCreatingAccountPage(false);
+    }
   }
 
   const closeAdd = useCallback(() => {
@@ -455,6 +744,8 @@ export function DataSourcesClient({
     setAddStep("1");
     setPlaidConnectError(null);
     setPlaidLinkToken(null);
+    setManualBalanceInput("");
+    setManualCurrencyCreate("USD");
   }, []);
   const closeEdit = useCallback(() => setEditSource(null), []);
 
@@ -482,10 +773,6 @@ export function DataSourcesClient({
       }
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (e.key === "a" && !showAdd && !editSource) {
-        e.preventDefault();
-        setShowAdd(true);
-      }
       // Add account step 1: m = Manual, d = Direct Feed
       if (showAdd && addStep === "1") {
         if (e.key === "m" || e.key === "M") {
@@ -523,67 +810,62 @@ export function DataSourcesClient({
   }, [showAdd]);
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap justify-between items-start gap-4">
-        <div className="space-y-3">
-          <div>
-            <div
-              role="heading"
-              aria-level={1}
-              className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
-            >
-              Accounts &amp; Data
-            </div>
-            <p className="text-base text-mono-medium mt-1 font-sans">
-              Link your accounts and upload transactions
-            </p>
-            {hasDirectFeed && (
-              <div className="mt-3 border border-[#F0F1F7] bg-white px-4 py-3 text-sm text-mono-medium">
-                <span className="font-medium text-mono-dark">Direct Feed lookback:</span>{" "}
-                {hasPlaid && <span>Plaid can import up to 24 months of history (varies by institution).</span>}
-                {!hasPlaid && <span>Direct Feed imports history based on your bank’s availability.</span>}
-                {hasStripeLegacy && (
-                  <span className="text-mono-light"> (Legacy Stripe feeds may be shorter.)</span>
-                )}{" "}
-                <span>
-                  Need older transactions?{" "}
-                  <button
-                    type="button"
-                    onClick={() => setShowAdd(true)}
-                    className="font-medium text-mono-dark underline underline-offset-2 decoration-black/20 hover:decoration-mono-dark"
-                  >
-                    Upload a CSV
-                  </button>
-                  .
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <TaxYearSelector value={taxYear} onChange={() => router.refresh()} compact />
-          <button
-            type="button"
-            onClick={() => setShowAdd(true)}
-            className="inline-flex items-center px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors"
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <div className="flex h-10 w-full shrink-0 items-center gap-2 border-b border-bg-tertiary/40 bg-white">
+        <div className="flex min-w-0 flex-1 items-center gap-2 pl-4 md:pl-6">
+          <span
+            className="material-symbols-rounded shrink-0 leading-none text-mono-medium"
+            style={{ fontSize: 18, fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20" }}
           >
-            <kbd className="mr-2.5 inline-flex items-center justify-center border border-mono-medium bg-white/30 px-1.5 py-0.5 text-[11px] font-mono text-white">
-              a
-            </kbd>
-            Add Account
+            database
+          </span>
+          <span className="truncate text-[13px] font-medium text-mono-medium">Accounts</span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1 pr-4 md:pr-6">
+          <button type="button" className={topBarShareActionClass} onClick={() => setShareOpen(true)}>
+            Share
           </button>
         </div>
       </div>
 
+      <div className="mx-auto flex min-h-0 w-full min-w-0 max-w-4xl flex-1 flex-col px-4 pb-12 md:px-6">
+        <div className="flex flex-col gap-0 pt-4 pb-2">
+          <div className="flex flex-col gap-4 pb-5">
+          <div className="mt-5 shrink-0 self-start flex h-14 w-14 items-center justify-center md:mt-6" aria-hidden>
+            <span
+              className={`material-symbols-rounded leading-none ${pageIconTextClass("black")}`}
+              style={{ fontSize: 52, fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20" }}
+            >
+              database
+            </span>
+          </div>
+          <h1 className="page-title-field min-w-0 w-full appearance-none bg-transparent text-[32px] leading-tight font-sans font-bold text-mono-dark">
+            Accounts
+          </h1>
+          <p className="-mt-1 text-sm text-mono-medium">Bank feeds, balances, and uploads</p>
+          </div>
+        </div>
+
+        <div className="mb-6 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowAdd(true)}
+            className="inline-flex shrink-0 items-center justify-center rounded-full bg-[#0071e3] px-5 py-2 text-[14px] font-medium text-white shadow-sm transition hover:bg-[#0077ed] active:scale-[0.98]"
+          >
+            Add account
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-6">
       {(syncStatusBar || debugCallouts) && (
         <div
           role="status"
-          className={`flex items-center gap-3 rounded-none border px-4 py-3 text-sm ${
+          className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm shadow-sm ${
             (syncStatusBar ?? { type: "syncing" }).type === "syncing"
-              ? "border-[#8A9BB0]/40 bg-[#E8EEF5] text-mono-dark"
+              ? "border-[#d2d2d7] bg-[#f5f5f7] text-[#1d1d1f]"
               : (syncStatusBar ?? { type: "syncing" }).type === "success"
-                ? "border-[#16A34A]/30 bg-[#DCFCE7] text-mono-dark"
-                : "border-[#D97706]/30 bg-[#FEF3C7] text-mono-dark"
+                ? "border-[#b4e4c5] bg-[#e8f8ec] text-[#1d1d1f]"
+                : "border-[#f5d090] bg-[#fff8e8] text-[#1d1d1f]"
           }`}
         >
           {(syncStatusBar ?? { type: "syncing" }).type === "syncing" && (
@@ -604,7 +886,7 @@ export function DataSourcesClient({
       {debugCallouts && (
         <div
           role="status"
-          className="flex items-center gap-3 rounded-none border px-4 py-3 text-sm border-[#16A34A]/30 bg-[#DCFCE7] text-mono-dark"
+          className="flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm border-[#b4e4c5] bg-[#e8f8ec] text-[#1d1d1f]"
         >
           <span className="material-symbols-rounded text-lg text-[#16A34A]">check_circle</span>
           <span className="font-medium">Saved</span>
@@ -613,22 +895,17 @@ export function DataSourcesClient({
 
       {/* Add account modal - multi-step (styled like notification preferences modal) */}
       {showAdd && (
-        <div
-          className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="add-account-title"
-        >
-          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden relative border-0">
+        <div className={appleOverlayClass} role="dialog" aria-modal="true" aria-labelledby="add-account-title">
+          <div className={`${applePanelClass} relative`}>
             {addModalLoading && (
-              <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80">
                 <span className="material-symbols-rounded animate-spin text-3xl text-mono-medium">progress_activity</span>
               </div>
             )}
-            <div className="bg-white px-6 pt-6 pb-0 flex items-start">
+            <div className={`${appleModalHeadClass} flex items-start`}>
               <h2
                 id="add-account-title"
-                className="text-xl text-mono-dark font-medium"
+                className="text-[20px] font-semibold tracking-tight text-mono-dark"
                 style={{ fontFamily: "var(--font-sans)" }}
               >
                 {addStep === "1" && "Add account"}
@@ -638,112 +915,130 @@ export function DataSourcesClient({
             </div>
 
             {addStep === "1" && (
-              <div className="px-6 pt-1 pb-6 space-y-2">
-                <p className="text-xs text-mono-medium">
-                  Choose how you want to add accounts and transactions.
-                </p>
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => setAddStep("2a")}
-                    className="border border-bg-tertiary/60 px-4 py-3 text-left hover:bg-bg-secondary/60 transition"
+              <>
+                <div className={`${appleModalBodyClass} space-y-3`}>
+                  <p className="text-sm text-mono-medium">
+                    Choose how you want to add accounts and transactions.
+                  </p>
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setAddStep("2a")}
+                      className={appleChoiceCardClass}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-mono-dark">Manual</p>
+                        <kbd className="inline-flex items-center justify-center rounded-md bg-[#f5f5f7] px-2 py-0.5 text-[11px] font-mono text-mono-dark">
+                          m
+                        </kbd>
+                      </div>
+                      <p className="mt-1.5 text-xs text-mono-light">
+                        Add accounts manually; transactions come via CSV uploads or manual entry.
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddStep("2b")}
+                      className={appleChoiceCardClass}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-mono-dark">Direct Feed</p>
+                        <kbd className="inline-flex items-center justify-center rounded-md bg-[#f5f5f7] px-2 py-0.5 text-[11px] font-mono text-mono-dark">
+                          d
+                        </kbd>
+                      </div>
+                      <p className="mt-1.5 text-xs text-mono-light">
+                        Connect a bank via Plaid. We’ll automatically import up to 24 months of transaction history.
+                      </p>
+                    </button>
+                  </div>
+                  <a
+                    href="https://plaid.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium text-[#0071e3] hover:underline"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-mono-dark">Manual</p>
-                      <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[11px] font-mono text-mono-dark">
-                        m
-                      </kbd>
-                    </div>
-                    <p className="text-xs text-mono-light mt-1.5">
-                      Add accounts manually; transactions come via CSV uploads or manual entry.
-                    </p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAddStep("2b")}
-                    className="border border-bg-tertiary/60 px-4 py-3 text-left transition hover:bg-[#635bff]/5"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-medium text-mono-dark">Direct Feed</p>
-                      <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[11px] font-mono text-mono-dark">
-                        d
-                      </kbd>
-                    </div>
-                    <p className="text-xs text-mono-light mt-1.5">
-                      Connect a bank via Plaid. We’ll automatically import up to 24 months of transaction history.
-                    </p>
+                    <span className="material-symbols-rounded text-[18px]">open_in_new</span>
+                    Learn about Plaid
+                  </a>
+                </div>
+                <div className={appleModalFooterClass}>
+                  <button type="button" onClick={closeAdd} className={appleBtnSecondary}>
+                    Cancel
                   </button>
                 </div>
-                <a
-                  href="https://plaid.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 flex items-center justify-center gap-2 w-full py-3 text-sm font-medium text-mono-medium hover:text-mono-dark transition"
-                  style={{ color: "#2563EB" }}
-                >
-                  <span className="inline-flex items-center justify-center" style={{ color: "#2563EB", transform: "scale(0.75)", transformOrigin: "center" }}>
-                    <span className="material-symbols-rounded text-[20px]">open_in_new</span>
-                  </span>
-                  Learn about Plaid
-                </a>
-              </div>
+              </>
             )}
 
             {addStep === "2a" && (
               <>
-                <div className="px-6 pt-3 pb-1">
+                <div className={`${appleModalBodyClass} pt-0`}>
                   <button
                     type="button"
                     onClick={closeAdd}
-                    className="text-sm font-medium text-mono-medium hover:text-mono-dark inline-flex items-center gap-2"
+                    className="text-sm font-medium text-[#0071e3] hover:underline"
                   >
-                    <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[11px] font-mono text-mono-dark">
-                      esc
-                    </kbd>
-                    Return
+                    ← Back
                   </button>
                 </div>
-                <div className="px-6 py-3 space-y-3">
+                <div className={`${appleModalBodyClass} space-y-3 pt-0`}>
                   <div>
-                    <label className="text-sm font-medium text-mono-dark block mb-2">
-                      Account Name *
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-mono-dark">Account name *</label>
                     <input
                       ref={addAccountInputRef}
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="e.g. Chase Business Checking"
-                      className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
+                      className={appleInputClass}
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-mono-dark block mb-2">
-                      Institution
-                    </label>
+                    <label className="mb-1.5 block text-sm font-medium text-mono-dark">Institution</label>
                     <input
                       type="text"
                       value={institution}
                       onChange={(e) => setInstitution(e.target.value)}
                       placeholder="e.g. Chase, Amex"
-                      className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
+                      className={appleInputClass}
                     />
                   </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-mono-dark">Balance (optional)</label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={manualBalanceInput}
+                        onChange={(e) => setManualBalanceInput(e.target.value)}
+                        placeholder="0.00"
+                        className={appleInputClass}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-mono-dark">Currency</label>
+                      <input
+                        type="text"
+                        value={manualCurrencyCreate}
+                        onChange={(e) => setManualCurrencyCreate(e.target.value.toUpperCase().slice(0, 3))}
+                        placeholder="USD"
+                        className={appleInputClass}
+                        maxLength={3}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
-                  <button
-                    onClick={closeAdd}
-                    disabled={saving}
-                    className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
-                  >
-                    Close
+                <div className={appleModalFooterClass}>
+                  <button type="button" onClick={closeAdd} disabled={saving} className={appleBtnSecondary}>
+                    Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={handleCreate}
                     disabled={saving || !name.trim()}
-                    className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors disabled:opacity-40"
+                    className={appleBtnPrimary}
                   >
-                    {saving ? "Adding..." : "Add account"}
+                    {saving ? "Adding…" : "Add account"}
                   </button>
                 </div>
               </>
@@ -751,33 +1046,28 @@ export function DataSourcesClient({
 
             {addStep === "2b" && (
               <>
-                <div className="px-6 pt-3 pb-1">
+                <div className={`${appleModalBodyClass} pt-0`}>
                   <button
                     type="button"
                     onClick={closeAdd}
                     disabled={plaidConnectLoading}
-                    className="text-sm font-medium text-mono-medium hover:text-mono-dark inline-flex items-center gap-2 disabled:opacity-50"
+                    className="text-sm font-medium text-[#0071e3] hover:underline disabled:opacity-50"
                   >
-                    <kbd className="inline-flex items-center justify-center bg-[#F5F0E8] px-2 py-0.5 text-[11px] font-mono text-mono-dark">
-                      esc
-                    </kbd>
-                    Return
+                    ← Back
                   </button>
                 </div>
                 {plaidConnectLoading ? (
-                  <div className="px-6 py-16 flex flex-col items-center justify-center gap-4">
+                  <div className="flex flex-col items-center justify-center gap-3 px-5 py-12">
                     <span className="material-symbols-rounded animate-spin text-4xl text-mono-medium">progress_activity</span>
                     <p className="text-sm font-medium text-mono-dark">Connecting…</p>
-                    <p className="text-xs text-mono-light">Select your bank and accounts in the window that opened.</p>
+                    <p className="text-center text-xs text-mono-light">Select your bank in the window that opened.</p>
                   </div>
                 ) : (
-                  <div className="px-6 py-3 space-y-3">
+                  <div className={`${appleModalBodyClass} space-y-2 pt-0`}>
                     <p className="text-sm text-mono-medium">
-                      Connect your bank account to automatically import up to 24 months of transaction history.
+                      Connect your bank to import up to 24 months of transaction history.
                     </p>
-                    {plaidConnectError && (
-                      <p className="text-sm text-red-600">{plaidConnectError}</p>
-                    )}
+                    {plaidConnectError && <p className="text-sm text-red-600">{plaidConnectError}</p>}
                   </div>
                 )}
                 <PlaidLinkButton
@@ -847,19 +1137,10 @@ export function DataSourcesClient({
 
       {/* Edit account modal */}
       {editSource && (
-        <div
-          className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="edit-account-title"
-        >
-          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden border-0">
-            <div className="bg-white px-6 pt-6 pb-1 flex items-start">
-              <h2
-                id="edit-account-title"
-                className="text-xl text-black font-medium"
-                style={{ fontFamily: "var(--font-sans)" }}
-              >
+        <div className={appleOverlayClass} role="dialog" aria-modal="true" aria-labelledby="edit-account-title">
+          <div className={applePanelClass}>
+            <div className={appleModalHeadClass}>
+              <h2 id="edit-account-title" className="text-[20px] font-semibold tracking-tight text-mono-dark">
                 Edit account
               </h2>
             </div>
@@ -869,56 +1150,116 @@ export function DataSourcesClient({
                 if (editName.trim() && !editSaving) handleSaveEdit();
               }}
             >
-              <div className="px-6 py-3 space-y-3">
+              <div className={`${appleModalBodyClass} space-y-3`}>
                 <div>
-                  <label className="text-sm font-medium text-black block mb-2">
-                    Name *
-                  </label>
+                  <label className="mb-1.5 block text-sm font-medium text-mono-dark">Name *</label>
                   <input
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     placeholder="e.g. Chase Business Checking"
-                    className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
+                    className={appleInputClass}
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-black block mb-2">
-                    Institution
-                  </label>
+                  <label className="mb-1.5 block text-sm font-medium text-mono-dark">Institution</label>
                   <input
                     type="text"
                     value={editInstitution}
                     onChange={(e) => setEditInstitution(e.target.value)}
                     placeholder="e.g. Chase, Amex"
                     disabled={isDirectFeed(editSource?.source_type ?? "")}
-                    className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60 disabled:bg-[#F0F1F7] disabled:text-mono-light disabled:cursor-not-allowed"
+                    className={`${appleInputClass} disabled:cursor-not-allowed disabled:bg-[#f5f5f7] disabled:text-mono-light`}
                   />
                 </div>
+                {editSource.source_type === "manual" && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-mono-dark">Balance</label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          ref={editBalanceWholeRef}
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          value={editBalanceWhole}
+                          onChange={(e) => setEditBalanceWhole(sanitizeEditBalanceWholeTyping(e.target.value))}
+                          onBlur={() => setEditBalanceWhole((v) => formatEditBalanceWholeInput(v))}
+                          onKeyDown={(e) => {
+                            if (e.key === "." || e.key === ",") {
+                              e.preventDefault();
+                              editBalanceCentsRef.current?.focus();
+                              editBalanceCentsRef.current?.select();
+                            }
+                          }}
+                          placeholder="0"
+                          className={`${appleInputClass} min-w-0 flex-1 tabular-nums`}
+                          aria-label="Balance whole amount"
+                        />
+                        <span className="shrink-0 text-lg font-medium text-mono-medium" aria-hidden>
+                          .
+                        </span>
+                        <input
+                          ref={editBalanceCentsRef}
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          value={editBalanceCents}
+                          onChange={(e) => setEditBalanceCents(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                          onBlur={() =>
+                            setEditBalanceCents((v) => {
+                              const d = v.replace(/\D/g, "").slice(0, 2);
+                              if (d === "") return "";
+                              return d.padStart(2, "0");
+                            })
+                          }
+                          placeholder="00"
+                          maxLength={2}
+                          className={`${appleInputClass} w-[3.25rem] shrink-0 tabular-nums text-center`}
+                          aria-label="Balance cents"
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-mono-light">Clear both to remove balance. Cents are two digits (e.g. 50 for fifty cents).</p>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-mono-dark">Currency</label>
+                      <select
+                        value={editManualCurrency || "USD"}
+                        onChange={(e) => setEditManualCurrency(e.target.value)}
+                        className={`${appleInputClass} cursor-pointer`}
+                      >
+                        {COMMON_CURRENCY_OPTIONS.map((o) => (
+                          <option key={o.code} value={o.code}>
+                            {o.label}
+                          </option>
+                        ))}
+                        {!COMMON_CURRENCY_OPTIONS.some((o) => o.code === editManualCurrency) && editManualCurrency ? (
+                          <option value={editManualCurrency}>{editManualCurrency} — custom</option>
+                        ) : null}
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="px-6 pt-2 pb-6 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex w-full flex-wrap items-center gap-2 border-t border-black/[0.06] bg-[#fafafa]/80 px-5 py-4">
                 <button
                   type="button"
                   onClick={() => setDeleteConfirmSource(editSource)}
                   disabled={editSaving}
-                  className="px-4 py-2.5 text-sm font-medium font-sans bg-[#FEE2E2] text-[#DC2626] rounded-none hover:bg-[#FECACA] transition-colors disabled:opacity-40"
+                  className="mr-auto shrink-0 rounded-full bg-red-50 px-4 py-2.5 text-[15px] font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-40"
                 >
                   Delete
                 </button>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => setEditSource(null)}
                     disabled={editSaving}
-                    className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
+                    className={appleBtnSecondary}
                   >
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    disabled={editSaving || !editName.trim()}
-                    className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 disabled:opacity-50 transition-colors"
-                  >
+                  <button type="submit" disabled={editSaving || !editName.trim()} className={appleBtnPrimary}>
                     {editSaving ? "Saving…" : "Save"}
                   </button>
                 </div>
@@ -931,47 +1272,42 @@ export function DataSourcesClient({
       {/* Pull transactions (date range) modal */}
       {pullModalSource && (() => {
         return (
-        <div
-          className="fixed inset-0 min-h-[100dvh] z-[60] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="pull-transactions-title"
-        >
-          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden border-0">
-            <div className="bg-white px-6 pt-6 pb-1 flex items-start">
-              <h2 id="pull-transactions-title" className="text-xl text-black font-medium" style={{ fontFamily: "var(--font-sans)" }}>
+        <div className={appleOverlayClass} role="dialog" aria-modal="true" aria-labelledby="pull-transactions-title">
+          <div className={applePanelClass}>
+            <div className={appleModalHeadClass}>
+              <h2 id="pull-transactions-title" className="text-[20px] font-semibold tracking-tight text-mono-dark">
                 Pull transactions
               </h2>
             </div>
-            <div className="px-6 py-3 space-y-3">
+            <div className={`${appleModalBodyClass} space-y-3`}>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs text-black mb-1">From date</label>
+                  <label className="mb-1.5 block text-sm font-medium text-mono-dark">From date</label>
                   <input
                     type="date"
                     value={pullDatesBySource[pullModalSource.id]?.start ?? ""}
                     onChange={(e) => setPullDatesBySource((prev) => ({ ...prev, [pullModalSource.id]: { ...(prev[pullModalSource.id] ?? { start: "", end: "" }), start: e.target.value } }))}
-                    className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
+                    className={appleInputClass}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-black mb-1">To date</label>
+                  <label className="mb-1.5 block text-sm font-medium text-mono-dark">To date</label>
                   <input
                     type="date"
                     value={pullDatesBySource[pullModalSource.id]?.end ?? ""}
                     onChange={(e) => setPullDatesBySource((prev) => ({ ...prev, [pullModalSource.id]: { ...(prev[pullModalSource.id] ?? { start: "", end: "" }), end: e.target.value } }))}
-                    className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
+                    className={appleInputClass}
                   />
                 </div>
               </div>
-              <p className="text-xs text-black/70">Leave dates empty to use default range. Duplicates are not added.</p>
+              <p className="text-xs text-mono-medium">Leave dates empty for default range. Duplicates are skipped.</p>
             </div>
-            <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
+            <div className={appleModalFooterClass}>
               <button
                 type="button"
                 onClick={() => setPullModalSource(null)}
                 disabled={syncingId === pullModalSource.id}
-                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
+                className={appleBtnSecondary}
               >
                 Cancel
               </button>
@@ -1018,7 +1354,7 @@ export function DataSourcesClient({
                   }
                 }}
                 disabled={syncingId === pullModalSource.id}
-                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#2563EB] text-white rounded-none hover:bg-[#1D4ED8] transition-colors disabled:opacity-40"
+                className={appleBtnPrimary}
               >
                 {syncingId === pullModalSource.id ? "Pulling…" : "Pull transactions"}
               </button>
@@ -1030,47 +1366,40 @@ export function DataSourcesClient({
 
       {/* Delete account confirmation modal */}
       {deleteConfirmSource && (
-        <div
-          className="fixed inset-0 min-h-[100dvh] z-[60] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-confirm-title"
-        >
-          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden border-0">
-            <div className="bg-white px-6 pt-6 pb-1 flex items-start">
-              <h2 id="delete-confirm-title" className="text-xl text-black font-medium" style={{ fontFamily: "var(--font-sans)" }}>
+        <div className={appleOverlayClass} role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title">
+          <div className={applePanelClass}>
+            <div className={appleModalHeadClass}>
+              <h2 id="delete-confirm-title" className="text-[20px] font-semibold tracking-tight text-mono-dark">
                 Delete account?
               </h2>
             </div>
-            <div className="px-6 py-3 space-y-3">
-              <p className="text-xs text-black">
-                Are you sure you want to delete <strong>{deleteConfirmSource.name}</strong>? This cannot be undone.
+            <div className={`${appleModalBodyClass} space-y-3`}>
+              <p className="text-sm text-mono-dark">
+                Delete <strong>{deleteConfirmSource.name}</strong>? This can’t be undone.
               </p>
               <div>
-                <label className="flex items-start gap-3 cursor-pointer">
+                <label className="flex cursor-pointer items-start gap-3">
                   <input
                     type="checkbox"
                     checked={deleteAlsoTransactions}
                     onChange={(e) => setDeleteAlsoTransactions(e.target.checked)}
-                    className="mt-1 rounded-none border-0 text-black accent-black"
+                    className="mt-1 h-4 w-4 rounded border-black/20 accent-[#0071e3]"
                   />
-                  <span className="text-sm text-black">
-                    Also delete all transactions from this account
-                  </span>
+                  <span className="text-sm text-mono-dark">Also delete all transactions from this account</span>
                 </label>
-                <p className="text-xs text-black/70 mt-1 ml-6">
+                <p className="ml-7 mt-1 text-xs text-mono-medium">
                   {deleteAlsoTransactions
                     ? "Transactions will be permanently removed."
-                    : "Transactions will be kept but unlinked from this account."}
+                    : "Transactions stay in your workspace but unlinked."}
                 </p>
               </div>
             </div>
-            <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
+            <div className={appleModalFooterClass}>
               <button
                 type="button"
                 onClick={() => { setDeleteConfirmSource(null); }}
                 disabled={deleteLoading}
-                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
+                className={appleBtnSecondary}
               >
                 Cancel
               </button>
@@ -1101,7 +1430,7 @@ export function DataSourcesClient({
                   }
                 }}
                 disabled={deleteLoading}
-                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#FEE2E2] text-[#DC2626] rounded-none hover:bg-[#FECACA] transition-colors disabled:opacity-40"
+                className="rounded-full bg-red-50 px-5 py-2.5 text-[15px] font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-40"
               >
                 {deleteLoading ? "Deleting…" : "Delete"}
               </button>
@@ -1120,53 +1449,46 @@ export function DataSourcesClient({
         }
         const accountNames = unsyncedSources.map((s) => s.name).join(", ");
         return (
-          <div
-            className="fixed inset-0 min-h-[100dvh] z-[60] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="post-connect-date-title"
-          >
-            <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden border-0">
+          <div className={appleOverlayClass} role="dialog" aria-modal="true" aria-labelledby="post-connect-date-title">
+            <div className={applePanelClass}>
               {postConnectPulling ? (
-                <div className="px-6 py-12 flex flex-col items-center justify-center gap-4">
-                  <span className="material-symbols-rounded animate-spin text-4xl text-black/40">progress_activity</span>
-                  <h2 className="text-xl text-black font-medium text-center" style={{ fontFamily: "var(--font-sans)" }}>
+                <div className="flex flex-col items-center justify-center gap-4 px-5 py-12">
+                  <span className="material-symbols-rounded animate-spin text-4xl text-mono-medium">progress_activity</span>
+                  <h2 id="post-connect-date-title" className="text-center text-[20px] font-semibold tracking-tight text-mono-dark">
                     Loading transactions
                   </h2>
-                  <p className="text-xs text-black/70 text-center">
+                  <p className="text-center text-sm text-mono-medium">
                     Pulling from {unsyncedSources.length > 1 ? "your accounts" : accountNames}… This may take a minute.
                   </p>
                 </div>
               ) : (
                 <>
-                  <div className="bg-white px-6 pt-6 pb-0 flex items-start">
-                    <h2 id="post-connect-date-title" className="text-xl text-black font-medium" style={{ fontFamily: "var(--font-sans)" }}>
-                      Pull Bank Transactions
+                  <div className={appleModalHeadClass}>
+                    <h2 id="post-connect-date-title" className="text-[20px] font-semibold tracking-tight text-mono-dark">
+                      Pull bank transactions
                     </h2>
                   </div>
-                  <div className="px-6 py-3 space-y-3">
-                    <p className="text-xs text-black">
+                  <div className={`${appleModalBodyClass} space-y-3`}>
+                    <p className="text-sm text-mono-medium">
                       We’ll pull available transaction history for your newly connected accounts.
                     </p>
 
-                    <div className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
+                    <div className="divide-y divide-black/[0.06] overflow-hidden rounded-xl border border-black/[0.08] bg-[#fafafa]/50">
                       {unsyncedSources.map((s) => (
-                        <div key={s.id} className="px-4 py-3 text-sm text-mono-dark">
+                        <div key={s.id} className="bg-white px-4 py-3 text-sm font-medium text-mono-dark">
                           {s.name}
                         </div>
                       ))}
                     </div>
 
-                    {postConnectError && (
-                      <p className="text-xs text-[#B91C1C] px-0 py-1">{postConnectError}</p>
-                    )}
+                    {postConnectError && <p className="text-sm text-red-600">{postConnectError}</p>}
                   </div>
-                  <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
+                  <div className={appleModalFooterClass}>
                     <button
                       type="button"
                       onClick={() => { setShowPostConnectDateModal(false); setPostConnectError(null); }}
                       disabled={postConnectPulling}
-                      className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40"
+                      className={appleBtnSecondary}
                     >
                       Skip for now
                     </button>
@@ -1227,7 +1549,7 @@ export function DataSourcesClient({
                           setPostConnectPulling(false);
                         }
                       }}
-                      className="px-4 py-2.5 text-sm font-medium font-sans bg-[#2563EB] text-white rounded-none hover:bg-[#1D4ED8] transition-colors disabled:opacity-40"
+                      className={appleBtnPrimary}
                     >
                       Pull transactions
                     </button>
@@ -1240,23 +1562,27 @@ export function DataSourcesClient({
       })()}
 
       {loadingNewAccounts && (
-        <div className="flex flex-col items-center justify-center py-16 gap-3">
-          <span className="material-symbols-rounded animate-spin text-3xl text-mono-medium">progress_activity</span>
-          <p className="text-sm font-medium text-mono-dark">Loading your accounts…</p>
+        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-black/[0.06] bg-[#fbfbfd] py-12">
+          <span className="material-symbols-rounded animate-spin text-3xl text-[#86868b]">progress_activity</span>
+          <p className="text-[15px] font-medium text-[#1d1d1f]" style={{ fontFamily: "var(--font-sans)" }}>
+            Loading accounts…
+          </p>
         </div>
       )}
 
       {sources.length === 0 && !showAdd && !loadingNewAccounts && (
-        <div className="text-center py-20">
-          <p className="text-base text-mono-medium mb-2">No accounts yet</p>
-          <p className="text-sm text-mono-light">
-            Add a financial account to start uploading transaction CSVs.
+        <div className="rounded-xl border border-black/[0.06] bg-[#fbfbfd] px-6 py-12 text-center shadow-sm">
+          <p className="text-base font-semibold text-[#1d1d1f]" style={{ fontFamily: "var(--font-sans)" }}>
+            No accounts yet
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-[#86868b]" style={{ fontFamily: "var(--font-sans)" }}>
+            Connect a bank or add an account to import transactions.
           </p>
         </div>
       )}
 
       {sources.length > 0 && !loadingNewAccounts && (
-        <ul className="space-y-4">
+        <ul className="space-y-3">
           {sources.map((source) => {
             const s = stats[source.id] ?? {
               transactionCount: 0,
@@ -1272,108 +1598,271 @@ export function DataSourcesClient({
                 ? Math.round((Math.min(100, Math.max(0, s.pctReviewed ?? 0)) / 100) * totalTxCount)
                 : 0;
             const hasSyncFailure = !!source.last_failed_sync_at;
-            const showEarliestTaxYearLine =
+            const showEarliestYearLine =
               totalTxCount > 0 &&
               !!s.earliestTransactionDateInTaxYear &&
-              !isEarliestNearStartOfTaxYear(s.earliestTransactionDateInTaxYear, taxYear);
+              !isEarliestNearStartOfCalendarYear(s.earliestTransactionDateInTaxYear, calendarYear);
+            const balCurrency = source.plaid_balance_iso_currency_code ?? "USD";
+            const balCurrent = numericOrNull(source.plaid_balance_current);
+            const balAvailable = numericOrNull(source.plaid_balance_available);
+            const balLimit = numericOrNull(source.plaid_balance_limit);
+            const balAsOf = formatBalanceAsOf(source.plaid_balance_as_of);
+            const displayMain = balCurrent ?? balAvailable;
+            const mainIsAvailableOnly = balCurrent == null && balAvailable != null;
+            const showPlaidBalances =
+              source.source_type === "plaid" &&
+              (displayMain != null || balLimit != null);
+            const manualBalAmt = numericOrNull(source.manual_balance);
+            const manualBalCode =
+              (source.manual_balance_iso_currency_code ?? "").trim() || "USD";
+            const plaidPrimaryLabel =
+              displayMain != null
+                ? mainIsAvailableOnly
+                  ? source.account_type === "credit"
+                    ? "Available credit"
+                    : "Available"
+                  : source.account_type === "credit"
+                    ? "Current balance"
+                    : "Balance"
+                : balLimit != null && source.account_type === "credit"
+                  ? "Credit limit"
+                  : null;
             return (
               <li
                 key={source.id}
-                className="border border-[#F0F1F7] bg-white"
+                className="rounded-xl border border-black/[0.06] bg-white p-3 shadow-sm sm:p-4"
               >
-                <div className="p-4">
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium ${
-                        isDirectFeed(source.source_type)
-                          ? "bg-[#2563EB]/15 text-[#2563EB]"
-                          : "bg-bg-tertiary text-mono-medium"
-                      }`}
-                    >
-                      {sourceTypeLabel(source.source_type)}
-                    </span>
+                <div>
+                  <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                            isDirectFeed(source.source_type)
+                              ? "bg-[#0071e3]/10 text-[#0071e3]"
+                              : "bg-[#f5f5f7] text-[#6e6e73]"
+                          }`}
+                        >
+                          {sourceTypeLabel(source.source_type)}
+                        </span>
+                      </div>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <p className="text-lg font-semibold tracking-tight text-[#1d1d1f]" style={{ fontFamily: "var(--font-sans)" }}>
+                          {source.name}
+                        </p>
+                      </div>
+                      {source.institution && (
+                        <p className="mt-0.5 text-sm text-[#86868b]" style={{ fontFamily: "var(--font-sans)" }}>
+                          {source.institution}
+                        </p>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-left sm:mt-1 sm:text-right">
+                      {source.source_type === "plaid" && showPlaidBalances && (
+                        <>
+                          {plaidPrimaryLabel && (
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#86868b]">
+                                {plaidPrimaryLabel}
+                              </p>
+                              <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-[#1d1d1f]">
+                                {displayMain != null
+                                  ? formatCurrency(displayMain, balCurrency)
+                                  : balLimit != null
+                                    ? formatCurrency(balLimit, balCurrency)
+                                    : null}
+                              </p>
+                            </div>
+                          )}
+                          {balCurrent != null &&
+                            balAvailable != null &&
+                            (source.account_type === "credit" || balAvailable !== balCurrent) && (
+                              <p className="mt-1 text-xs tabular-nums text-[#6e6e73]">
+                                {source.account_type === "credit" ? "Available credit" : "Available"}:{" "}
+                                {formatCurrency(balAvailable, balCurrency)}
+                              </p>
+                            )}
+                          {balLimit != null && source.account_type === "credit" && displayMain != null && (
+                            <p className="mt-0.5 text-xs tabular-nums text-[#6e6e73]">
+                              Limit {formatCurrency(balLimit, balCurrency)}
+                            </p>
+                          )}
+                          {balAsOf && (
+                            <p className="mt-1 max-w-[14rem] text-[11px] leading-snug text-[#aeaeb2] sm:ml-auto">
+                              As of {balAsOf}
+                            </p>
+                          )}
+                        </>
+                      )}
+                      {source.source_type === "plaid" && !showPlaidBalances && (
+                        <p className="max-w-[220px] text-right text-[12px] leading-snug text-[#86868b] sm:ml-auto sm:text-right">
+                          {source.last_successful_sync_at
+                            ? "No balance yet — refresh or pull to load from Plaid."
+                            : "Balance after first sync — pull or refresh."}
+                        </p>
+                      )}
+                      {source.source_type === "manual" && (
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#86868b]">Balance</p>
+                          <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-[#1d1d1f]">
+                            {manualBalAmt != null ? formatCurrency(manualBalAmt, manualBalCode) : "—"}
+                          </p>
+                        </div>
+                      )}
+                      {source.source_type === "stripe" && (
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[#86868b]">Balance</p>
+                          <p className="mt-0.5 text-lg font-semibold tabular-nums text-[#aeaeb2]">—</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-lg font-semibold text-mono-dark">{source.name}</p>
-                  {source.institution && (
-                    <p className="text-sm text-mono-light">{source.institution}</p>
-                  )}
-                  {showEarliestTaxYearLine && s.earliestTransactionDateInTaxYear && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/[0.06] pt-3">
+                    <span className="text-[12px] font-medium text-[#6e6e73]">Rollups</span>
+                    <select
+                      aria-label={`Balance class for ${source.name}`}
+                      className={`${appleInputClass} max-w-[180px] py-2 text-[13px]`}
+                      value={(source.balance_class ?? (source.account_type === "credit" ? "liability" : "asset")) as any}
+                      onChange={(e) => {
+                        void patchRollupFields(source.id, { balance_class: e.target.value });
+                      }}
+                    >
+                      {ROLLUP_CLASS_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label={`Balance preference for ${source.name}`}
+                      className={`${appleInputClass} max-w-[180px] py-2 text-[13px]`}
+                      value={(source.balance_value_preference ?? (source.source_type === "manual" ? "manual" : "current")) as any}
+                      onChange={(e) => {
+                        void patchRollupFields(source.id, { balance_value_preference: e.target.value });
+                      }}
+                    >
+                      {BALANCE_PREF_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <label className="inline-flex items-center gap-2 text-[12px] font-medium text-[#6e6e73]">
+                      <input
+                        type="checkbox"
+                        checked={source.include_in_net_worth !== false}
+                        onChange={(e) => {
+                          void patchRollupFields(source.id, { include_in_net_worth: e.target.checked });
+                        }}
+                      />
+                      Include in net worth
+                    </label>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/[0.06] pt-3">
+                    <span className="text-[12px] font-medium text-[#6e6e73]">Sidebar color</span>
+                    <select
+                      aria-label={`Brand color for ${source.name}`}
+                      className={`${appleInputClass} max-w-[220px] py-2 text-[13px]`}
+                      value={normalizeBrandColorId(source.brand_color_id)}
+                      onChange={async (e) => {
+                        const brand_color_id = e.target.value;
+                        try {
+                          const res = await fetch("/api/data-sources", {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ id: source.id, brand_color_id }),
+                          });
+                          const data = await res.json().catch(() => ({}));
+                          if (res.ok && data?.data) {
+                            setSources((prev) => prev.map((x) => (x.id === source.id ? { ...x, ...data.data } : x)));
+                            window.dispatchEvent(new CustomEvent("accounts-changed"));
+                          } else {
+                            setToast((data as { error?: string }).error ?? "Could not update color");
+                            setTimeout(() => setToast(null), 4000);
+                          }
+                        } catch {
+                          setToast("Could not update color");
+                          setTimeout(() => setToast(null), 4000);
+                        }
+                      }}
+                    >
+                      {BRAND_COLOR_OPTIONS.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {showEarliestYearLine && s.earliestTransactionDateInTaxYear && (
                     <p
-                      className="mt-1.5 max-w-md text-xs leading-snug text-mono-medium"
+                      className="mt-3 max-w-md text-[13px] leading-snug text-[#6e6e73]"
                       style={{ fontFamily: "var(--font-sans)" }}
                     >
-                      Earliest in{" "}
-                      <span className="tabular-nums font-medium text-mono-dark">{taxYear}</span>
-                      {": "}
-                      <span className="font-medium text-mono-dark">
+                      Earliest in {calendarYear}:{" "}
+                      <span className="font-medium text-[#1d1d1f]">
                         {formatEarliestCompact(s.earliestTransactionDateInTaxYear)}
                       </span>
                       {isDirectFeed(source.source_type) && (
                         <>
-                          <span className="text-mono-light"> · </span>
-                          <span className="text-mono-light">{source.source_type === "plaid" ? "up to 24 mo history" : "~6 mo bank feed"}</span>
                           {" · "}
                           <button
                             type="button"
                             onClick={() => setUploadSourceId(source.id)}
-                            className="font-medium text-mono-dark underline underline-offset-2 decoration-black/20 hover:decoration-mono-dark focus:outline-none focus-visible:ring-1 focus-visible:ring-mono-dark/25 focus-visible:ring-offset-1"
+                            className="font-medium text-[#0071e3] hover:underline underline-offset-2"
                           >
                             Upload CSV
                           </button>
+                          {" for older activity."}
                         </>
                       )}
-                      .
                     </p>
                   )}
                   {isDirectFeed(source.source_type) && (
-                    <div className="text-xs text-mono-light mt-1 space-y-0.5">
+                    <div className="text-[13px] text-[#86868b] mt-2 space-y-0.5" style={{ fontFamily: "var(--font-sans)" }}>
                       {!source.last_successful_sync_at && totalTxCount === 0 && (
-                        <p className="text-mono-medium">
-                          Pull transactions to load activity from your bank.
-                        </p>
-                      )}
-                      {source.source_type === "plaid" && (
-                        <p className="text-mono-light">
-                          Lookback: up to <span className="font-medium text-mono-dark">24 months</span> (varies by institution).
-                        </p>
+                        <p>Pull transactions to load activity from your bank.</p>
                       )}
                       {source.last_successful_sync_at && totalTxCount === 0 && (
-                        <p className="text-mono-medium">
-                          Sync completed; no posted transactions in the selected date range.
-                        </p>
+                        <p>Last sync had no posted transactions in range.</p>
                       )}
                     </div>
                   )}
                   {isDirectFeed(source.source_type) && (connectionStatuses[source.id] === "disconnected" || connectionStatuses[source.id] === "inactive" || connectionStatuses[source.id] === "login_required" || connectionStatuses[source.id] === "error" || !(source.financial_connections_account_id || source.plaid_item_id)) && (
-                    <div className="mt-3 bg-[#F5F0E8] p-3">
-                      <p className="text-sm font-medium text-mono-dark">
+                    <div className="mt-4 rounded-xl bg-[#f5f5f7] p-4">
+                      <p className="text-[15px] font-semibold text-[#1d1d1f]" style={{ fontFamily: "var(--font-sans)" }}>
                         {!(source.financial_connections_account_id || source.plaid_item_id)
                           ? "This account isn't linked to a bank."
                           : "This connection is no longer active"}
                       </p>
-                      <p className="text-xs text-mono-medium mt-1">Reconnect your bank to restore syncing</p>
+                      <p className="text-[13px] text-[#6e6e73] mt-1" style={{ fontFamily: "var(--font-sans)" }}>
+                        Reconnect your bank to restore syncing.
+                      </p>
                       <button
                         type="button"
                         onClick={() => { setShowAdd(true); setAddStep("2b"); }}
-                        className="mt-2 bg-black px-3 py-1.5 text-xs font-medium text-white hover:bg-black/85"
+                        className="mt-3 rounded-full bg-[#1d1d1f] px-4 py-2 text-[13px] font-medium text-white hover:bg-black/85 transition"
+                        style={{ fontFamily: "var(--font-sans)" }}
                       >
                         Repair connection
                       </button>
                     </div>
                   )}
                   {hasSyncFailure && !(isDirectFeed(source.source_type) && (connectionStatuses[source.id] === "disconnected" || connectionStatuses[source.id] === "inactive" || connectionStatuses[source.id] === "login_required" || connectionStatuses[source.id] === "error" || !(source.financial_connections_account_id || source.plaid_item_id))) && (
-                    <div className="mt-3 bg-[#F5F0E8] p-3">
-                      <p className="text-sm font-medium text-mono-dark">We&apos;re having trouble syncing your account</p>
-                      <p className="text-xs text-mono-medium mt-1">
+                    <div className="mt-4 rounded-xl bg-[#f5f5f7] p-4">
+                      <p className="text-[15px] font-semibold text-[#1d1d1f]" style={{ fontFamily: "var(--font-sans)" }}>
+                        We&apos;re having trouble syncing this account
+                      </p>
+                      <p className="text-[13px] text-[#6e6e73] mt-1" style={{ fontFamily: "var(--font-sans)" }}>
                         {source.last_successful_sync_at
                           ? `Last synced ${formatMonthDayOrdinal(source.last_successful_sync_at)}`
-                          : "Last synced Never"}
+                          : "Last synced never"}
                       </p>
                       <button
                         type="button"
                         onClick={() => handleRetrySync(source.id)}
                         disabled={syncingId === source.id}
-                        className="mt-2 bg-black px-3 py-1.5 text-xs font-medium text-white hover:bg-black/85 disabled:opacity-50"
+                        className="mt-3 rounded-full bg-[#1d1d1f] px-4 py-2 text-[13px] font-medium text-white hover:bg-black/85 disabled:opacity-50 transition"
+                        style={{ fontFamily: "var(--font-sans)" }}
                       >
                         {syncingId === source.id ? "Syncing…" : "Retry sync"}
                       </button>
@@ -1394,13 +1883,13 @@ export function DataSourcesClient({
                       )}
                     </p>
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 rounded-none bg-[#F0F1F7] overflow-hidden">
+                      <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-[#e8e8ed]">
                         <div
-                          className="h-full rounded-none bg-[#8A9BB0] transition-all duration-300"
+                          className="h-full rounded-full bg-[#86868b] transition-all duration-300"
                           style={{ width: `${Math.min(100, Math.max(0, s.pctReviewed))}%` }}
                         />
                       </div>
-                      <span className="text-xs tabular-nums font-medium text-mono-medium shrink-0">
+                      <span className="text-[12px] tabular-nums font-medium text-[#6e6e73] shrink-0">
                         {(s.pctReviewed ?? 0).toFixed(2)}% reviewed
                       </span>
                     </div>
@@ -1413,46 +1902,72 @@ export function DataSourcesClient({
                   </div>
                     </>
                   )}
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <Link
-                      href={`/activity?data_source_id=${encodeURIComponent(source.id)}`}
-                      className="inline-flex items-center gap-2 rounded-none border border-bg-tertiary/60 px-3 py-2 text-sm font-medium text-mono-medium hover:bg-bg-secondary/60 transition"
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setViewTxConfirmSource(source)}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] bg-white px-3 py-1.5 text-[13px] font-medium text-[#1d1d1f] hover:bg-[#f5f5f7] transition"
+                      style={{ fontFamily: "var(--font-sans)" }}
                     >
                       <span
                         className="material-symbols-rounded leading-none"
-                        style={{ fontSize: 16 }}
+                        style={{ fontSize: 15 }}
                       >
                         list
                       </span>
                       View transactions
-                    </Link>
+                    </button>
                     {isDirectFeed(source.source_type) && connectionStatuses[source.id] !== "disconnected" && connectionStatuses[source.id] !== "inactive" && connectionStatuses[source.id] !== "login_required" && connectionStatuses[source.id] !== "error" && (source.financial_connections_account_id || source.plaid_item_id) && (
                       <button
                         type="button"
                         onClick={() => setPullModalSource(source)}
-                        className="inline-flex items-center gap-2 rounded-none bg-[#2563EB] px-3 py-2 text-sm font-medium text-white hover:opacity-90 transition"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-[#0071e3] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[#0077ed] transition"
+                        style={{ fontFamily: "var(--font-sans)" }}
                       >
                         <span
                           className="material-symbols-rounded leading-none"
-                          style={{ fontSize: 16 }}
+                          style={{ fontSize: 15 }}
                         >
                           sync
                         </span>
                         Pull Transactions
                       </button>
                     )}
+                    {source.source_type === "plaid" &&
+                      connectionStatuses[source.id] !== "disconnected" &&
+                      connectionStatuses[source.id] !== "inactive" &&
+                      connectionStatuses[source.id] !== "login_required" &&
+                      connectionStatuses[source.id] !== "error" &&
+                      (source.financial_connections_account_id || source.plaid_item_id) && (
+                        <button
+                          type="button"
+                          onClick={() => handleRefreshPlaidBalance(source.id)}
+                          disabled={balanceRefreshingId === source.id}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] bg-white px-3 py-1.5 text-[13px] font-medium text-[#1d1d1f] hover:bg-[#f5f5f7] transition disabled:opacity-50"
+                          style={{ fontFamily: "var(--font-sans)" }}
+                        >
+                          <span
+                            className={`material-symbols-rounded leading-none ${balanceRefreshingId === source.id ? "animate-spin" : ""}`}
+                            style={{ fontSize: 15 }}
+                          >
+                            {balanceRefreshingId === source.id ? "progress_activity" : "account_balance"}
+                          </span>
+                          {balanceRefreshingId === source.id ? "Refreshing…" : "Refresh balance"}
+                        </button>
+                      )}
                     <button
                       type="button"
                       onClick={() => setUploadSourceId(source.id)}
-                      className={`inline-flex items-center gap-2 rounded-none px-3 py-2 text-sm font-medium transition ${
+                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition ${
                         isDirectFeed(source.source_type)
-                          ? "bg-cool-stock text-black hover:bg-frost"
-                          : "bg-[#2563EB] text-white hover:opacity-90"
+                          ? "border border-black/[0.08] bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]"
+                          : "bg-[#0071e3] text-white hover:bg-[#0077ed]"
                       }`}
+                      style={{ fontFamily: "var(--font-sans)" }}
                     >
                       <span
                         className="material-symbols-rounded leading-none"
-                        style={{ fontSize: 16 }}
+                        style={{ fontSize: 15 }}
                       >
                         upload_file
                       </span>
@@ -1460,12 +1975,13 @@ export function DataSourcesClient({
                     </button>
                     <button
                       onClick={() => openEdit(source)}
-                      className="inline-flex items-center gap-2 rounded-none border border-bg-tertiary/60 px-3 py-2 text-sm font-medium text-mono-medium hover:bg-bg-secondary/60 transition"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] bg-white px-3 py-1.5 text-[13px] font-medium text-[#1d1d1f] hover:bg-[#f5f5f7] transition"
                       aria-label="Edit account"
+                      style={{ fontFamily: "var(--font-sans)" }}
                     >
                       <span
                         className="material-symbols-rounded leading-none"
-                        style={{ fontSize: 16 }}
+                        style={{ fontSize: 15 }}
                       >
                         edit
                       </span>
@@ -1480,11 +1996,50 @@ export function DataSourcesClient({
       )}
 
       {(toast || debugCallouts) && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 rounded-none bg-[#5B82B4] text-black px-4 py-2.5 text-sm shadow-lg flex items-center gap-2">
+        <div className="fixed bottom-6 left-1/2 z-50 flex max-w-[min(100%-2rem,480px)] -translate-x-1/2 items-center gap-3 rounded-full border border-black/[0.06] bg-white/95 px-5 py-3 text-[14px] text-[#1d1d1f] shadow-[0_8px_32px_rgba(0,0,0,0.12)] backdrop-blur-md">
           {toast ?? "Account deleted."}
-          <Link href="/inbox" className="font-medium underline underline-offset-2 hover:no-underline">
+          <Link href="/inbox" className="shrink-0 font-medium text-[#0071e3] underline underline-offset-2 hover:no-underline">
             Open Inbox
           </Link>
+        </div>
+      )}
+
+      {/* View transactions confirmation modal */}
+      {viewTxConfirmSource && (
+        <div className={appleOverlayClass} role="dialog" aria-modal="true" aria-labelledby="view-tx-confirm-title">
+          <div className={applePanelClass}>
+            <div className={appleModalHeadClass}>
+              <h2 id="view-tx-confirm-title" className="text-[20px] font-semibold tracking-tight text-mono-dark">
+                Create a page for this account?
+              </h2>
+            </div>
+            <div className={`${appleModalBodyClass} space-y-3`}>
+              <p className="text-sm text-mono-medium">
+                This will create a new Page with a filter for <span className="font-medium text-mono-dark">{viewTxConfirmSource.name}</span>.
+              </p>
+              <p className="text-xs text-mono-light">
+                You can edit the page title, columns, and filters afterward.
+              </p>
+            </div>
+            <div className={appleModalFooterClass}>
+              <button
+                type="button"
+                onClick={() => setViewTxConfirmSource(null)}
+                disabled={creatingAccountPage}
+                className={appleBtnSecondary}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => createFilteredPageForAccount(viewTxConfirmSource)}
+                disabled={creatingAccountPage}
+                className={appleBtnPrimary}
+              >
+                {creatingAccountPage ? "Creating…" : "Create page"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1509,6 +2064,10 @@ export function DataSourcesClient({
           }}
         />
       )}
+        </div>
+      </div>
+
+      <AccountsShareModal open={shareOpen} onClose={() => setShareOpen(false)} />
     </div>
   );
 }

@@ -1,9 +1,7 @@
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
-import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
-import { getProfileOnboarding } from "@/lib/profile";
+import { getActiveOrgId } from "@/lib/active-org";
 import { DataSourcesClient } from "./DataSourcesClient";
 
 export type DataSourceStats = {
@@ -24,15 +22,33 @@ export default async function DataSourcesPage() {
 
   const supabase = authClient;
 
+  const orgId = await getActiveOrgId(supabase as any, userId);
+  if (orgId) {
+    const { data: org, error: orgVisErr } = await (supabase as any)
+      .from("orgs")
+      .select("accounts_page_visibility")
+      .eq("id", orgId)
+      .maybeSingle();
+    if (!orgVisErr && org?.accounts_page_visibility === "restricted") {
+      const { data: mem } = await (supabase as any)
+        .from("org_memberships")
+        .select("role")
+        .eq("org_id", orgId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if ((mem?.role as string | undefined) !== "owner") {
+        redirect("/dashboard");
+      }
+    }
+  }
+
   const { data: sources } = await (supabase as any)
     .from("data_sources")
     .select("*")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
-  const cookieStore = await cookies();
-  const profile = await getProfileOnboarding(supabase as any, userId);
-  const taxYear = getEffectiveTaxYear(cookieStore, profile);
+  const calendarYear = new Date().getFullYear();
 
   const sourceIds = (sources ?? []).map((s: { id: string }) => s.id);
   const statsBySource: Record<string, DataSourceStats> = {};
@@ -44,7 +60,7 @@ export default async function DataSourcesPage() {
       .eq("user_id", userId)
       .in("data_source_id", sourceIds);
 
-    /** Earliest transaction date per source for viewed tax year (indexed query, limit 1 — avoids row caps on bulk MIN). */
+    /** Earliest transaction date per source for the current calendar year (`tax_year` on rows). */
     const earliestBySource: Record<string, string> = {};
     await Promise.all(
       sourceIds.map(async (id: string) => {
@@ -53,7 +69,7 @@ export default async function DataSourcesPage() {
           .select("date")
           .eq("user_id", userId)
           .eq("data_source_id", id)
-          .eq("tax_year", taxYear)
+          .eq("tax_year", calendarYear)
           .order("date", { ascending: true })
           .limit(1)
           .maybeSingle();
@@ -110,7 +126,6 @@ export default async function DataSourcesPage() {
     <DataSourcesClient
       initialSources={sources ?? []}
       initialStats={statsBySource}
-      taxYear={taxYear}
     />
   );
 }

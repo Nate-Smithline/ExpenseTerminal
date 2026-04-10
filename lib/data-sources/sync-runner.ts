@@ -2,7 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StripeMode } from "@/lib/stripe";
 import { getStripeClient } from "@/lib/stripe";
 import { getPlaidClient, decryptAccessToken } from "@/lib/plaid";
+import { persistPlaidBalancesForPlaidItem } from "@/lib/plaid-balance-persist";
 import { normalizeVendor } from "@/lib/vendor-matching";
+import { getActiveOrgId } from "@/lib/active-org";
+import { runOrgRulesForIngest } from "@/lib/org-rules/executor";
 
 /**
  * Stripe Financial Connections `transactions.list` accepts `limit` between 1 and 100 (inclusive).
@@ -106,6 +109,11 @@ export type SyncOptions = {
   endDate?: string | null;
   /** Request hostname — used to resolve Plaid environment (localhost → PLAID_ENV, prod → production). */
   hostname?: string;
+  /**
+   * When true (daily cron), skip `accountsBalanceGet` after a successful Plaid txn sync.
+   * The cron runs one deduped balance refresh per Plaid item afterward.
+   */
+  skipPostSyncPlaidBalanceRefresh?: boolean;
 };
 
 /**
@@ -510,6 +518,7 @@ export async function runSyncForDataSource(
       let earliestDate: string | null = null;
       let latestDate: string | null = null;
       let firstInsertError: string | null = null;
+      const addedPlaidExternalIds = new Set<string>();
 
       // Plaid /transactions/sync uses cursor-based pagination: loop until has_more is false.
       let hasMore = true;
@@ -526,6 +535,7 @@ export async function runSyncForDataSource(
         // Process added transactions
         for (const tx of data.added) {
           addedCount += 1;
+          if (tx.transaction_id) addedPlaidExternalIds.add(tx.transaction_id);
           const dateStr = tx.date;
           const year = new Date(dateStr).getFullYear();
           // Plaid: positive = money out (expense), negative = money in (income)
@@ -602,6 +612,25 @@ export async function runSyncForDataSource(
         }
       }
 
+      if (addedPlaidExternalIds.size > 0) {
+        try {
+          const extIds = [...addedPlaidExternalIds];
+          const { data: ruleTxRows } = await (supabase as any)
+            .from("transactions")
+            .select("id")
+            .eq("data_source_id", dataSourceId)
+            .eq("user_id", userId)
+            .in("data_feed_external_id", extIds);
+          const newIds = (ruleTxRows ?? []).map((r: { id: string }) => r.id).filter(Boolean);
+          const orgId = await getActiveOrgId(supabase as any, userId);
+          if (orgId && newIds.length > 0) {
+            await runOrgRulesForIngest(supabase as any, orgId, newIds);
+          }
+        } catch (rulesErr) {
+          console.warn("[sync-runner/plaid] Org transaction rules failed", rulesErr);
+        }
+      }
+
       // Save cursor for next incremental sync
       const { count } = await (supabase as any)
         .from("transactions")
@@ -621,6 +650,23 @@ export async function runSyncForDataSource(
         })
         .eq("id", dataSourceId)
         .eq("user_id", userId);
+
+      if (!options?.skipPostSyncPlaidBalanceRefresh) {
+        try {
+          const itemId = (row.plaid_item_id as string) ?? "";
+          if (itemId) {
+            await persistPlaidBalancesForPlaidItem(
+              supabase,
+              userId,
+              options?.hostname,
+              accessToken,
+              itemId,
+            );
+          }
+        } catch (balErr) {
+          console.warn("[sync-runner/plaid] Balance refresh failed", balErr);
+        }
+      }
 
       const plaidDiagnostics: PlaidSyncDiagnostics = {
         plaidItemId: (row.plaid_item_id as string) ?? "",

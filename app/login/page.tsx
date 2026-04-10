@@ -127,7 +127,7 @@ function LoginContent() {
         }
 
         router.refresh();
-        router.push("/inbox");
+        router.push("/dashboard");
       }
     } catch (err) {
       const message =

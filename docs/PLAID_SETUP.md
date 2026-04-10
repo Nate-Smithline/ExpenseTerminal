@@ -28,7 +28,7 @@ PLAID_WEBHOOK_URL="https://your-domain.com/api/webhooks/plaid"  # optional, for 
 3. On success, client sends the public token to `POST /api/data-sources/plaid/exchange-token`.
 4. Server exchanges for a permanent access token (encrypted and stored in `data_sources`).
 5. An initial `/transactions/sync` pulls up to 24 months of history.
-6. Daily cron (`/api/cron/transaction-import`) runs incremental syncs using the stored cursor.
+6. Daily cron (`/api/cron/transaction-import`) runs incremental transaction syncs (stored cursor) and refreshes Plaid balances once per linked bank item (`accountsBalanceGet`).
 
 ## 4. Transaction history
 

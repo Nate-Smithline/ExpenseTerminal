@@ -8,7 +8,7 @@ import { PageMenuDrawer } from "@/components/PageMenuDrawer";
 const actionTextClass =
   "inline-flex h-8 items-center rounded-none border-0 bg-transparent px-2.5 text-[13px] font-medium text-mono-dark hover:bg-bg-secondary/50 transition-colors";
 const menuIconBtnClass =
-  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-none border-0 bg-transparent text-mono-dark hover:bg-bg-secondary/50 transition-colors";
+  "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-transparent text-mono-dark transition-colors hover:bg-black/[0.05] active:scale-[0.97]";
 
 const ICON_PX = 18;
 
@@ -48,16 +48,20 @@ export function PageTopBar({
 
   const toggleFavorite = useCallback(async () => {
     const next = !favorited;
+    // Optimistic: flip UI immediately, reconcile in background.
+    onFavoritedChange(next);
+    window.dispatchEvent(new CustomEvent("page-favorite-changed", { detail: { pageId, favorited: next } }));
     try {
       const res = await fetch(`/api/pages/${pageId}/favorite`, { method: next ? "POST" : "DELETE" });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         throw new Error((j as { error?: string }).error ?? "Failed");
       }
-      onFavoritedChange(next);
-      window.dispatchEvent(new CustomEvent("page-favorite-changed", { detail: { pageId } }));
       window.dispatchEvent(new CustomEvent("pages-changed"));
     } catch {
+      // Revert if the request failed.
+      onFavoritedChange(!next);
+      window.dispatchEvent(new CustomEvent("page-favorite-changed", { detail: { pageId, favorited: !next } }));
       showToast("Could not update favorite");
     }
   }, [favorited, onFavoritedChange, pageId, showToast]);
@@ -132,7 +136,9 @@ export function PageTopBar({
           aria-pressed={favorited}
         >
           <span
-            className={`material-symbols-rounded leading-none ${favorited ? "text-sovereign-blue" : "text-mono-dark"}`}
+            className={`material-symbols-rounded leading-none ${
+              favorited ? "text-[#ffc724] drop-shadow-[0_1px_0_rgba(0,0,0,0.12)]" : "text-mono-dark"
+            }`}
             style={iconGlyphStyle({ favorited })}
           >
             star

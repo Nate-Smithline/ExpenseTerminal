@@ -23,6 +23,7 @@ const TYPE_LABELS: Record<TransactionPropertyType, string> = {
   created_by: "Created by",
   last_edited_date: "Last edited (date)",
   last_edited_time: "Last edited (time)",
+  account: "Account (linked)",
 };
 
 const SUGGESTED: TransactionPropertyType[] = ["short_text", "number", "select", "date", "org_user"];
@@ -107,6 +108,8 @@ export function TransactionPropertySidebarCreate({ onRefresh }: Props) {
     setSelectedType(t);
     setStep("details");
     setError(null);
+    setOptionsText("");
+    setName(t === "account" ? "Account" : "");
   };
 
   const handleCreate = async () => {
@@ -274,6 +277,12 @@ export function TransactionPropertySidebarCreate({ onRefresh }: Props) {
                 className="w-full rounded-md border border-[#F0F1F7] bg-white px-2 py-2 text-sm focus:border-mono-medium/25 focus:outline-none"
               />
             </div>
+            {selectedType === "account" && (
+              <p className="text-xs leading-relaxed text-mono-medium">
+                Shows which account each transaction belongs to. Options come from your Accounts page and update automatically. Values
+                aren&apos;t editable here.
+              </p>
+            )}
             {needsOptions && (
               <div>
                 <label htmlFor="tp-sidebar-options" className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-mono-light">

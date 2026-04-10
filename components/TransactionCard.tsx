@@ -18,6 +18,8 @@ export interface TransactionUpdate {
 
 interface TransactionCardProps {
   transaction: Transaction;
+  accountName?: string | null;
+  accountBrandColorHex?: string | null;
   onSave: (data: TransactionUpdate, opts?: { applyToSimilar?: boolean }) => void | Promise<void>;
   onMarkPersonal: () => Promise<void>;
   onDelete?: () => Promise<void>;
@@ -80,6 +82,8 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
   function TransactionCard(
     {
       transaction,
+      accountName = null,
+      accountBrandColorHex = null,
       onSave,
       onMarkPersonal,
       onDelete,
@@ -405,6 +409,15 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     const displayCategoryName =
       EXPENSE_CATEGORIES.find((c) => c.line === effectiveLine)?.name ?? displayCategory ?? "Uncategorized";
 
+    function rgba(hex: string, alpha: number) {
+      const h = hex.replace("#", "");
+      if (h.length !== 6) return `rgba(0,0,0,${alpha})`;
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+
     // Keyboard shortcuts for income classification (business vs personal)
     useEffect(() => {
       if (!isActive || !isIncomeLike) return;
@@ -445,13 +458,38 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
               <p className="font-semibold text-sm text-mono-dark">{transaction.vendor}</p>
               <span className="text-[11px] text-mono-light">{formatDate(transaction.date)}</span>
             </div>
+            {accountName ? (
+              <div className="mt-1 flex items-center gap-1.5 min-w-0">
+                <span
+                  className="material-symbols-rounded leading-none shrink-0"
+                  style={{
+                    fontSize: 14,
+                    fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20",
+                  }}
+                  aria-hidden
+                >
+                  database
+                </span>
+                <span
+                  className="inline-flex max-w-full items-center truncate rounded-full px-2 py-0.5 text-[11px] font-medium"
+                  style={{
+                    backgroundColor: accountBrandColorHex ? rgba(accountBrandColorHex, 0.14) : "rgba(0,0,0,0.06)",
+                    color: accountBrandColorHex ?? "rgba(0,0,0,0.72)",
+                  }}
+                >
+                  {accountName}
+                </span>
+              </div>
+            ) : null}
           </div>
           <span
             className={`text-sm font-semibold tabular-nums shrink-0 ${
               isIncomeLike ? "text-emerald-700" : "text-mono-dark"
             }`}
           >
-            {isIncomeLike ? "+" : "-"}${amount.toFixed(2)}
+            {(isIncomeLike ? "+" : "-") +
+              "$" +
+              Math.abs(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
         </div>
 

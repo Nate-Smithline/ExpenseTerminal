@@ -11,7 +11,7 @@ const FULL_WIDTH_ROUTES = ["/", "/pricing", "/request-demo"];
 
 const mobileFooterNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
-  { href: "/data-sources", label: "Accounts & Data", icon: "database" },
+  { href: "/data-sources", label: "Accounts", icon: "database" },
   { href: "/inbox", label: "Inbox", icon: "inbox" },
   { href: "/deductions", label: "Deductions", icon: "receipt_long" },
 ];
@@ -30,8 +30,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isFullWidth = FULL_WIDTH_ROUTES.includes(pathname);
   /** Saved activity pages: use full main column width (not max-w-[880px]) so headers span beside the sidebar. */
   const isSavedPageRoute = pathname.startsWith("/pages/");
+  /** Accounts: same full-width shell as saved pages (top bar + content padding inside client). */
+  const isAccountsRoute = pathname === "/data-sources";
   /** Public read-only published page — no app chrome */
   const isPublishedPublicRoute = pathname.startsWith("/p/");
+  /** Home dashboard: wider column for Notion-style layout */
+  const isDashboardRoute = pathname === "/dashboard";
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
@@ -114,15 +118,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Main content — extra bottom padding on mobile for footer */}
       <main
         className={
-          isSavedPageRoute
+          isSavedPageRoute || isAccountsRoute
             ? "flex-1 min-h-0 min-w-0 overflow-y-auto pb-24 md:pb-14"
             : "flex-1 overflow-y-auto px-5 py-8 md:px-8 md:py-14 pb-24 md:pb-14"
         }
       >
-        {isSavedPageRoute ? (
+        {isSavedPageRoute || isAccountsRoute ? (
           <div className="w-full min-w-0">{children}</div>
         ) : (
-          <div className="max-w-[880px] mx-auto">{children}</div>
+          <div
+            className={
+              isDashboardRoute ? "max-w-6xl mx-auto w-full" : "max-w-[880px] mx-auto"
+            }
+          >
+            {children}
+          </div>
         )}
       </main>
 
@@ -211,7 +221,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 { href: "/deductions", label: "Deductions" },
                 { href: "/tax-filing", label: "Tax Filing" },
                 { href: "/activity", label: "All Activity" },
-                { href: "/preferences/automations", label: "Preferences" },
+                { href: "/preferences/org", label: "Preferences" },
               ].map((item) => (
                 <Link
                   key={item.href}

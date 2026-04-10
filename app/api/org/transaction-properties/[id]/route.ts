@@ -109,6 +109,20 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
 
+  const { data: existing } = await (supabase as any)
+    .from("transaction_property_definitions")
+    .select("type")
+    .eq("id", idParsed.data)
+    .eq("org_id", orgId)
+    .maybeSingle();
+
+  if (existing?.type === "account") {
+    return NextResponse.json(
+      { error: "The Account property can’t be removed. You can rename it or hide it from the table." },
+      { status: 400 }
+    );
+  }
+
   const { error, count } = await (supabase as any)
     .from("transaction_property_definitions")
     .delete({ count: "exact" })

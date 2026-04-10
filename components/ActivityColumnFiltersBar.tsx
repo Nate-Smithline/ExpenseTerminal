@@ -19,6 +19,32 @@ import {
 import type { ActivityFilterableStandardColumn } from "@/lib/validation/schemas";
 import { ACTIVITY_FILTERABLE_STANDARD_COLUMNS } from "@/lib/validation/schemas";
 
+const FILTER_STANDARD_ICONS: Record<ActivityFilterableStandardColumn, string> = {
+  date: "calendar_today",
+  vendor: "storefront",
+  description: "subject",
+  amount: "attach_money",
+  transaction_type: "merge_type",
+  status: "flag",
+  category: "folder",
+  schedule_c_line: "receipt_long",
+  source: "cloud",
+  ai_confidence: "percent",
+  business_purpose: "work",
+  quick_label: "label",
+  notes: "sticky_note_2",
+  deduction_percent: "percent",
+  vendor_normalized: "fingerprint",
+  data_source_id: "database",
+  created_at: "schedule",
+};
+
+const GLYPH_MUTED = {
+  fontSize: 18,
+  lineHeight: 1,
+  fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24",
+} as const;
+
 const STANDARD_LABELS: Record<ActivityFilterableStandardColumn, string> = {
   date: "Date",
   vendor: "Vendor",
@@ -75,19 +101,35 @@ function columnLabel(column: string, properties: TransactionPropertyDefinition[]
 
 type DataSourceOpt = { id: string; name: string };
 
+type FilterChrome = "default" | "apple";
+
 type Props = {
   columnFilters: ActivityColumnFilterRow[];
   onColumnFiltersChange: (next: ActivityColumnFilterRow[]) => void;
   transactionProperties: TransactionPropertyDefinition[];
   /** When false, no filter UI (chips, + Filter, popovers) — toolbar filter icon is off. */
   filterToolbarActive?: boolean;
+  /** Saved pages: match multi-sort pill styling. */
+  chrome?: FilterChrome;
+  /** Horizontal alignment with table (e.g. ActivityToolbar `tableAlignClass`). */
+  rowClassName?: string;
 };
+
+function filterChipIcon(column: string, properties: TransactionPropertyDefinition[]): string {
+  if (isStandardFilterableColumn(column)) return FILTER_STANDARD_ICONS[column];
+  const d = properties.find((p) => p.id === column);
+  if (d?.type === "account") return "database";
+  if (d?.type === "checkbox") return "check_box";
+  return "tune";
+}
 
 export function ActivityColumnFiltersBar({
   columnFilters,
   onColumnFiltersChange,
   transactionProperties,
   filterToolbarActive = false,
+  chrome = "default",
+  rowClassName,
 }: Props) {
   const [openFilterId, setOpenFilterId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -103,8 +145,20 @@ export function ActivityColumnFiltersBar({
     return m;
   }, [transactionProperties]);
 
+  const dataSourceNameById = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const d of dataSources) {
+      if (!d?.id) continue;
+      m[d.id] = d.name;
+    }
+    return m;
+  }, [dataSources]);
+
   const orgPickable = useMemo(
-    () => transactionProperties.filter((p) => !isSystemTransactionPropertyType(p.type)),
+    () =>
+      transactionProperties.filter(
+        (p) => p.type === "account" || !isSystemTransactionPropertyType(p.type)
+      ),
     [transactionProperties]
   );
 
@@ -211,23 +265,42 @@ export function ActivityColumnFiltersBar({
 
   const activeFilter = openFilterId ? columnFilters.find((f) => f.id === openFilterId) : null;
 
+  const addPopoverClass =
+    chrome === "apple"
+      ? "fixed z-[70] overflow-hidden rounded-2xl border border-black/[0.08] bg-white/95 p-1 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.25)] backdrop-blur-md"
+      : "fixed z-[70] rounded-lg border border-bg-tertiary/50 bg-white p-1 shadow-[0_8px_30px_-8px_rgba(0,0,0,0.18)]";
+  const addSectionTitleClass =
+    chrome === "apple"
+      ? "px-2.5 py-2 text-[11px] font-medium uppercase tracking-wider text-neutral-400"
+      : "px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-mono-light";
+  const addRowClass =
+    chrome === "apple"
+      ? "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left font-sans text-[13px] text-neutral-800 hover:bg-neutral-100/80"
+      : "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-mono-dark hover:bg-bg-secondary/80";
+
   const popoverContent =
     addOpen && popoverPos ? (
       <div
         id="activity-column-filter-popover"
-        className="fixed z-[70] rounded-lg border border-bg-tertiary/50 bg-white p-1 shadow-[0_8px_30px_-8px_rgba(0,0,0,0.18)]"
+        className={addPopoverClass}
         style={{ top: popoverPos.top, left: popoverPos.left, width: popoverPos.width, maxHeight: "min(60vh, 320px)" }}
       >
-        <p className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-mono-light">Columns</p>
-        <div className="max-h-52 overflow-y-auto">
+        <p className={addSectionTitleClass}>Columns</p>
+        <div className="max-h-52 overflow-y-auto px-0.5 pb-1">
           {ACTIVITY_FILTERABLE_STANDARD_COLUMNS.map((col) => (
             <button
               key={col}
               type="button"
               onClick={() => addFilterWithColumn(col)}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-mono-dark hover:bg-bg-secondary/80"
+              className={addRowClass}
             >
-              {STANDARD_LABELS[col]}
+              <span
+                className={`material-symbols-rounded shrink-0 text-[18px] ${chrome === "apple" ? "text-neutral-500" : "text-mono-light"}`}
+                style={chrome === "apple" ? GLYPH_MUTED : undefined}
+              >
+                {FILTER_STANDARD_ICONS[col]}
+              </span>
+              <span className="min-w-0 truncate">{STANDARD_LABELS[col]}</span>
             </button>
           ))}
           {orgPickable.map((p) => (
@@ -235,9 +308,15 @@ export function ActivityColumnFiltersBar({
               key={p.id}
               type="button"
               onClick={() => addFilterWithColumn(p.id)}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm text-mono-dark hover:bg-bg-secondary/80"
+              className={addRowClass}
             >
-              {p.name}
+              <span
+                className={`material-symbols-rounded shrink-0 text-[18px] ${chrome === "apple" ? "text-neutral-500" : "text-mono-light"}`}
+                style={chrome === "apple" ? GLYPH_MUTED : undefined}
+              >
+                tune
+              </span>
+              <span className="min-w-0 truncate">{p.name}</span>
             </button>
           ))}
         </div>
@@ -254,6 +333,7 @@ export function ActivityColumnFiltersBar({
         onRemove={() => removeFilter(activeFilter.id)}
         menuOpen={menuOpenId === activeFilter.id}
         onMenuOpenChange={(o) => setMenuOpenId(o ? activeFilter.id : null)}
+        chrome={chrome}
       />
     ) : null;
 
@@ -261,17 +341,39 @@ export function ActivityColumnFiltersBar({
     return null;
   }
 
+  const rowGap = chrome === "apple" ? "gap-2" : "gap-1.5";
+
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className={`flex flex-wrap items-center ${rowGap} ${rowClassName ?? ""}`}>
       {columnFilters.map((f) => {
         const kind = kindForColumn(f.column, transactionProperties);
         const lbl = columnLabel(f.column, transactionProperties);
+        const isAccountFilter =
+          f.column === "data_source_id" || defsById.get(f.column)?.type === "account";
+
+        const prettyValue = (raw: string | undefined) => {
+          if (!raw) return "";
+          if (!isAccountFilter) return raw;
+          return dataSourceNameById[raw] ?? raw;
+        };
         const summary =
           !opNeedsValue(kind, f.op) && !opNeedsSecondValue(kind, f.op)
             ? `${lbl} ${opLabel(kind, f.op)}`
             : f.op === "between"
-              ? `${lbl} ${opLabel(kind, f.op)} ${f.value || "…"} – ${f.value2 || "…"}`
-              : `${lbl} ${opLabel(kind, f.op)} ${f.value ? `"${f.value.slice(0, 24)}${f.value.length > 24 ? "…" : ""}"` : "…"}`;
+              ? `${lbl} ${opLabel(kind, f.op)} ${prettyValue(f.value) || "…"} – ${prettyValue(f.value2 ?? "") || "…"}`
+              : `${lbl} ${opLabel(kind, f.op)} ${
+                  f.value
+                    ? `"${prettyValue(f.value ?? "").slice(0, 24)}${(prettyValue(f.value ?? "").length > 24 ? "…" : "")}"`
+                    : "…"
+                }`;
+        const chipIcon = filterChipIcon(f.column, transactionProperties);
+        const chipClass =
+          chrome === "apple"
+            ? "inline-flex h-10 max-w-[280px] items-center gap-2 rounded-2xl border border-black/[0.08] bg-white px-3 text-left font-sans text-[13px] tracking-tight text-neutral-800 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ring-1 ring-black/[0.04] transition hover:shadow-[0_2px_12px_rgba(0,0,0,0.07)]"
+            : "inline-flex max-w-[220px] items-center gap-1 rounded-md border border-bg-tertiary/60 bg-bg-secondary/30 px-2 py-1 text-left text-xs text-mono-dark hover:bg-bg-secondary/60";
+        const chipGlyphClass =
+          chrome === "apple" ? "material-symbols-rounded shrink-0 text-[18px] text-neutral-500" : "material-symbols-rounded shrink-0 text-[14px] text-mono-light";
+        const chipGlyphStyle = chrome === "apple" ? GLYPH_MUTED : undefined;
         return (
           <button
             key={f.id}
@@ -283,10 +385,12 @@ export function ActivityColumnFiltersBar({
               setOpenFilterId(f.id);
               setAddOpen(false);
             }}
-            className="inline-flex max-w-[220px] items-center gap-1 rounded-md border border-bg-tertiary/60 bg-bg-secondary/30 px-2 py-1 text-left text-xs text-mono-dark hover:bg-bg-secondary/60"
+            className={chipClass}
           >
-            <span className="material-symbols-rounded shrink-0 text-[14px] text-mono-light">filter_alt</span>
-            <span className="truncate">{summary}</span>
+            <span className={chipGlyphClass} style={chipGlyphStyle}>
+              {chipIcon}
+            </span>
+            <span className="min-w-0 truncate font-medium">{summary}</span>
           </button>
         );
       })}
@@ -297,10 +401,17 @@ export function ActivityColumnFiltersBar({
           setAddOpen((v) => !v);
           setOpenFilterId(null);
         }}
-        className="inline-flex items-center gap-1 rounded-md border border-dashed border-bg-tertiary/60 px-2 py-1 text-xs font-medium text-mono-medium hover:bg-bg-secondary/40"
+        aria-label={chrome === "apple" ? "Add filter" : undefined}
+        className={
+          chrome === "apple"
+            ? "inline-flex h-10 min-w-[2.75rem] items-center justify-center gap-1.5 rounded-2xl border border-dashed border-neutral-300/90 bg-white/60 px-3 font-sans text-[13px] font-medium text-neutral-500 transition hover:border-neutral-400 hover:bg-neutral-50 hover:text-neutral-600"
+            : "inline-flex items-center gap-1 rounded-md border border-dashed border-bg-tertiary/60 px-2 py-1 text-xs font-medium text-mono-medium hover:bg-bg-secondary/40"
+        }
       >
-        <span className="material-symbols-rounded text-[14px]">add</span>
-        Filter
+        <span className="material-symbols-rounded text-[22px] text-neutral-400" style={chrome === "apple" ? GLYPH_MUTED : undefined}>
+          add
+        </span>
+        {chrome === "apple" ? null : <span>Filter</span>}
       </button>
       {typeof document !== "undefined" && popoverContent ? createPortal(popoverContent, document.body) : null}
     </div>
@@ -317,6 +428,7 @@ function FilterEditorPopover({
   onRemove,
   menuOpen,
   onMenuOpenChange,
+  chrome,
 }: {
   filter: ActivityColumnFilterRow;
   columnLabelText: string;
@@ -327,6 +439,7 @@ function FilterEditorPopover({
   onRemove: () => void;
   menuOpen: boolean;
   onMenuOpenChange: (open: boolean) => void;
+  chrome: FilterChrome;
 }) {
   const column = filter.column;
   const kind = isStandardFilterableColumn(column)
@@ -349,15 +462,25 @@ function FilterEditorPopover({
       .filter(Boolean) as { id: string; label: string }[];
   }, [def]);
 
+  const shellClass =
+    chrome === "apple"
+      ? "fixed z-[70] overflow-hidden rounded-2xl border border-black/[0.08] bg-white/95 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.25)] backdrop-blur-md"
+      : "fixed z-[70] rounded-lg border border-bg-tertiary/50 bg-white shadow-[0_8px_30px_-8px_rgba(0,0,0,0.18)]";
+  const headerBorder = chrome === "apple" ? "border-b border-black/[0.06]" : "border-b border-bg-tertiary/40";
+
   return (
     <div
       id="activity-column-filter-popover"
-      className="fixed z-[70] rounded-lg border border-bg-tertiary/50 bg-white shadow-[0_8px_30px_-8px_rgba(0,0,0,0.18)]"
+      className={shellClass}
       style={{ top: position.top, left: position.left, width: position.width }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center gap-1 border-b border-bg-tertiary/40 px-2 py-2">
-        <span className="min-w-0 shrink truncate text-sm font-medium text-mono-dark">{label}</span>
+      <div className={`flex items-center gap-1 px-2 py-2 ${headerBorder}`}>
+        <span
+          className={`min-w-0 shrink truncate font-medium ${chrome === "apple" ? "font-sans text-[13px] text-neutral-900" : "text-sm text-mono-dark"}`}
+        >
+          {label}
+        </span>
         <select
           value={filter.op}
           onChange={(e) => onUpdate({ op: e.target.value })}
@@ -404,6 +527,7 @@ function FilterEditorPopover({
             filter={filter}
             options={options}
             dataSources={dataSources}
+            def={def}
             onUpdate={onUpdate}
           />
         ) : (
@@ -420,6 +544,7 @@ function ValueInputs({
   filter,
   options,
   dataSources,
+  def,
   onUpdate,
 }: {
   kind: ColumnFilterKind;
@@ -427,6 +552,7 @@ function ValueInputs({
   filter: ActivityColumnFilterRow;
   options: { id: string; label: string }[];
   dataSources: DataSourceOpt[];
+  def?: TransactionPropertyDefinition;
   onUpdate: (patch: Partial<ActivityColumnFilterRow>) => void;
 }) {
   const needs2 = opNeedsSecondValue(kind, filter.op);
@@ -479,7 +605,7 @@ function ValueInputs({
       </select>
     );
   }
-  if (column === "data_source_id") {
+  if (column === "data_source_id" || def?.type === "account") {
     return (
       <select
         value={filter.value ?? ""}

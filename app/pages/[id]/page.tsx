@@ -4,7 +4,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
 import { getActiveOrgId } from "@/lib/active-org";
 import { uuidSchema } from "@/lib/validation/schemas";
-import { PageViewClient } from "./page-view-client";
+
+import { PageViewClientNoSSR } from "./page-view-client-nossr";
 
 export default async function PageView({
   params,
@@ -41,7 +42,7 @@ export default async function PageView({
     .maybeSingle();
 
   return (
-    <PageViewClient
+    <PageViewClientNoSSR
       page={{
         id: page.id,
         title: page.title,

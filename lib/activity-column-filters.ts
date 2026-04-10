@@ -46,7 +46,7 @@ export type NumberColumnFilterOp = (typeof NUMBER_FILTER_OPS)[number];
 export const ENUM_FILTER_OPS = ["is", "is_not", "is_empty", "is_not_empty"] as const;
 export type EnumColumnFilterOp = (typeof ENUM_FILTER_OPS)[number];
 
-export const CHECKBOX_FILTER_OPS = ["is_checked", "is_unchecked", "is_empty", "is_not_empty"] as const;
+export const CHECKBOX_FILTER_OPS = ["is_checked", "is_unchecked"] as const;
 
 export const MULTI_FILTER_OPS = ["contains", "is_empty", "is_not_empty"] as const;
 
@@ -93,8 +93,6 @@ const ENUM_OP_LABELS: Record<EnumColumnFilterOp, string> = {
 const CHECKBOX_OP_LABELS: Record<(typeof CHECKBOX_FILTER_OPS)[number], string> = {
   is_checked: "is checked",
   is_unchecked: "is unchecked",
-  is_empty: "is empty",
-  is_not_empty: "is not empty",
 };
 
 const MULTI_OP_LABELS: Record<(typeof MULTI_FILTER_OPS)[number], string> = {
@@ -165,6 +163,8 @@ export function orgPropertyFilterKind(type: string): ColumnFilterKind {
       return "checkbox";
     case "files":
       return "files";
+    case "account":
+      return "enum";
     default:
       return "text";
   }
@@ -576,12 +576,20 @@ function applyCustomJsonPath(q: any, path: string, op: string, value?: string): 
   const v = (value ?? "").trim();
   if (op === "is_checked") return q.filter(path, "eq", true);
   if (op === "is_unchecked") return q.filter(path, "eq", false);
-  if (op === "is_empty") return q.or(`${path}.is.null`);
-  if (op === "is_not_empty") return q.not(path, "is", null);
   if (op === "is" || op === "eq") {
     if (v === "true") return q.filter(path, "eq", true);
     if (v === "false") return q.filter(path, "eq", false);
   }
+  return q;
+}
+
+function applyCustomCheckboxPath(q: any, propId: string, textPath: string, op: string): any {
+  // Checkbox custom fields are stored as JSON booleans in custom_fields.
+  // For "checked", JSONB containment is the most reliable PostgREST/Supabase filter.
+  if (op === "is_checked") return q.contains("custom_fields", { [propId]: true });
+  // For "unchecked", treat missing as unchecked (null) or explicitly false.
+  // PostgREST `or()` string values should be quoted; ->> yields text.
+  if (op === "is_unchecked") return q.or(`${textPath}.is.null,${textPath}.eq.\"false\"`);
   return q;
 }
 
@@ -669,7 +677,6 @@ export function applyActivityColumnFilters(
     const t = orgTypes.get(propId);
     if (!t) continue;
     const textPath = customFieldTextPath(propId);
-    const jsonPath = customFieldJsonPath(propId);
     const numPath = customFieldNumericCastPath(propId);
 
     if (t === "short_text" || t === "long_text" || t === "phone" || t === "email" || t === "org_user") {
@@ -685,7 +692,7 @@ export function applyActivityColumnFilters(
       continue;
     }
     if (t === "checkbox") {
-      q = applyCustomJsonPath(q, jsonPath, f.op, f.value);
+      q = applyCustomCheckboxPath(q, propId, textPath, f.op);
       continue;
     }
     if (t === "select") {
@@ -707,6 +714,13 @@ export function applyActivityColumnFilters(
     if (t === "files") {
       if (f.op === "is_empty") q = q.or(`${textPath}.is.null,${textPath}.eq.`);
       else if (f.op === "is_not_empty") q = q.not(textPath, "is", null).filter(textPath, "neq", "");
+      continue;
+    }
+    if (t === "account") {
+      if (f.op === "is_empty") q = q.is("data_source_id", null);
+      else if (f.op === "is_not_empty") q = q.not("data_source_id", "is", null);
+      else if (f.op === "is" && f.value?.trim()) q = q.eq("data_source_id", f.value.trim());
+      else if (f.op === "is_not" && f.value?.trim()) q = q.neq("data_source_id", f.value.trim());
       continue;
     }
   }

@@ -3,9 +3,15 @@ import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { rateLimitByIp, publishedPageApiLimit } from "@/lib/middleware/rate-limit";
 import { fetchPublishedPageBundle } from "@/lib/published-page-resolve";
-import { parseQueryLimit, parseQueryOffset, ACTIVITY_SORT_COLUMNS } from "@/lib/validation/schemas";
+import { parseQueryLimit, parseQueryOffset, ACTIVITY_SORT_COLUMNS, uuidSchema } from "@/lib/validation/schemas";
+import { fetchAccountPropertyIdsForOrg, mapActivitySortRulesToSqlColumns } from "@/lib/resolve-activity-sort-columns";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { safeErrorMessage } from "@/lib/api/safe-error";
+import { parseSortRulesQueryParam, parseSortRulesJson } from "@/lib/activity-sort-rules";
+import {
+  sanitizeTransactionSearchTerm,
+  TRANSACTION_TEXT_SEARCH_COLUMNS,
+} from "@/lib/transaction-text-search";
 
 function sanitizePublicRow(row: Record<string, unknown>, orgUserPropertyIds: Set<string>) {
   const { user_id: _u, auto_sort_rule_id: _a, custom_fields: cfRaw, ...rest } = row;
@@ -63,6 +69,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
     const sortOrderRaw = searchParams.get("sort_order") ?? searchParams.get("order");
     const sortAsc =
       sortOrderRaw === "asc" || sortOrderRaw === "desc" ? sortOrderRaw === "asc" : view.sort_asc;
+    const querySortRules = parseSortRulesQueryParam(searchParams.get("sort_rules"));
+    const viewSortRules = parseSortRulesJson((view as any).sort_rules);
 
     const f = view.filters;
     const status = searchParams.get("status") ?? f.status ?? undefined;
@@ -92,13 +100,30 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
     if (vendorNormalized) {
       query = query.or(`vendor_normalized.eq.${vendorNormalized},vendor_normalized.is.null`);
     }
-    if (searchTerm.length > 0) {
-      const pattern = `%${searchTerm}%`;
-      query = query.or(`vendor.ilike.${pattern},description.ilike.${pattern}`);
+    const safeSearch = sanitizeTransactionSearchTerm(searchTerm);
+    if (safeSearch != null) {
+      const pattern = `%${safeSearch}%`;
+      query = query.or(
+        TRANSACTION_TEXT_SEARCH_COLUMNS.map((col) => `${col}.ilike.${pattern}`).join(",")
+      );
     }
 
     if (!countOnly) {
-      query = query.order(sortBy, { ascending: sortAsc }).range(offset, offset + limit - 1);
+      const rules =
+        querySortRules.length > 0
+          ? querySortRules
+          : viewSortRules.length > 0
+            ? viewSortRules
+            : [{ column: sortBy as any, asc: sortAsc }];
+      const hasUuidSort = rules.some((r) => uuidSchema.safeParse(r.column).success);
+      const accountIds = hasUuidSort
+        ? await fetchAccountPropertyIdsForOrg(svc as any, bundle.orgId ?? null)
+        : new Set<string>();
+      const resolved = mapActivitySortRulesToSqlColumns(rules, accountIds);
+      for (const r of resolved) {
+        query = query.order(r.column, { ascending: r.asc });
+      }
+      query = query.range(offset, offset + limit - 1);
     }
 
     if (countOnly) {

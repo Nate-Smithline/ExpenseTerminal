@@ -5,6 +5,7 @@ import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { parseQueryLimit, parseQueryOffset } from "@/lib/validation/schemas";
+import { isBrandColorId } from "@/lib/brand-palette";
 export async function GET(req: Request) {
   const authClient = await createSupabaseRouteClient();
   const auth = await requireAuth(authClient);
@@ -69,7 +70,14 @@ export async function POST(req: Request) {
   }
   const supabase = authClient;
 
-  let body: { name?: string; account_type?: string; institution?: string; source_type?: string };
+  let body: {
+    name?: string;
+    account_type?: string;
+    institution?: string;
+    source_type?: string;
+    manual_balance?: number | null;
+    manual_balance_iso_currency_code?: string | null;
+  };
   try {
     body = await req.json();
   } catch {
@@ -88,17 +96,27 @@ export async function POST(req: Request) {
 
   const sourceType = body.source_type === "stripe" ? "stripe" : "manual";
 
-  // Only insert columns that exist in minimal schema (omit source_type, connected_at, etc. if missing from schema cache).
-  const insertCols = "id,user_id,name,account_type,institution,created_at";
+  const insertRow: Record<string, unknown> = {
+    user_id: userId,
+    name: body.name,
+    account_type: body.account_type || "other",
+    institution: body.institution || null,
+    source_type: sourceType,
+  };
+  if (sourceType === "manual") {
+    if (body.manual_balance != null && Number.isFinite(Number(body.manual_balance))) {
+      insertRow.manual_balance = Number(Number(body.manual_balance).toFixed(2));
+    }
+    const cur = typeof body.manual_balance_iso_currency_code === "string" ? body.manual_balance_iso_currency_code.trim() : "";
+    if (cur.length === 3) {
+      insertRow.manual_balance_iso_currency_code = cur.toUpperCase();
+    }
+  }
+
   const { data, error } = await (supabase as any)
     .from("data_sources")
-    .insert({
-      user_id: userId,
-      name: body.name,
-      account_type: body.account_type || "other",
-      institution: body.institution || null,
-    })
-    .select(insertCols)
+    .insert(insertRow)
+    .select()
     .single();
 
   if (error) {
@@ -133,7 +151,19 @@ export async function PATCH(req: Request) {
   }
   const supabase = authClient;
 
-  let body: { id: string; name?: string; account_type?: string; institution?: string; stripe_sync_start_date?: string | null };
+  let body: {
+    id: string;
+    name?: string;
+    account_type?: string;
+    institution?: string;
+    stripe_sync_start_date?: string | null;
+    manual_balance?: number | null;
+    manual_balance_iso_currency_code?: string | null;
+    brand_color_id?: string;
+    balance_class?: "asset" | "liability" | null;
+    include_in_net_worth?: boolean;
+    balance_value_preference?: "current" | "available" | "manual" | null;
+  };
   try {
     body = await req.json();
   } catch {
@@ -149,11 +179,75 @@ export async function PATCH(req: Request) {
     });
   }
 
+  const { data: existingRow, error: existingErr } = await (supabase as any)
+    .from("data_sources")
+    .select("source_type")
+    .eq("id", body.id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existingErr || !existingRow) {
+    return new Response(JSON.stringify({ error: "Data source not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const update: Record<string, unknown> = {};
   if (body.name !== undefined) update.name = body.name;
   if (body.account_type !== undefined) update.account_type = body.account_type;
   if (body.institution !== undefined) update.institution = body.institution || null;
   if (body.stripe_sync_start_date !== undefined) update.stripe_sync_start_date = body.stripe_sync_start_date;
+  if (body.manual_balance !== undefined || body.manual_balance_iso_currency_code !== undefined) {
+    if (existingRow.source_type !== "manual") {
+      return new Response(
+        JSON.stringify({ error: "Balance can only be set on manual accounts" }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (body.manual_balance !== undefined) {
+      update.manual_balance =
+        body.manual_balance == null ? null : Number(Number(body.manual_balance).toFixed(2));
+    }
+    if (body.manual_balance_iso_currency_code !== undefined) {
+      const c = body.manual_balance_iso_currency_code?.trim() ?? "";
+      update.manual_balance_iso_currency_code = c.length === 3 ? c.toUpperCase() : "USD";
+    }
+  }
+  if (body.brand_color_id !== undefined) {
+    if (!isBrandColorId(body.brand_color_id)) {
+      return new Response(JSON.stringify({ error: "Invalid brand color" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    update.brand_color_id = body.brand_color_id;
+  }
+
+  if (body.balance_class !== undefined) {
+    if (body.balance_class !== "asset" && body.balance_class !== "liability" && body.balance_class !== null) {
+      return new Response(JSON.stringify({ error: "Invalid balance class" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    update.balance_class = body.balance_class;
+  }
+
+  if (body.include_in_net_worth !== undefined) {
+    update.include_in_net_worth = !!body.include_in_net_worth;
+  }
+
+  if (body.balance_value_preference !== undefined) {
+    const v = body.balance_value_preference;
+    if (v !== "current" && v !== "available" && v !== "manual" && v !== null) {
+      return new Response(JSON.stringify({ error: "Invalid balance value preference" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    update.balance_value_preference = v;
+  }
   if (Object.keys(update).length === 0) {
     return new Response(JSON.stringify({ error: "No fields to update" }), {
       status: 400,

@@ -8,6 +8,8 @@ import { getActiveOrgId } from "@/lib/active-org";
 import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
 import { applyActivityColumnFilters, parseColumnFiltersJson, parseColumnFiltersQueryParam } from "@/lib/activity-column-filters";
 import type { ActivityColumnFilterRow } from "@/lib/activity-column-filters";
+import { parseSortRulesJson, parseSortRulesQueryParam } from "@/lib/activity-sort-rules";
+import type { ActivitySortRule } from "@/lib/validation/schemas";
 import type { TransactionPropertyDefinition } from "@/lib/transaction-property-definition";
 import { isUuidColumnKey } from "@/lib/activity-visible-column-keys";
 import {
@@ -18,6 +20,11 @@ import {
   rowToCsvLine,
   csvEscapeCell,
 } from "@/lib/activity-export-csv";
+import { fetchAccountPropertyIdsForOrg, mapActivitySortRulesToSqlColumns } from "@/lib/resolve-activity-sort-columns";
+import {
+  sanitizeTransactionSearchTerm,
+  TRANSACTION_TEXT_SEARCH_COLUMNS,
+} from "@/lib/transaction-text-search";
 
 const STANDARD_FILTERABLE_COLS = new Set<string>(ACTIVITY_FILTERABLE_STANDARD_COLUMNS);
 
@@ -52,6 +59,7 @@ type ExportOptions = {
   searchTerm: string;
   sortBy: string;
   sortAsc: boolean;
+  sortRules: ActivitySortRule[];
   source: string | null;
   dataSourceId: string | null;
   columnFilters: ActivityColumnFilterRow[];
@@ -68,6 +76,15 @@ function needsMemberDisplayMap(
     if (d?.type === "org_user" || d?.type === "created_by") return true;
   }
   return false;
+}
+
+async function loadDataSourceNameById(supabase: any, userId: string): Promise<Record<string, string>> {
+  const { data } = await supabase.from("data_sources").select("id,name").eq("user_id", userId);
+  const out: Record<string, string> = {};
+  for (const row of data ?? []) {
+    if (row?.id) out[String(row.id)] = String(row.name ?? "").trim() || String(row.id);
+  }
+  return out;
 }
 
 async function loadMemberDisplayById(supabase: any, orgId: string): Promise<Record<string, string>> {
@@ -99,6 +116,7 @@ async function csvExportResponse(supabase: any, userId: string, opt: ExportOptio
     searchTerm,
     sortBy,
     sortAsc,
+    sortRules,
     source,
     dataSourceId,
     columnFilters,
@@ -140,6 +158,11 @@ async function csvExportResponse(supabase: any, userId: string, opt: ExportOptio
       ? await loadMemberDisplayById(supabase as any, orgId)
       : {};
 
+  const needsAccountNames =
+    exportCols.includes("data_source_id") ||
+    exportCols.some((c) => isUuidColumnKey(c) && defsById.get(c)?.type === "account");
+  const dataSourceNameById = needsAccountNames ? await loadDataSourceNameById(supabase as any, userId) : {};
+
   const selectList = buildDbSelectParts(exportCols, defsById);
   const cols = selectList.join(",");
 
@@ -163,13 +186,23 @@ async function csvExportResponse(supabase: any, userId: string, opt: ExportOptio
   const headerCells = headerLabelsForExport(exportCols, defsById).map(csvEscapeCell);
   const headerLine = `${headerCells.join(",")}\n`;
 
+  const exportSortRules = sortRules.length > 0 ? sortRules : [{ column: sortBy as any, asc: sortAsc }];
+  const hasUuidSortColumn = exportSortRules.some((r) => uuidSchema.safeParse(r.column).success);
+  const accountSortIds = hasUuidSortColumn
+    ? await fetchAccountPropertyIdsForOrg(supabase as any, orgId)
+    : new Set<string>();
+  const resolvedSortRules = mapActivitySortRulesToSqlColumns(exportSortRules, accountSortIds);
+
   const buildPageQuery = (from: number, to: number) => {
     let q = (supabase as any)
       .from("transactions")
       .select(cols)
       .eq("user_id", userId)
-      .order(sortBy, { ascending: sortAsc })
       .range(from, to);
+
+    for (const r of resolvedSortRules) {
+      q = q.order(r.column, { ascending: r.asc });
+    }
 
     if (dateFrom) q = q.gte("date", dateFrom);
     if (dateTo) q = q.lte("date", dateTo);
@@ -177,9 +210,10 @@ async function csvExportResponse(supabase: any, userId: string, opt: ExportOptio
     if (txType) q = q.eq("transaction_type", txType);
     if (source) q = q.eq("source", source);
     if (dataSourceId) q = q.eq("data_source_id", dataSourceId);
-    if (searchTerm.length > 0) {
-      const pattern = `%${searchTerm}%`;
-      q = q.or(`vendor.ilike.${pattern},description.ilike.${pattern}`);
+    const safeSearch = sanitizeTransactionSearchTerm(searchTerm);
+    if (safeSearch != null) {
+      const pattern = `%${safeSearch}%`;
+      q = q.or(TRANSACTION_TEXT_SEARCH_COLUMNS.map((col) => `${col}.ilike.${pattern}`).join(","));
     }
     if (columnFilters.length > 0) {
       q = applyActivityColumnFilters(q, columnFilters, orgTypes);
@@ -208,7 +242,7 @@ async function csvExportResponse(supabase: any, userId: string, opt: ExportOptio
 
       let chunk = "";
       for (const t of rows) {
-        chunk += `${rowToCsvLine(t, exportCols, defsById, memberDisplayById)}\n`;
+        chunk += `${rowToCsvLine(t, exportCols, defsById, memberDisplayById, dataSourceNameById)}\n`;
         if (chunk.length >= 256 * 1024) {
           yield chunk;
           chunk = "";
@@ -280,6 +314,12 @@ function parseSort(searchParams: URLSearchParams, body: Record<string, unknown> 
   return { sortBy, sortAsc };
 }
 
+function parseSortRules(searchParams: URLSearchParams, body: Record<string, unknown> | null): ActivitySortRule[] {
+  const bodyRaw = body ? (body as any).sort_rules : null;
+  if (bodyRaw != null) return parseSortRulesJson(bodyRaw);
+  return parseSortRulesQueryParam(searchParams.get("sort_rules"));
+}
+
 /**
  * GET: Export (query string). Prefer POST for large `column_filters` / many columns.
  */
@@ -300,6 +340,7 @@ export async function GET(req: Request) {
     const txType = searchParams.get("transaction_type");
     const searchTerm = (searchParams.get("search") ?? searchParams.get("q"))?.trim() ?? "";
     const { sortBy, sortAsc } = parseSort(searchParams, null);
+    const sortRules = parseSortRules(searchParams, null);
     const source = searchParams.get("source")?.trim() || null;
     const dataSourceIdRaw = searchParams.get("data_source_id");
     const dataSourceId =
@@ -315,6 +356,7 @@ export async function GET(req: Request) {
       searchTerm,
       sortBy,
       sortAsc,
+      sortRules,
       source,
       dataSourceId,
       columnFilters,
@@ -360,6 +402,7 @@ export async function POST(req: Request) {
       (typeof body.q === "string" ? body.q.trim() : "") ||
       (searchParams.get("search") ?? searchParams.get("q") ?? "").trim();
     const { sortBy, sortAsc } = parseSort(searchParams, body);
+    const sortRules = parseSortRules(searchParams, body);
     const source =
       (typeof body.source === "string" ? body.source.trim() : null) || searchParams.get("source")?.trim() || null;
     const dsRaw =
@@ -385,6 +428,7 @@ export async function POST(req: Request) {
       searchTerm,
       sortBy,
       sortAsc,
+      sortRules,
       source,
       dataSourceId,
       columnFilters,

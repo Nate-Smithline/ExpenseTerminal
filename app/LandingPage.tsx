@@ -4,7 +4,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect } from "react";
 import { LandingHeader } from "@/components/LandingHeader";
-import { PricingPlansGrid } from "@/components/PricingPlansGrid";
 
 const STEPS = [
   {
@@ -83,7 +82,7 @@ function MadeInAmericaSection() {
 
   return (
     <>
-      <section className="px-4 md:px-16 py-16" style={{ background: "#0D1F35" }}>
+      <section className="px-4 md:px-16 py-16" style={{ background: "#1D1D1F" }}>
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-white/70 mb-3">
@@ -100,8 +99,7 @@ function MadeInAmericaSection() {
             <div className="flex items-center gap-3 mt-1.5">
               <button
                 onClick={() => setIsModalOpen(true)}
-                className="inline-flex items-center justify-center border border-white px-6 py-3 text-sm font-medium text-[#0D1F35] bg-white hover:bg-white/90 transition-colors"
-                style={{ borderRadius: 0 }}
+                className="inline-flex items-center justify-center border border-white/20 px-6 py-3 text-sm font-medium text-black bg-white hover:bg-white/90 transition-all rounded-full"
               >
                 Learn more
               </button>
@@ -120,10 +118,12 @@ function MadeInAmericaSection() {
             </p>
           </div>
           <div className="relative w-full h-56 md:h-80 lg:h-[22rem] overflow-hidden">
-            <img
+            <Image
               src="/made-in-america-liberty.png"
               alt="Statue of Liberty emerging from soft fog"
-              className="w-full h-full object-cover"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover"
             />
           </div>
         </div>
@@ -135,7 +135,7 @@ function MadeInAmericaSection() {
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="bg-white max-w-md w-full p-6 shadow-xl"
+            className="bg-white max-w-md w-full p-6 shadow-xl rounded-3xl border border-black/10"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between mb-4 gap-4">
@@ -147,9 +147,9 @@ function MadeInAmericaSection() {
                   <span
                     className="kbd-hint kbd-on-primary"
                     style={{
-                      background: "#F5F0E8",
+                      background: "#F5F5F7",
                       color: "#000000",
-                      borderRadius: 0,
+                      borderRadius: 10,
                       border: "none",
                     }}
                   >
@@ -170,7 +170,7 @@ function MadeInAmericaSection() {
                 ExpenseTerminal is proudly based out of <strong>New Jersey</strong>, founded by small business owners who understand the challenges of running a business.
               </p>
               <p>
-                We're focused on supporting <strong>American businesses</strong> and helping them maximize their deductions while staying compliant with IRS regulations.
+                We&apos;re focused on supporting <strong>American businesses</strong> and helping them maximize their deductions while staying compliant with IRS regulations.
               </p>
               <p>
                 Our platform is built with the needs of American entrepreneurs in mind, providing tools that make tax preparation simpler and more accessible for small businesses across the country.
@@ -185,7 +185,7 @@ function MadeInAmericaSection() {
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white font-apple">
       {/* Navbar */}
       <LandingHeader />
 
@@ -194,28 +194,28 @@ export function LandingPage() {
         className="relative overflow-hidden min-h-[calc(100vh-64px)] flex items-center"
         style={{
           background:
-            "radial-gradient(circle at 0% 0%, #E8EEF5 0, #E8EEF5 26%, transparent 52%), radial-gradient(circle at 100% 0%, #8A9BB0 0, #8A9BB0 24%, transparent 52%), radial-gradient(circle at 50% 100%, #F0F1F7 0, #F0F1F7 40%, #0D1F35 100%)",
+            "radial-gradient(circle at 15% 10%, rgba(0,122,255,0.20) 0, rgba(0,122,255,0.05) 35%, transparent 60%), radial-gradient(circle at 85% 15%, rgba(149,61,150,0.14) 0, rgba(149,61,150,0.04) 38%, transparent 62%), radial-gradient(circle at 50% 100%, #F5F5F7 0, #F5F5F7 45%, #FFFFFF 100%)",
         }}
       >
-        <div className="absolute inset-0 bg-black/45" />
+        <div className="absolute inset-0 bg-white/10" />
         <div className="relative px-4 md:px-16 py-24 md:py-40 max-w-5xl mx-auto text-center">
-          <h1 className="font-display text-4xl md:text-6xl text-white leading-tight tracking-tight mb-6">
+          <h1 className="font-display text-4xl md:text-6xl text-[#1D1D1F] leading-tight tracking-tight mb-6">
             AI-powered expense tracking for self‑employed tax deductions
           </h1>
-          <p className="text-lg md:text-xl text-white/70 max-w-2xl mx-auto mb-10 leading-relaxed">
+          <p className="text-lg md:text-xl text-black/65 max-w-2xl mx-auto mb-10 leading-relaxed">
             ExpenseTerminal helps self-employed professionals and small businesses categorize transactions, track
             write-offs, and prepare audit-ready reports so you keep more of what you earn at tax time.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <Link
               href="/request-demo"
-              className="inline-flex items-center justify-center bg-[#2563EB] px-8 py-3.5 text-sm font-medium text-white rounded-none transition-all hover:bg-[#1D4ED8] hover:shadow-lg hover:scale-[1.02]"
+              className="inline-flex items-center justify-center bg-[#007aff] px-8 py-3.5 text-sm font-medium text-white rounded-full transition-all hover:bg-[#0066d6] hover:shadow-lg active:scale-[0.99]"
             >
               Request Demo
             </Link>
             <Link
               href="/login"
-              className="inline-flex items-center justify-center border border-white/40 bg-white/5 backdrop-blur-md px-8 py-3.5 text-sm font-medium text-white rounded-none transition-all hover:bg-white/15"
+              className="inline-flex items-center justify-center border border-black/10 bg-white/70 backdrop-blur-md px-8 py-3.5 text-sm font-medium text-black/80 rounded-full transition-all hover:bg-white hover:shadow-sm"
             >
               Login
             </Link>
@@ -224,10 +224,10 @@ export function LandingPage() {
       </section>
 
       {/* Features grid */}
-      <section className="px-8 md:px-16 py-24 md:py-32" style={{ background: "#E8EEF5" }}>
+      <section className="px-8 md:px-16 py-24 md:py-32" style={{ background: "#F5F5F7" }}>
         <div className="max-w-5xl mx-auto">
           <div className="mb-14 text-center md:text-left">
-            <h2 className="font-display text-3xl md:text-4xl text-[#0D1F35] mb-3">
+            <h2 className="font-display text-3xl md:text-4xl text-[#1D1D1F] mb-3">
               The right features to make<br />your deductions simple
             </h2>
             <p className="text-mono-medium text-base md:text-lg max-w-xl mx-auto md:mx-0">
@@ -237,9 +237,9 @@ export function LandingPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {FEATURES.map((feature) => (
-              <div key={feature.title} className="border-t border-[#E8EEF5] pt-6">
+              <div key={feature.title} className="rounded-3xl border border-black/10 bg-white px-6 pt-6 pb-6 shadow-sm">
                 <div className="flex items-center gap-3 mb-3">
-                  <span className="material-symbols-rounded text-[24px] text-[#5B82B4]">
+                  <span className="material-symbols-rounded text-[24px] text-[#007aff]">
                     {feature.icon}
                   </span>
                   <h3 className="text-base font-semibold text-mono-dark">{feature.title}</h3>
@@ -268,13 +268,13 @@ export function LandingPage() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <Link
               href="/signup"
-              className="inline-flex items-center justify-center bg-[#2563EB] px-6 py-3 text-sm font-medium text-white rounded-none transition-all hover:bg-[#1D4ED8] hover:shadow-md"
+              className="inline-flex items-center justify-center bg-[#007aff] px-6 py-3 text-sm font-medium text-white rounded-full transition-all hover:bg-[#0066d6] hover:shadow-md active:scale-[0.99]"
             >
               Start Tracking for Free
             </Link>
             <Link
               href="/pricing"
-              className="inline-flex items-center justify-center border border-[#0D1F35]/20 bg-white text-sm font-medium text-mono-dark px-6 py-3 rounded-none hover:bg-white/80 transition-all"
+              className="inline-flex items-center justify-center border border-black/10 bg-[#F5F5F7] text-sm font-medium text-black/80 px-6 py-3 rounded-full hover:bg-white transition-all hover:shadow-sm"
             >
               View pricing
             </Link>
@@ -283,21 +283,21 @@ export function LandingPage() {
       </section>
 
       {/* How it works / Get started */}
-      <section className="px-8 md:px-16 py-16 md:py-20" style={{ background: "#8A9BB0" }}>
+      <section className="px-8 md:px-16 py-16 md:py-20" style={{ background: "#F5F5F7" }}>
         <div className="max-w-5xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-start">
             <div>
-              <h2 className="font-display text-3xl md:text-4xl text-white/90 leading-snug mb-4">
+              <h2 className="font-display text-3xl md:text-4xl text-[#1D1D1F] leading-snug mb-4">
                 Start in Minutes
               </h2>
-              <p className="text-[#E8EEF5] text-sm md:text-base leading-relaxed mb-8">
+              <p className="text-black/65 text-sm md:text-base leading-relaxed mb-8">
                 Our platform is built for self-employed professionals, freelancers, and small business owners who
                 want to stop leaving money on the table.
               </p>
               <div className="flex gap-3">
                 <Link
                   href="/signup"
-                  className="inline-flex items-center justify-center bg-[#2563EB] px-6 py-3 text-sm font-medium text-white rounded-none transition-all hover:bg-[#1D4ED8] hover:shadow-lg hover:scale-[1.02]"
+                  className="inline-flex items-center justify-center bg-[#007aff] px-6 py-3 text-sm font-medium text-white rounded-full transition-all hover:bg-[#0066d6] hover:shadow-lg active:scale-[0.99]"
                 >
                   Get Started
                 </Link>
@@ -306,15 +306,15 @@ export function LandingPage() {
 
             <div className="space-y-8">
               {STEPS.map((step) => (
-                <div key={step.number} className="flex gap-5">
-                  <span className="font-display text-base text-white shrink-0 mt-0.5">
+                <div key={step.number} className="flex gap-5 rounded-3xl border border-black/10 bg-white px-6 py-5 shadow-sm">
+                  <span className="font-display text-base text-[#007aff] shrink-0 mt-0.5">
                     {step.number}
                   </span>
                   <div>
-                    <h3 className="text-base md:text-lg font-semibold text-white mb-1.5">
+                    <h3 className="text-base md:text-lg font-semibold text-[#1D1D1F] mb-1.5">
                       {step.title}
                     </h3>
-                    <p className="text-sm md:text-base text-white/80 leading-relaxed">
+                    <p className="text-sm md:text-base text-black/65 leading-relaxed">
                       {step.description}
                     </p>
                   </div>
@@ -329,7 +329,7 @@ export function LandingPage() {
       <MadeInAmericaSection />
 
       {/* Footer — cool stock background with black text */}
-      <footer className="px-8 md:px-16 py-12 bg-[#F0F1F7]">
+      <footer className="px-8 md:px-16 py-12 bg-[#F5F5F7] border-t border-black/10">
         <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <Link href="/" className="flex items-center hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-black/10 rounded">
             <Image src="/xt-logo-white.png" alt="XT" width={56} height={24} className="h-6 w-auto object-contain" />

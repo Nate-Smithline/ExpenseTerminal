@@ -6,6 +6,7 @@ import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limi
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { getActiveOrgId } from "@/lib/active-org";
 import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
+import { enrichOrgMemberRows } from "@/lib/orgs/enrich-org-members";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   const existing = await getActiveOrgId(supabase, userId);
@@ -72,7 +73,9 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json({ members });
+    const enriched = await enrichOrgMemberRows(members);
+
+    return NextResponse.json({ members: enriched });
   } catch (e: unknown) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to load members" },

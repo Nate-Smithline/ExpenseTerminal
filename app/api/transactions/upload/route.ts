@@ -7,6 +7,8 @@ import { normalizeVendor } from "@/lib/vendor-matching";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { getPlanLimitsForUser } from "@/lib/billing/get-user-plan";
 import { computeCsvAiEligibility } from "@/lib/billing/limits";
+import { getActiveOrgId } from "@/lib/active-org";
+import { runOrgRulesForIngest } from "@/lib/org-rules/executor";
 
 type IncomingRow = {
   date: string;
@@ -208,6 +210,15 @@ export async function POST(req: Request) {
 
   // Return the inserted IDs so the client can request AI analysis separately
   const insertedIds = inserted.map((t: { id: string }) => t.id);
+
+  try {
+    const orgId = await getActiveOrgId(supabase as any, userId);
+    if (orgId && insertedIds.length > 0) {
+      await runOrgRulesForIngest(supabase as any, orgId, insertedIds);
+    }
+  } catch (rulesErr) {
+    console.warn("[transactions/upload] Org transaction rules failed", rulesErr);
+  }
 
   // Update data source stats (full recount — works for manual + Direct Feed with mixed CSV + sync rows)
   if (dataSourceIdVal) {

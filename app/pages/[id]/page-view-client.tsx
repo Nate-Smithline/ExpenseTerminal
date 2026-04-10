@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import type { Database, Json } from "@/lib/types/database";
-import { ActivityToolbar, type ActivityViewState } from "@/app/activity/ActivityToolbar";
-import { ActivityTable } from "@/app/activity/ActivityTable";
+import { ActivityToolbar, type ActivityViewState, type ActivityViewStatePatch } from "@/app/activity/ActivityToolbar";
+import { ActivityTable, type DataSourceCellInfo } from "@/app/activity/ActivityTable";
 import { TransactionDetailPanel, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
 import type { TransactionPropertyDefinition } from "@/lib/transaction-property-definition";
 import type { OrgMemberOption } from "@/components/TransactionDetailCustomFields";
@@ -12,10 +12,39 @@ import { PageIconPicker, type PageIconValue } from "@/components/PageIconPicker"
 import { pageIconTextClass } from "@/lib/page-icon-colors";
 import { useIntersectionLoadMore } from "@/lib/use-intersection-load-more";
 import { parseColumnFiltersJson, serializeColumnFiltersForQuery } from "@/lib/activity-column-filters";
+import { serializeSortRulesForQuery } from "@/lib/activity-sort-rules";
+import { createSupabaseClient } from "@/lib/supabase/client";
+import type { ActivitySortRule } from "@/lib/validation/schemas";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
 const PAGE_SIZE = 100;
+
+function dedupeById<T extends { id: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of rows) {
+    if (!r?.id) continue;
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push(r);
+  }
+  return out;
+}
+
+function appendUniqueById<T extends { id: string }>(prev: T[], next: T[]): T[] {
+  if (prev.length === 0) return dedupeById(next);
+  if (next.length === 0) return prev;
+  const seen = new Set(prev.map((r) => r.id));
+  const merged = [...prev];
+  for (const r of next) {
+    if (!r?.id) continue;
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    merged.push(r);
+  }
+  return merged;
+}
 
 function defaultDateRange() {
   const y = new Date().getFullYear();
@@ -25,6 +54,7 @@ function defaultDateRange() {
 const DEFAULT_VIEW_STATE: ActivityViewState = {
   sort_column: "date",
   sort_asc: false,
+  sort_rules: [{ column: "date", asc: false }],
   visible_columns: [
     "date",
     "vendor",
@@ -61,6 +91,52 @@ async function fetchCount(params: Record<string, string>): Promise<number> {
   return body.count ?? 0;
 }
 
+/** Client state from GET /api/pages/[id]/activity-view-settings JSON (same shape as server). */
+function viewStateFromPageSettingsApi(data: {
+  sort_rules?: ActivitySortRule[];
+  sort_column?: string;
+  sort_asc?: boolean;
+  visible_columns?: string[];
+  column_widths?: Record<string, number>;
+  filters?: Record<string, unknown>;
+}): ActivityViewState {
+  const sortRules =
+    Array.isArray(data.sort_rules) && data.sort_rules.length > 0
+      ? data.sort_rules
+      : [
+          {
+            column: data.sort_column ?? DEFAULT_VIEW_STATE.sort_column,
+            asc: data.sort_asc ?? DEFAULT_VIEW_STATE.sort_asc,
+          } as ActivitySortRule,
+        ];
+  return {
+    sort_column: data.sort_column ?? DEFAULT_VIEW_STATE.sort_column,
+    sort_asc: data.sort_asc ?? DEFAULT_VIEW_STATE.sort_asc,
+    sort_rules: sortRules,
+    visible_columns:
+      Array.isArray(data.visible_columns) && data.visible_columns.length > 0
+        ? data.visible_columns
+        : DEFAULT_VIEW_STATE.visible_columns,
+    column_widths:
+      data.column_widths && typeof data.column_widths === "object" && !Array.isArray(data.column_widths)
+        ? data.column_widths
+        : {},
+    filters: (() => {
+      const f = data.filters as ActivityViewState["filters"] | undefined;
+      return {
+        status: f?.status ?? null,
+        transaction_type: f?.transaction_type ?? null,
+        source: f?.source ?? null,
+        data_source_id: typeof f?.data_source_id === "string" ? f.data_source_id : null,
+        search: typeof f?.search === "string" ? f.search : "",
+        date_from: typeof f?.date_from === "string" ? f.date_from : defaultDateRange().date_from,
+        date_to: typeof f?.date_to === "string" ? f.date_to : defaultDateRange().date_to,
+        column_filters: parseColumnFiltersJson((f as { column_filters?: unknown })?.column_filters ?? []),
+      };
+    })(),
+  };
+}
+
 type PageMeta = {
   id: string;
   title: string | null;
@@ -88,6 +164,7 @@ export function PageViewClient({ page }: { page: ServerPage }) {
   const [pageMeta, setPageMeta] = useState<PageMeta>(page);
   const [fullWidth, setFullWidth] = useState(page.full_width);
   const [favorited, setFavorited] = useState(page.favorited);
+  const favoritedOverrideRef = useRef<{ value: boolean; untilMs: number } | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [viewState, setViewState] = useState<ActivityViewState>(DEFAULT_VIEW_STATE);
@@ -98,8 +175,20 @@ export function PageViewClient({ page }: { page: ServerPage }) {
   const [transactionProperties, setTransactionProperties] = useState<TransactionPropertyDefinition[]>([]);
   const [orgMembers, setOrgMembers] = useState<OrgMemberOption[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const handleFavoritedChange = useCallback((next: boolean) => {
+    // Prevent a router.refresh / server prop update from briefly overwriting our optimistic value.
+    // Any stale server render should be ignored for a short window.
+    favoritedOverrideRef.current = { value: next, untilMs: Date.now() + 1500 };
+    setFavorited(next);
+  }, []);
+
+  const transactionsRef = useRef(transactions);
+  useEffect(() => {
+    transactionsRef.current = transactions;
+  }, [transactions]);
   const patchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savePayloadRef = useRef<ActivityViewState | null>(null);
+  const lastPersistRef = useRef(0);
 
   const memberDisplayById = useMemo(() => {
     const m: Record<string, string> = {};
@@ -108,6 +197,52 @@ export function PageViewClient({ page }: { page: ServerPage }) {
     }
     return m;
   }, [orgMembers]);
+
+  const [dataSourceById, setDataSourceById] = useState<Record<string, DataSourceCellInfo>>({});
+  const dataSourceNameById = useMemo(() => {
+    const o: Record<string, string> = {};
+    for (const [id, v] of Object.entries(dataSourceById)) o[id] = v.name;
+    return o;
+  }, [dataSourceById]);
+
+  const dataSourceBrandColorIdById = useMemo(() => {
+    const o: Record<string, string> = {};
+    for (const [id, v] of Object.entries(dataSourceById)) o[id] = v.brandColorId ?? "blue";
+    return o;
+  }, [dataSourceById]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAccounts() {
+      try {
+        const res = await fetch("/api/data-sources?limit=200");
+        if (!res.ok || cancelled) return;
+        const body = await res.json().catch(() => ({}));
+        const rows = Array.isArray(body.data) ? body.data : [];
+        const m: Record<string, DataSourceCellInfo> = {};
+        for (const r of rows as { id?: string; name?: string; brand_color_id?: string }[]) {
+          if (!r?.id) continue;
+          m[String(r.id)] = {
+            name: String(r.name ?? "").trim() || String(r.id),
+            brandColorId: typeof r.brand_color_id === "string" ? r.brand_color_id : "blue",
+          };
+        }
+        if (!cancelled) setDataSourceById(m);
+      } catch {
+        /* ignore */
+      }
+    }
+    void loadAccounts();
+    function onAccountsChanged() {
+      void loadAccounts();
+    }
+    window.addEventListener("accounts-changed", onAccountsChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("accounts-changed", onAccountsChanged);
+    };
+  }, []);
+
   const titleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const savePageIcon = useCallback(
@@ -166,6 +301,9 @@ export function PageViewClient({ page }: { page: ServerPage }) {
       date_from: viewState.filters.date_from,
       date_to: viewState.filters.date_to,
     };
+    if (Array.isArray(viewState.sort_rules) && viewState.sort_rules.length > 0) {
+      params.sort_rules = serializeSortRulesForQuery(viewState.sort_rules);
+    }
     if (viewState.filters.status) params.status = viewState.filters.status;
     if (viewState.filters.transaction_type) params.transaction_type = viewState.filters.transaction_type;
     if (viewState.filters.source) params.source = viewState.filters.source;
@@ -178,6 +316,7 @@ export function PageViewClient({ page }: { page: ServerPage }) {
   }, [
     viewState.sort_column,
     viewState.sort_asc,
+    viewState.sort_rules,
     viewState.filters.status,
     viewState.filters.transaction_type,
     viewState.filters.source,
@@ -189,12 +328,17 @@ export function PageViewClient({ page }: { page: ServerPage }) {
   ]);
 
   const loadTransactions = useCallback(async () => {
-    setLoading(true);
+    if (transactionsRef.current.length === 0) setLoading(true);
     const params = baseQueryParams();
-    const [txs, count] = await Promise.all([fetchTransactions(params), fetchCount(params)]);
-    setTransactions(txs);
-    setTotalCount(count);
-    setLoading(false);
+    try {
+      const [txs, count] = await Promise.all([fetchTransactions(params), fetchCount(params)]);
+      const list = dedupeById(txs);
+      setTransactions(list);
+      setTotalCount(count);
+      return list;
+    } finally {
+      setLoading(false);
+    }
   }, [baseQueryParams]);
 
   const canLoadMore = transactions.length < totalCount;
@@ -205,7 +349,7 @@ export function PageViewClient({ page }: { page: ServerPage }) {
     try {
       const params = { ...baseQueryParams(), offset: String(transactions.length) };
       const next = await fetchTransactions(params);
-      if (next.length > 0) setTransactions((prev) => [...prev, ...next]);
+      if (next.length > 0) setTransactions((prev) => appendUniqueById(prev, next));
     } finally {
       setLoadingMore(false);
     }
@@ -226,28 +370,7 @@ export function PageViewClient({ page }: { page: ServerPage }) {
         if (res.ok) {
           const data = await res.json().catch(() => null);
           if (data && !cancelled) {
-            setViewState({
-              sort_column: data.sort_column ?? DEFAULT_VIEW_STATE.sort_column,
-              sort_asc: data.sort_asc ?? DEFAULT_VIEW_STATE.sort_asc,
-              visible_columns:
-                Array.isArray(data.visible_columns) && data.visible_columns.length > 0
-                  ? data.visible_columns
-                  : DEFAULT_VIEW_STATE.visible_columns,
-              column_widths:
-                data.column_widths && typeof data.column_widths === "object" && !Array.isArray(data.column_widths)
-                  ? data.column_widths
-                  : {},
-              filters: {
-                status: data.filters?.status ?? null,
-                transaction_type: data.filters?.transaction_type ?? null,
-                source: data.filters?.source ?? null,
-                data_source_id: typeof data.filters?.data_source_id === "string" ? data.filters.data_source_id : null,
-                search: typeof data.filters?.search === "string" ? data.filters.search : "",
-                date_from: typeof data.filters?.date_from === "string" ? data.filters.date_from : defaultDateRange().date_from,
-                date_to: typeof data.filters?.date_to === "string" ? data.filters.date_to : defaultDateRange().date_to,
-                column_filters: parseColumnFiltersJson(data.filters?.column_filters ?? []),
-              },
-            });
+            setViewState(viewStateFromPageSettingsApi(data));
           }
         }
       } finally {
@@ -293,7 +416,8 @@ export function PageViewClient({ page }: { page: ServerPage }) {
     loadTransactions();
   }, [viewSettingsLoaded, loadTransactions]);
 
-  const persistViewState = useCallback((patch: Partial<ActivityViewState>) => {
+  const persistViewState = useCallback((patch: ActivityViewStatePatch) => {
+    lastPersistRef.current = Date.now();
     setViewState((prev) => {
       const next: ActivityViewState = {
         ...prev,
@@ -301,7 +425,7 @@ export function PageViewClient({ page }: { page: ServerPage }) {
         column_widths: patch.column_widths
           ? { ...prev.column_widths, ...patch.column_widths }
           : prev.column_widths,
-        filters: patch.filters ?? prev.filters,
+        filters: patch.filters ? { ...prev.filters, ...patch.filters } : prev.filters,
       };
       savePayloadRef.current = next;
       if (patchDebounceRef.current) clearTimeout(patchDebounceRef.current);
@@ -309,17 +433,37 @@ export function PageViewClient({ page }: { page: ServerPage }) {
         patchDebounceRef.current = null;
         const p = savePayloadRef.current;
         if (!p) return;
-        void fetch(`/api/pages/${page.id}/activity-view-settings`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sort_column: p.sort_column,
-            sort_asc: p.sort_asc,
-            visible_columns: p.visible_columns,
-            column_widths: p.column_widths,
-            filters: p.filters,
-          }),
-        });
+        void (async () => {
+          try {
+            const res = await fetch(`/api/pages/${page.id}/activity-view-settings`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sort_rules: Array.isArray(p.sort_rules) ? p.sort_rules : undefined,
+                sort_column: p.sort_column,
+                sort_asc: p.sort_asc,
+                visible_columns: p.visible_columns,
+                column_widths: p.column_widths,
+                filters: p.filters,
+              }),
+            });
+            if (!res.ok) {
+              const j = await res.json().catch(() => ({}));
+              const msg = (j as { error?: string }).error ?? "Failed to save view settings";
+              setToast(msg);
+              setTimeout(() => setToast(null), 5000);
+              return;
+            }
+            const data = await res.json().catch(() => null);
+            if (data) {
+              // Reconcile with server-normalized values so reloads match what was saved.
+              setViewState(viewStateFromPageSettingsApi(data));
+            }
+          } catch (e) {
+            setToast(e instanceof Error ? e.message : "Failed to save view settings");
+            setTimeout(() => setToast(null), 5000);
+          }
+        })();
       }, 400);
       return next;
     });
@@ -339,6 +483,7 @@ export function PageViewClient({ page }: { page: ServerPage }) {
           headers: { "Content-Type": "application/json" },
           keepalive: true,
           body: JSON.stringify({
+            sort_rules: Array.isArray(p.sort_rules) ? p.sort_rules : undefined,
             sort_column: p.sort_column,
             sort_asc: p.sort_asc,
             visible_columns: p.visible_columns,
@@ -350,19 +495,152 @@ export function PageViewClient({ page }: { page: ServerPage }) {
     };
   }, [page.id]);
 
+  useEffect(() => {
+    if (!viewSettingsLoaded) return;
+    let sub: ReturnType<ReturnType<typeof createSupabaseClient>["channel"]> | null = null;
+    try {
+      const supabase = createSupabaseClient();
+      sub = supabase
+        .channel(`page-activity-view-settings-${page.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "page_activity_view_settings",
+            filter: `page_id=eq.${page.id}`,
+          },
+          () => {
+            if (Date.now() - lastPersistRef.current < 2000) return;
+            void (async () => {
+              try {
+                const res = await fetch(`/api/pages/${page.id}/activity-view-settings`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data || Date.now() - lastPersistRef.current < 2000) return;
+                setViewState(viewStateFromPageSettingsApi(data));
+              } catch {
+                /* ignore */
+              }
+            })();
+          }
+        )
+        .subscribe();
+    } catch {
+      /* Realtime unavailable */
+    }
+    return () => {
+      if (sub) {
+        try {
+          createSupabaseClient().removeChannel(sub);
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+  }, [page.id, viewSettingsLoaded]);
+
   const onReanalyzeAll = useCallback(() => {
     setToast("Batch re-analysis is available on All Activity for now");
     setTimeout(() => setToast(null), 3500);
   }, []);
 
-  const onNewTransaction = useCallback(() => {
-    setToast("New transaction is available on All Activity for now");
-    setTimeout(() => setToast(null), 3500);
-  }, []);
+  const openNewTransaction = useCallback(async () => {
+    try {
+      const body: Record<string, unknown> = { draft: true };
+      if (viewState.filters.status) body.status = viewState.filters.status;
+      if (viewState.filters.transaction_type) body.transaction_type = viewState.filters.transaction_type;
+      if (viewState.filters.source) body.source = viewState.filters.source;
+      if (viewState.filters.data_source_id) body.data_source_id = viewState.filters.data_source_id;
+      if (viewState.filters.date_from) body.date_from = viewState.filters.date_from;
+      if (viewState.filters.date_to) body.date_to = viewState.filters.date_to;
+
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setToast((data as { error?: string }).error ?? "Failed to create transaction");
+        setTimeout(() => setToast(null), 5000);
+        return;
+      }
+      const row = data as Record<string, unknown>;
+      const normalized: Transaction = {
+        id: String(row.id),
+        user_id: String(row.user_id),
+        date: String(row.date),
+        vendor: row.vendor != null ? String(row.vendor) : "",
+        description: row.description != null ? String(row.description) : null,
+        amount: typeof row.amount === "number" ? String(row.amount) : String(row.amount ?? "0"),
+        status: (row.status as Transaction["status"]) ?? "pending",
+        tax_year: typeof row.tax_year === "number" ? row.tax_year : new Date(String(row.date)).getFullYear(),
+        source: row.source != null ? String(row.source) : null,
+        transaction_type: (row.transaction_type as Transaction["transaction_type"]) ?? "expense",
+        vendor_normalized: row.vendor_normalized != null ? String(row.vendor_normalized) : null,
+        created_at: String(row.created_at ?? new Date().toISOString()),
+        updated_at: String(row.updated_at ?? row.created_at ?? new Date().toISOString()),
+        eligible_for_ai: Boolean(row.eligible_for_ai),
+        category: null,
+        schedule_c_line: null,
+        ai_confidence: null,
+        ai_reasoning: null,
+        ai_suggestions: null,
+        business_purpose: null,
+        quick_label: null,
+        notes: null,
+        auto_sort_rule_id: null,
+        deduction_percent: null,
+        is_meal: null,
+        is_travel: null,
+        data_source_id: row.data_source_id != null ? String(row.data_source_id) : null,
+        data_feed_external_id: row.data_feed_external_id != null ? String(row.data_feed_external_id) : null,
+        custom_fields:
+          row.custom_fields && typeof row.custom_fields === "object" && !Array.isArray(row.custom_fields)
+            ? (row.custom_fields as Transaction["custom_fields"])
+            : ({} as Transaction["custom_fields"]),
+      };
+      setSidebarTransaction(normalized);
+      const txs = await loadTransactions();
+      const full = txs.find((t) => t.id === normalized.id);
+      if (full) setSidebarTransaction(full);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Failed to create transaction");
+      setTimeout(() => setToast(null), 5000);
+    }
+  }, [
+    viewState.filters.status,
+    viewState.filters.transaction_type,
+    viewState.filters.source,
+    viewState.filters.data_source_id,
+    viewState.filters.date_from,
+    viewState.filters.date_to,
+    loadTransactions,
+  ]);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "n" || e.key === "N") {
+        e.preventDefault();
+        void openNewTransaction();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [openNewTransaction]);
 
   useEffect(() => {
     setFullWidth(page.full_width);
-    setFavorited(page.favorited);
+    const o = favoritedOverrideRef.current;
+    if (o && Date.now() < o.untilMs) {
+      setFavorited(o.value);
+    } else {
+      favoritedOverrideRef.current = null;
+      setFavorited(page.favorited);
+    }
   }, [page.id, page.full_width, page.favorited]);
 
   const handleSave = useCallback(
@@ -376,6 +654,35 @@ export function PageViewClient({ page }: { page: ServerPage }) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? "Failed to save");
       }
+      await loadTransactions();
+    },
+    [loadTransactions]
+  );
+
+  const patchCheckboxCustomField = useCallback(
+    async (transactionId: string, propertyId: string, value: boolean) => {
+      const res = await fetch("/api/transactions/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: transactionId, custom_fields: { [propertyId]: value } }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setToast((body as { error?: string }).error ?? "Could not update field");
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+      setSidebarTransaction((prev) => {
+        if (!prev || prev.id !== transactionId) return prev;
+        const prevCf =
+          prev.custom_fields && typeof prev.custom_fields === "object" && !Array.isArray(prev.custom_fields)
+            ? { ...(prev.custom_fields as Record<string, Json>) }
+            : {};
+        return {
+          ...prev,
+          custom_fields: { ...prevCf, [propertyId]: value } as Transaction["custom_fields"],
+        };
+      });
       await loadTransactions();
     },
     [loadTransactions]
@@ -401,7 +708,7 @@ export function PageViewClient({ page }: { page: ServerPage }) {
   const iconColorClass = pageIconTextClass(iconPickerValue.icon_color);
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col" suppressHydrationWarning>
       {/* Full bleed within main: not inside max-width / horizontal padding shell */}
       <div className="flex h-10 w-full shrink-0 items-center gap-2 border-b border-bg-tertiary/40 bg-white">
         <div className="flex min-w-0 flex-1 items-center gap-2 pl-4 md:pl-6">
@@ -423,14 +730,14 @@ export function PageViewClient({ page }: { page: ServerPage }) {
             favorited={favorited}
             fullWidth={fullWidth}
             onFullWidthChange={setFullWidth}
-            onFavoritedChange={setFavorited}
+            onFavoritedChange={handleFavoritedChange}
           />
         </div>
       </div>
 
       <div className={`${contentShellClass} flex min-h-0 flex-1 flex-col`}>
         <div className="flex flex-col gap-0 pt-4 pb-2">
-          <div className="flex flex-col gap-4 pb-5">
+          <div className="flex flex-col gap-4 pb-5" suppressHydrationWarning>
             <PageIconPicker
               variant="plain"
               size={56}
@@ -439,6 +746,7 @@ export function PageViewClient({ page }: { page: ServerPage }) {
               className="mt-5 shrink-0 self-start md:mt-6"
             />
             <input
+              suppressHydrationWarning
               value={pageMeta.title ?? ""}
               onChange={(e) => setPageTitle(e.target.value)}
               placeholder="Untitled"
@@ -447,49 +755,79 @@ export function PageViewClient({ page }: { page: ServerPage }) {
             />
           </div>
 
-          <ActivityToolbar
-            viewState={viewState}
-            onViewStateChange={persistViewState}
-            onReanalyzeAll={onReanalyzeAll}
-            reanalyzing={false}
-            onNewTransaction={onNewTransaction}
-            totalCount={totalCount}
-            loading={loading}
-            hideTitle
-            exportFilenameBase={pageMeta.title?.trim() || "Untitled"}
-            transactionProperties={transactionProperties}
-            expandToContainer={fullWidth}
-          />
+          {viewSettingsLoaded ? (
+            <ActivityToolbar
+              viewState={viewState}
+              onViewStateChange={persistViewState}
+              onReanalyzeAll={onReanalyzeAll}
+              reanalyzing={false}
+              onNewTransaction={() => void openNewTransaction()}
+              totalCount={totalCount}
+              loading={loading}
+              hideTitle
+              multiColumnSort
+              exportFilenameBase={pageMeta.title?.trim() || "Untitled"}
+              transactionProperties={transactionProperties}
+              expandToContainer={fullWidth}
+            />
+          ) : (
+            <div className="mt-1 flex items-center gap-2 text-[13px] text-mono-medium">
+              <span className="material-symbols-rounded animate-spin text-[18px]">progress_activity</span>
+              Loading view settings…
+            </div>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 pb-6">
         {toast && <div className="mt-2 mb-2 text-sm text-mono-medium">{toast}</div>}
-        {loading && transactions.length === 0 ? (
-          <div className="py-10 text-sm text-mono-light">Loading…</div>
-        ) : transactions.length === 0 ? (
-          <div className="py-10 text-sm text-mono-light">No transactions match this view.</div>
-        ) : (
-          <>
-            <ActivityTable
-              transactions={transactions}
-              visibleColumns={viewState.visible_columns}
-              columnWidths={viewState.column_widths}
-              selectedId={sidebarTransaction?.id ?? null}
-              onSelectRow={setSidebarTransaction}
-              onColumnWidthChange={(col, width) => persistViewState({ column_widths: { [col]: width } })}
-              onColumnsReorder={(cols) => persistViewState({ visible_columns: cols })}
-              expandToContainer={fullWidth}
-              transactionProperties={transactionProperties}
-              memberDisplayById={memberDisplayById}
-            />
-            {loadingMore && (
-              <div className="flex justify-center py-3 text-sm text-mono-light">Loading…</div>
+        <div className="relative min-h-[200px]">
+          <div className="relative">
+            {viewSettingsLoaded ? (
+              <ActivityTable
+                transactions={transactions}
+                visibleColumns={viewState.visible_columns}
+                columnWidths={viewState.column_widths}
+                selectedId={sidebarTransaction?.id ?? null}
+                onSelectRow={setSidebarTransaction}
+                onColumnWidthChange={(col, width) => persistViewState({ column_widths: { [col]: width } })}
+                onColumnsReorder={(cols) => persistViewState({ visible_columns: cols })}
+                expandToContainer={fullWidth}
+                transactionProperties={transactionProperties}
+                memberDisplayById={memberDisplayById}
+                onPatchCustomField={patchCheckboxCustomField}
+                dataSourceById={dataSourceById}
+              />
+            ) : (
+              <div className="flex items-center justify-center rounded-2xl border border-black/[0.06] bg-[#f5f5f7]/60 py-10">
+                <span className="material-symbols-rounded animate-spin text-3xl text-mono-medium">progress_activity</span>
+              </div>
             )}
-            {canLoadMore && (
-              <div ref={loadMoreSentinelRef} className="h-4 w-full shrink-0" aria-hidden />
+            {((!viewSettingsLoaded && transactions.length === 0) ||
+              (loading && transactions.length === 0)) && (
+              <div
+                className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-[#f5f5f7]/90 transition-opacity duration-300 ease-out"
+                aria-busy="true"
+                aria-live="polite"
+              >
+                <div
+                  className="h-7 w-7 animate-spin rounded-full border-2 border-neutral-200/90 border-t-[#007aff]"
+                  aria-label="Loading transactions"
+                />
+              </div>
             )}
-          </>
-        )}
+          </div>
+          {loadingMore && (
+            <div className="flex justify-center py-2 text-xs text-mono-light">Loading…</div>
+          )}
+          {canLoadMore && (
+            <div ref={loadMoreSentinelRef} className="h-4 w-full shrink-0" aria-hidden />
+          )}
+          {viewSettingsLoaded && !loading && transactions.length === 0 && (
+            <div className="mt-3 rounded-lg border border-black/[0.06] bg-neutral-50/50 py-6 text-center text-sm text-mono-light">
+              No transactions match this view.
+            </div>
+          )}
+        </div>
         </div>
       </div>
 
@@ -498,6 +836,8 @@ export function PageViewClient({ page }: { page: ServerPage }) {
           transaction={sidebarTransaction}
           onClose={() => setSidebarTransaction(null)}
           editable
+          dataSourceNameById={dataSourceNameById}
+          dataSourceBrandColorIdById={dataSourceBrandColorIdById}
           onSave={async (id, update) => {
             await handleSave(id, update);
             setSidebarTransaction((prev) => {

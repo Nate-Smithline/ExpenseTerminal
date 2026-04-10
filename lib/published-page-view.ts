@@ -1,5 +1,6 @@
 import { ACTIVITY_SORT_COLUMNS } from "@/lib/validation/schemas";
 import { filterActivityVisibleColumns } from "@/lib/activity-visible-column-keys";
+import { normalizeSortRulesFromSettingsRow, primarySortFromRules } from "@/lib/activity-sort-rules";
 
 const DEFAULT_VISIBLE: string[] = [
   "date",
@@ -23,6 +24,7 @@ function defaultFilters(year: number) {
 }
 
 export type NormalizedPublishedView = {
+  sort_rules: { column: string; asc: boolean }[];
   sort_column: string;
   sort_asc: boolean;
   visible_columns: string[];
@@ -42,6 +44,7 @@ export type NormalizedPublishedView = {
 export function normalizePublishedViewSettingsRow(data: Record<string, unknown> | null): NormalizedPublishedView {
   const y = new Date().getFullYear();
   const def: NormalizedPublishedView = {
+    sort_rules: [{ column: "date", asc: false }],
     sort_column: "date",
     sort_asc: false,
     visible_columns: DEFAULT_VISIBLE,
@@ -77,12 +80,15 @@ export function normalizePublishedViewSettingsRow(data: Record<string, unknown> 
       ? (data.column_widths as Record<string, number>)
       : def.column_widths;
 
-  const sortColRaw = typeof data.sort_column === "string" ? data.sort_column : "";
+  const sort_rules = normalizeSortRulesFromSettingsRow(data);
+  const primary = primarySortFromRules(sort_rules as any);
+  const sortColRaw = typeof primary.sort_column === "string" ? primary.sort_column : "";
   const sortCol = (ACTIVITY_SORT_COLUMNS as readonly string[]).includes(sortColRaw) ? sortColRaw : def.sort_column;
 
   return {
+    sort_rules,
     sort_column: sortCol,
-    sort_asc: typeof data.sort_asc === "boolean" ? data.sort_asc : def.sort_asc,
+    sort_asc: typeof primary.sort_asc === "boolean" ? primary.sort_asc : def.sort_asc,
     visible_columns: visible.length > 0 ? visible : def.visible_columns,
     column_widths: columnWidths,
     filters,

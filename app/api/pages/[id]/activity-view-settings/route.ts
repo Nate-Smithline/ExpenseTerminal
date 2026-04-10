@@ -5,12 +5,17 @@ import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limi
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { getActiveOrgId } from "@/lib/active-org";
 import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
-import { activityViewSettingsPatchSchema, ACTIVITY_SORT_COLUMNS } from "@/lib/validation/schemas";
+import { pageActivityViewSettingsPatchSchema, ACTIVITY_SORT_COLUMNS } from "@/lib/validation/schemas";
 import {
   filterActivityVisibleColumns,
   filterColumnWidthKeys,
 } from "@/lib/activity-visible-column-keys";
 import { parseColumnFiltersJson } from "@/lib/activity-column-filters";
+import { normalizeSortRulesFromSettingsRow, primarySortFromRules } from "@/lib/activity-sort-rules";
+
+// These settings must be read/write fresh (no caching), otherwise users can see stale
+// filters / column visibility when leaving and returning to a page.
+export const dynamic = "force-dynamic";
 
 const DEFAULT_VISIBLE_COLUMNS: string[] = [
   "date",
@@ -95,7 +100,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
     const { data, error } = await (supabase as any)
       .from("page_activity_view_settings")
-      .select("sort_column,sort_asc,visible_columns,column_widths,filters")
+      .select("sort_rules,sort_column,sort_asc,visible_columns,column_widths,filters")
       .eq("page_id", pageId)
       .maybeSingle();
 
@@ -131,13 +136,20 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         ? filterColumnWidthKeys(data.column_widths as Record<string, number>)
         : def.column_widths;
 
-    return NextResponse.json({
-      sort_column: ACTIVITY_SORT_COLUMNS.includes(data.sort_column as any) ? data.sort_column : def.sort_column,
-      sort_asc: typeof data.sort_asc === "boolean" ? data.sort_asc : def.sort_asc,
+    const sort_rules = normalizeSortRulesFromSettingsRow(data as any);
+    const primary = primarySortFromRules(sort_rules);
+
+    return NextResponse.json(
+      {
+      sort_rules,
+      sort_column: ACTIVITY_SORT_COLUMNS.includes(primary.sort_column as any) ? primary.sort_column : def.sort_column,
+      sort_asc: typeof primary.sort_asc === "boolean" ? primary.sort_asc : def.sort_asc,
       visible_columns: visible.length > 0 ? visible : def.visible_columns,
       column_widths: columnWidths,
       filters,
-    });
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e: unknown) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to load view settings" },
@@ -172,23 +184,36 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     } catch {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
-    const parsed = activityViewSettingsPatchSchema.safeParse(body);
+    const parsed = pageActivityViewSettingsPatchSchema.safeParse(body);
     if (!parsed.success) {
       const msg = parsed.error.flatten().formErrors[0] ?? "Invalid request body";
       return NextResponse.json({ error: msg }, { status: 400 });
     }
 
     const def = defaultSettings();
-    const { sort_column, sort_asc, visible_columns, column_widths, filters } = parsed.data;
+    const { sort_column, sort_asc, sort_rules, visible_columns, column_widths, filters } = parsed.data;
 
     const { data: existing } = await (supabase as any)
       .from("page_activity_view_settings")
-      .select("page_id,sort_column,sort_asc,visible_columns,column_widths,filters")
+      .select("page_id,sort_rules,sort_column,sort_asc,visible_columns,column_widths,filters")
       .eq("page_id", pageId)
       .maybeSingle();
 
-    const nextSortColumn = sort_column ?? existing?.sort_column ?? def.sort_column;
-    const nextSortAsc = sort_asc !== undefined ? sort_asc : (existing?.sort_asc ?? def.sort_asc);
+    const existingRules = normalizeSortRulesFromSettingsRow(existing as any);
+    const primaryFromPatchRules = sort_rules ? primarySortFromRules(sort_rules) : null;
+    const nextSortColumn =
+      primaryFromPatchRules?.sort_column ??
+      sort_column ??
+      existing?.sort_column ??
+      def.sort_column;
+    const nextSortAsc =
+      primaryFromPatchRules?.sort_asc ??
+      (sort_asc !== undefined ? sort_asc : (existing?.sort_asc ?? def.sort_asc));
+    const nextSortRules =
+      sort_rules ??
+      (sort_column !== undefined || sort_asc !== undefined
+        ? normalizeSortRulesFromSettingsRow({ sort_column: nextSortColumn, sort_asc: nextSortAsc } as any)
+        : existingRules);
     const nextVisibleRaw =
       visible_columns ??
       (Array.isArray(existing?.visible_columns) ? existing.visible_columns : def.visible_columns);
@@ -208,7 +233,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     const payload = {
       page_id: pageId,
-      user_id: userId,
+      // Org-wide settings (not user-owned). Keep attribution only.
+      last_edited_by: userId,
+      sort_rules: nextSortRules,
       sort_column: nextSortColumn,
       sort_asc: nextSortAsc,
       visible_columns: nextVisible.length > 0 ? nextVisible : def.visible_columns,
@@ -220,7 +247,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const { data: saved, error } = await (supabase as any)
       .from("page_activity_view_settings")
       .upsert(payload, { onConflict: "page_id" })
-      .select("sort_column,sort_asc,visible_columns,column_widths,filters")
+      .select("sort_rules,sort_column,sort_asc,visible_columns,column_widths,filters")
       .single();
 
     if (error) {
@@ -230,9 +257,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       );
     }
 
-    return NextResponse.json({
-      sort_column: saved.sort_column ?? def.sort_column,
-      sort_asc: saved.sort_asc ?? def.sort_asc,
+    const savedSortRules = normalizeSortRulesFromSettingsRow(saved as any);
+    const savedPrimary = primarySortFromRules(savedSortRules);
+
+    return NextResponse.json(
+      {
+      sort_rules: savedSortRules,
+      sort_column: savedPrimary.sort_column ?? def.sort_column,
+      sort_asc: savedPrimary.sort_asc ?? def.sort_asc,
       visible_columns: Array.isArray(saved.visible_columns) ? saved.visible_columns : def.visible_columns,
       column_widths:
         saved.column_widths && typeof saved.column_widths === "object" ? saved.column_widths : def.column_widths,
@@ -249,7 +281,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
               ),
             }
           : def.filters,
-    });
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e: unknown) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to save view settings" },

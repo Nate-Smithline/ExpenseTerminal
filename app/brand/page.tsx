@@ -3,28 +3,18 @@
 
 import { useState } from "react";
 
-const core = [
-  { name: "Pure Black", hex: "#000000", role: "Primary Background / Hero", usage: "Page BG, navbar, hero sections" },
-  { name: "Pure White", hex: "#FFFFFF", role: "Primary Text / Surfaces", usage: "Headlines, card backgrounds, content areas" },
-  { name: "Sovereign Blue", hex: "#5B82B4", role: "Brand / Signature Color", usage: "Logo, key accents, brand moments — adjacent to GS blue but distinctly yours" },
-];
-
-const supporting = [
-  { name: "Deep Navy", hex: "#0D1F35", role: "Elevated Surface", usage: "Cards, sidebars, modals on black BG" },
-  { name: "Steel", hex: "#8A9BB0", role: "Secondary Text", usage: "Subtext, labels, placeholders, borders" },
-  { name: "Frost", hex: "#E8EEF5", role: "Light Surface", usage: "Input backgrounds, table rows, subtle dividers" },
-  { name: "Cool Stock", hex: "#F0F1F7", role: "Cool Off-White Surface", usage: "Alternate light backgrounds, receipts, neutral UI zones" },
-  { name: "Warm Stock", hex: "#F5F0E8", role: "Warm Off-White Surface", usage: "Invoices, documents, warm-feeling surfaces" },
-  { name: "CTA Blue", hex: "#2563EB", role: "Buttons / Interactive", usage: "Primary buttons, links, focus rings" },
-  { name: "CTA Hover", hex: "#1D4ED8", role: "Button Hover / Pressed", usage: "Hover and active states on CTA Blue" },
-  { name: "Signal Gold", hex: "#C9A84C", role: "Trust / Premium Accent", usage: "Badges, 'Made in America', premium tier markers — use sparingly" },
-  { name: "Success", hex: "#16A34A", role: "Success / Confirmed", usage: "Approved deductions, saved states, confirmations" },
-  { name: "Success Subtle", hex: "#DCFCE7", role: "Success Background", usage: "Success banners, row highlights, toasts" },
-  { name: "Error", hex: "#DC2626", role: "Error / Destructive", usage: "Form errors, failed states, delete actions" },
-  { name: "Error Subtle", hex: "#FEE2E2", role: "Error Background", usage: "Error banners, invalid field fills" },
-  { name: "Warning", hex: "#D97706", role: "Warning / Pending", usage: "Pending deductions, review-required states" },
-  { name: "Warning Subtle", hex: "#FEF3C7", role: "Warning Background", usage: "Pending banners, flagged row highlights" },
-];
+const palette = [
+  { name: "Black", hex: "#000000", role: "Core", usage: "Primary backgrounds, body text, maximum contrast", large: true },
+  { name: "White", hex: "#FFFFFF", role: "Core", usage: "Surfaces, reversed type, breathing room", large: true },
+  { name: "Blue", hex: "#007aff", role: "Primary accent", usage: "Links, focus, primary actions, signature brand moments" },
+  { name: "Purple", hex: "#953d96", role: "Accent", usage: "Secondary highlights, charts, distinct UI zones" },
+  { name: "Pink", hex: "#f84e9f", role: "Accent", usage: "Campaigns, emphasis, high-energy callouts" },
+  { name: "Red", hex: "#e0383e", role: "Semantic", usage: "Errors, destructive actions, critical alerts" },
+  { name: "Orange", hex: "#d57119", role: "Semantic", usage: "Warnings, pending review, warm emphasis" },
+  { name: "Yellow", hex: "#ffc724", role: "Semantic", usage: "Attention, highlights, caution (pair with dark text)" },
+  { name: "Green", hex: "#62ba46", role: "Semantic", usage: "Success, confirmation, positive states" },
+  { name: "Grey", hex: "#989898", role: "Neutral", usage: "Secondary text, borders, muted UI" },
+] as const;
 
 type SwatchProps = {
   name: string;
@@ -36,7 +26,7 @@ type SwatchProps = {
 
 function Swatch({ name, hex, role, usage, large }: SwatchProps) {
   const [copied, setCopied] = useState(false);
-  const isLight = ["#FFFFFF", "#E8EEF5", "#DCFCE7", "#FEE2E2", "#FEF3C7", "#F0F1F7", "#F5F0E8"].includes(hex);
+  const isLight = ["#ffffff", "#ffc724", "#989898"].includes(hex.toLowerCase());
 
   const copy = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
@@ -77,7 +67,11 @@ function Swatch({ name, hex, role, usage, large }: SwatchProps) {
           justifyContent: "flex-end",
           padding: "8px 10px",
           border:
-            hex === "#FFFFFF" ? "1px solid #E0E0E0" : hex === "#000000" ? "1px solid #222" : "none",
+            hex.toLowerCase() === "#ffffff"
+              ? "1px solid #E0E0E0"
+              : hex.toLowerCase() === "#000000"
+                ? "1px solid #222"
+                : "none",
           position: "relative",
         }}
       >
@@ -172,8 +166,8 @@ export default function BrandPage() {
                 width: 6,
                 height: 6,
                 borderRadius: "999px",
-                background: "#5B82B4",
-                boxShadow: "0 0 0 3px rgba(91,130,180,0.45)",
+                background: "#007aff",
+                boxShadow: "0 0 0 3px rgba(0,122,255,0.45)",
               }}
             />
             <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.12em", color: "#E5E7EB" }}>
@@ -189,7 +183,7 @@ export default function BrandPage() {
               margin: 0,
             }}
           >
-            ExpenseTerminal — Sovereign palette
+            ExpenseTerminal — Brand palette
           </h1>
           <p
             style={{
@@ -200,35 +194,10 @@ export default function BrandPage() {
               color: "#9CA3AF",
             }}
           >
-            Exploration of a brand system that feels serious, sovereign, and American-made — with a deep navy core,
-            sovereign blue accent, and signal gold used sparingly for premium moments.
+            Core neutrals plus a primary blue and a spectrum of accents for product UI, marketing, and semantic states
+            (success, warning, error).
           </p>
         </header>
-
-        <section style={{ marginBottom: 32 }}>
-          <h2
-            style={{
-              fontSize: 14,
-              textTransform: "uppercase",
-              letterSpacing: "0.16em",
-              color: "#6B7280",
-              marginBottom: 12,
-            }}
-          >
-            Core
-          </h2>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 16,
-            }}
-          >
-            {core.map((c) => (
-              <Swatch key={c.name} {...c} large />
-            ))}
-          </div>
-        </section>
 
         <section>
           <h2
@@ -240,7 +209,7 @@ export default function BrandPage() {
               marginBottom: 12,
             }}
           >
-            Supporting &amp; semantic
+            Colors
           </h2>
           <div
             style={{
@@ -249,7 +218,7 @@ export default function BrandPage() {
               gap: 16,
             }}
           >
-            {supporting.map((c) => (
+            {palette.map((c) => (
               <Swatch key={c.name} {...c} />
             ))}
           </div>

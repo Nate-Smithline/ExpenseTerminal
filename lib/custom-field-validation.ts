@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { TransactionPropertyType } from "@/lib/transaction-property-types";
-import { isSystemTransactionPropertyType } from "@/lib/transaction-property-types";
+import { isSystemTransactionPropertyType, storesValuesInCustomFields } from "@/lib/transaction-property-types";
 import { parseUSPhone } from "@/lib/format-us-phone";
 
 export type PropertyDefinitionRow = {
@@ -40,6 +40,9 @@ export function validateCustomFieldValue(
   const t = def.type as TransactionPropertyType;
   if (isSystemTransactionPropertyType(def.type)) {
     return { ok: false, error: "System properties are not stored in custom_fields" };
+  }
+  if (def.type === "account") {
+    return { ok: false, error: "Account is set from the linked account" };
   }
 
   const config = def.config && typeof def.config === "object" ? def.config as Record<string, unknown> : null;
@@ -138,8 +141,8 @@ export function mergeCustomFieldsPatch(
   for (const [key, val] of Object.entries(patch)) {
     const def = definitionsById.get(key);
     if (!def) return { ok: false, error: `Unknown property: ${key}` };
-    if (isSystemTransactionPropertyType(def.type)) {
-      return { ok: false, error: `Cannot set system property: ${key}` };
+    if (!storesValuesInCustomFields(def.type)) {
+      return { ok: false, error: `Cannot set read-only property: ${key}` };
     }
     if (val === undefined) continue;
     if (val === null) {

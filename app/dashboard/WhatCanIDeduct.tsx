@@ -117,7 +117,7 @@ export function WhatCanIDeduct() {
       {open && (
         <div className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
           <div
-            className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden flex flex-col"
+            className="rounded-3xl border border-black/[0.06] bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden flex flex-col"
             role="dialog"
             aria-modal="true"
             aria-labelledby="what-can-i-deduct-title"
@@ -154,14 +154,14 @@ export function WhatCanIDeduct() {
                 (slide.key === "home-vehicle" || slide.key === "other") ? (
                   <Link
                     href={slide.href}
-                    className="inline-flex items-center justify-center mt-4 px-4 py-2.5 text-sm font-medium font-sans bg-[#5B82B4] text-white rounded-none hover:bg-[#4a6b93] transition-colors"
+                    className="inline-flex items-center justify-center mt-4 px-4 py-2.5 text-sm font-medium font-sans bg-[#007aff] text-white rounded-full hover:bg-[#0066d6] transition-colors"
                   >
                     {slide.linkLabel}
                   </Link>
                 ) : (
                   <Link
                     href={slide.href}
-                    className="inline-flex items-center gap-1.5 mt-4 text-sm font-medium text-accent-sage hover:underline"
+                    className="inline-flex items-center gap-1.5 mt-4 text-sm font-medium text-[#007aff] hover:underline"
                   >
                     {slide.linkLabel}
                     <span className="material-symbols-rounded text-[18px]">arrow_forward</span>
@@ -175,7 +175,7 @@ export function WhatCanIDeduct() {
                 type="button"
                 onClick={() => setIndex((i) => Math.max(i - 1, 0))}
                 disabled={index === 0}
-                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#f5f5f7] text-mono-dark rounded-full hover:bg-black/[0.06] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Previous
               </button>
@@ -189,7 +189,7 @@ export function WhatCanIDeduct() {
                     void markCompleted();
                     setOpen(false);
                   }}
-                  className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors"
+                  className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-full hover:bg-black/85 transition-colors"
                 >
                   Finish
                 </button>
@@ -197,7 +197,7 @@ export function WhatCanIDeduct() {
                 <button
                   type="button"
                   onClick={() => setIndex((i) => i + 1)}
-                  className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors"
+                  className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-full hover:bg-black/85 transition-colors"
                 >
                   Next
                 </button>

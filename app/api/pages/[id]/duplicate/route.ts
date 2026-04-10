@@ -51,6 +51,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const newTitle = baseTitle ? `${baseTitle} (copy)` : "Untitled (copy)";
     const now = new Date().toISOString();
 
+    // Place the duplicate near the top of the sidebar order.
+    const { data: firstPosRow } = await (supabase as any)
+      .from("pages")
+      .select("position")
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .order("position", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const position =
+      typeof firstPosRow?.position === "number" && Number.isFinite(firstPosRow.position)
+        ? firstPosRow.position - 1000
+        : -1000;
+
     const { data: page, error: insErr } = await (supabase as any)
       .from("pages")
       .insert({
@@ -61,23 +75,29 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         icon_color: src.icon_color ?? "grey",
         visibility: src.visibility ?? "org",
         full_width: Boolean(src.full_width),
+        position,
         created_by: userId,
         created_at: now,
         updated_at: now,
       })
-      .select("id,title,icon_type,icon_value,icon_color,created_at,updated_at,visibility,full_width")
+      .select("id,title,icon_type,icon_value,icon_color,position,created_at,updated_at,visibility,full_width")
       .single();
 
     if (insErr || !page) {
       return NextResponse.json(
-        { error: safeErrorMessage(insErr?.message, "Failed to duplicate page") },
+        {
+          error: safeErrorMessage(
+            insErr?.message,
+            "Failed to duplicate page"
+          ),
+        },
         { status: 500 }
       );
     }
 
     const { data: settings } = await (supabase as any)
       .from("page_activity_view_settings")
-      .select("sort_column,sort_asc,visible_columns,column_widths,filters")
+      .select("sort_rules,sort_column,sort_asc,visible_columns,column_widths,filters")
       .eq("page_id", sourceId)
       .maybeSingle();
 
@@ -93,10 +113,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     };
 
     const visibleColumns = Array.isArray(settings?.visible_columns) ? settings.visible_columns : defVisible;
+    const sortRules = Array.isArray((settings as any)?.sort_rules)
+      ? (settings as any).sort_rules
+      : [{ column: settings?.sort_column ?? "date", asc: settings?.sort_asc ?? false }];
 
     const { error: setErr } = await (supabase as any).from("page_activity_view_settings").insert({
       page_id: page.id,
       user_id: userId,
+      sort_rules: sortRules,
       sort_column: settings?.sort_column ?? "date",
       sort_asc: settings?.sort_asc ?? false,
       visible_columns: visibleColumns.length > 0 ? visibleColumns : defVisible,

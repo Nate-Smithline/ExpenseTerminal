@@ -173,7 +173,8 @@ export async function PATCH(req: Request) {
 
   const payload = {
     org_id: orgId,
-    user_id: userId,
+    // Org-wide settings (not user-owned). Keep attribution only.
+    last_edited_by: userId,
     sort_column: nextSortColumn,
     sort_asc: nextSortAsc,
     visible_columns: nextVisible.length > 0 ? nextVisible : def.visible_columns,

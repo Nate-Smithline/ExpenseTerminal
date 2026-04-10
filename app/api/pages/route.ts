@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseRouteClient } from "@/lib/supabase/server";
+import { createSupabaseRouteClient, createSupabaseServiceClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
@@ -34,7 +34,16 @@ function defaultActivityViewSettings() {
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   const existing = await getActiveOrgId(supabase, userId);
-  if (existing) return existing;
+  if (existing) {
+    // Guard against drift: profiles.active_org_id may point at an org the user no longer belongs to.
+    const { data: membership } = await (supabase as any)
+      .from("org_memberships")
+      .select("org_id")
+      .eq("org_id", existing)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (membership?.org_id) return existing;
+  }
   return await ensureActiveOrgForUser(userId);
 }
 
@@ -60,9 +69,10 @@ export async function GET(req: Request) {
 
     const { data, error } = await (supabase as any)
       .from("pages")
-      .select("id,title,icon_type,icon_value,icon_color,created_at,updated_at")
+      .select("id,title,icon_type,icon_value,icon_color,position,created_at,updated_at")
       .eq("org_id", orgId)
       .is("deleted_at", null)
+      .order("position", { ascending: true })
       .order("updated_at", { ascending: false });
 
     if (error) {
@@ -98,8 +108,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
     const supabase = authClient;
+    const admin = createSupabaseServiceClient();
 
     const orgId = await resolveOrgId(supabase, userId);
+
+    // Enforce org membership explicitly (service role read avoids any RLS surprises).
+    const { data: membership } = await (admin as any)
+      .from("org_memberships")
+      .select("org_id")
+      .eq("org_id", orgId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!membership?.org_id) {
+      return NextResponse.json({ error: "You are not a member of the active org" }, { status: 403 });
+    }
 
     let body: any = {};
     try {
@@ -120,7 +142,20 @@ export async function POST(req: Request) {
         : "gray";
 
     const now = new Date().toISOString();
-    const { data: page, error: pageErr } = await (supabase as any)
+    const { data: firstPosRow } = await (supabase as any)
+      .from("pages")
+      .select("position")
+      .eq("org_id", orgId)
+      .is("deleted_at", null)
+      .order("position", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const position =
+      typeof firstPosRow?.position === "number" && Number.isFinite(firstPosRow.position)
+        ? firstPosRow.position - 1000
+        : -1000;
+    // Insert with service role to avoid RLS insert failures; membership was checked above.
+    const { data: page, error: pageErr } = await (admin as any)
       .from("pages")
       .insert({
         org_id: orgId,
@@ -128,11 +163,12 @@ export async function POST(req: Request) {
         icon_type,
         icon_value,
         icon_color,
+        position,
         created_by: userId,
         created_at: now,
         updated_at: now,
       })
-      .select("id,title,icon_type,icon_value,icon_color,created_at,updated_at")
+      .select("id,title,icon_type,icon_value,icon_color,position,created_at,updated_at")
       .single();
 
     if (pageErr) {
@@ -143,11 +179,12 @@ export async function POST(req: Request) {
     }
 
     const def = defaultActivityViewSettings();
-    const { error: settingsErr } = await (supabase as any)
+    const { error: settingsErr } = await (admin as any)
       .from("page_activity_view_settings")
       .insert({
         page_id: page.id,
         user_id: userId,
+        sort_rules: [{ column: def.sort_column, asc: def.sort_asc }],
         sort_column: def.sort_column,
         sort_asc: def.sort_asc,
         visible_columns: def.visible_columns,

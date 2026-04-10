@@ -25,9 +25,9 @@
   --color-warning: #635a43;
   --color-danger: #c44;
 
-  /* Typography — Satoshi (sans, set by layout variable), Marcellus (display) */
+  /* Typography — Satoshi (sans, set by layout variable) */
   --font-sans: "Satoshi", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: "Marcellus", Georgia, "Times New Roman", serif;
+  --font-display: var(--font-sans);
 
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
@@ -64,6 +64,21 @@ body {
 
 button, [role="button"], a.btn-primary, a.btn-secondary, a.btn-pill, a.btn-warm {
   cursor: pointer;
+}
+
+.font-apple {
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "SF Pro Display",
+    "Helvetica Neue",
+    ui-sans-serif,
+    system-ui,
+    "Segoe UI",
+    Roboto,
+    Arial,
+    sans-serif;
 }
 
 .btn-primary {
@@ -345,7 +360,7 @@ kbd {
 /* ---- Page headings — display font with generous spacing ---- */
 
 h1, h2, h3 {
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
   letter-spacing: -0.01em;
   line-height: 1.2;
 }
@@ -395,4 +410,67 @@ html {
 input[type="checkbox"] {
   @apply rounded-sm border-bg-tertiary;
   accent-color: var(--color-accent-sage);
+}
+
+/* Activity table: Apple-like checkbox using brand blue */
+input.activity-table-checkbox {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: #fff;
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  display: inline-grid;
+  place-content: center;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 60ms ease;
+}
+
+input.activity-table-checkbox:hover {
+  border-color: rgba(0, 0, 0, 0.28);
+}
+
+input.activity-table-checkbox:active {
+  transform: scale(0.96);
+}
+
+input.activity-table-checkbox:checked {
+  background: #007aff;
+  border-color: #007aff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 10'%3E%3Cpath fill='white' d='M4.5 7.6 1.9 5 1 5.9l3.5 3.5L11 2.9l-.9-.9z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 12px 10px;
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+input.activity-table-checkbox:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(0, 122, 255, 0.25),
+    0 1px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* Activity toolbar search: no UA focus ring, no WebKit search clear/decoration */
+.activity-toolbar-search-input:focus,
+.activity-toolbar-search-input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.activity-toolbar-search-input::-webkit-search-decoration,
+.activity-toolbar-search-input::-webkit-search-cancel-button,
+.activity-toolbar-search-input::-webkit-search-results-button,
+.activity-toolbar-search-input::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
 }

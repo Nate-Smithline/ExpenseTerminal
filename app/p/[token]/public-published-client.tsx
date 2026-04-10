@@ -7,6 +7,7 @@ import type { Database } from "@/lib/types/database";
 import { ActivityTable } from "@/app/activity/ActivityTable";
 import { pageIconTextClass } from "@/lib/page-icon-colors";
 import type { ActivityViewState } from "@/app/activity/ActivityToolbar";
+import { serializeSortRulesForQuery } from "@/lib/activity-sort-rules";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
@@ -39,6 +40,9 @@ async function fetchTransactions(token: string, offset: number, view: ViewPayloa
     date_from: view.filters.date_from,
     date_to: view.filters.date_to,
   });
+  if (Array.isArray((view as any).sort_rules) && (view as any).sort_rules.length > 0) {
+    params.set("sort_rules", serializeSortRulesForQuery((view as any).sort_rules));
+  }
   if (view.filters.status) params.set("status", view.filters.status);
   if (view.filters.transaction_type) params.set("transaction_type", view.filters.transaction_type);
   if (view.filters.source) params.set("source", view.filters.source);
@@ -62,6 +66,9 @@ async function fetchCount(token: string, view: ViewPayload): Promise<number> {
     date_from: view.filters.date_from,
     date_to: view.filters.date_to,
   });
+  if (Array.isArray((view as any).sort_rules) && (view as any).sort_rules.length > 0) {
+    params.set("sort_rules", serializeSortRulesForQuery((view as any).sort_rules));
+  }
   if (view.filters.status) params.set("status", view.filters.status);
   if (view.filters.transaction_type) params.set("transaction_type", view.filters.transaction_type);
   if (view.filters.source) params.set("source", view.filters.source);

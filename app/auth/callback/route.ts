@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 
-const ALLOWED_REDIRECT_PATHS = ["/inbox", "/dashboard", "/reports", "/settings", "/profile", "/"];
+const ALLOWED_REDIRECT_PATHS = [
+  "/inbox",
+  "/dashboard",
+  "/reports",
+  "/settings",
+  "/profile",
+  "/preferences",
+  "/",
+];
 
 function isAllowedRedirect(next: string): boolean {
   const path = next.startsWith("/") ? next : `/${next}`;
@@ -15,8 +23,12 @@ function isAllowedRedirect(next: string): boolean {
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const nextParam = requestUrl.searchParams.get("next") ?? "/inbox";
-  const next = isAllowedRedirect(nextParam) ? nextParam : "/inbox";
+  const nextParam = requestUrl.searchParams.get("next") ?? "/dashboard";
+  const nextNormalized = nextParam.startsWith("/") ? nextParam : `/${nextParam}`;
+  const next =
+    isAllowedRedirect(nextParam) && !nextNormalized.startsWith("/inbox")
+      ? nextParam
+      : "/dashboard";
 
   if (code) {
     const supabase = await createSupabaseRouteClient();

@@ -15,6 +15,11 @@ export function isSystemTransactionPropertyType(type: string): boolean {
   return TRANSACTION_PROPERTY_SYSTEM_TYPES.has(type as TransactionPropertyType);
 }
 
+/** Values for `account` and system_* live on the transaction row, not in custom_fields JSON. */
+export function storesValuesInCustomFields(type: string): boolean {
+  return !isSystemTransactionPropertyType(type) && type !== "account";
+}
+
 export type TransactionPropertyConfig = {
   options?: { id: string; label: string }[];
 };

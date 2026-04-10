@@ -86,6 +86,26 @@ export async function POST(req: Request) {
 
   const { name, type, config, position } = parsed.data;
 
+  if (type === "account") {
+    const { count, error: cntErr } = await (supabase as any)
+      .from("transaction_property_definitions")
+      .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId)
+      .eq("type", "account");
+    if (cntErr) {
+      return NextResponse.json(
+        { error: safeErrorMessage(cntErr.message, "Failed to check properties") },
+        { status: 500 }
+      );
+    }
+    if ((count ?? 0) > 0) {
+      return NextResponse.json(
+        { error: "Only one Account property is allowed. It reflects each transaction’s linked account." },
+        { status: 400 }
+      );
+    }
+  }
+
   let nextPosition = position;
   if (nextPosition === undefined) {
     const { data: maxRow } = await (supabase as any)

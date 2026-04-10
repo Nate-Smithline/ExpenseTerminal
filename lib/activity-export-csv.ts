@@ -20,6 +20,7 @@ const STANDARD_LABELS: Record<ActivityVisibleColumn, string> = {
   quick_label: "Quick label",
   notes: "Notes",
   created_at: "Created",
+  data_source_id: "Account",
 };
 
 function getCustomFields(t: TxRow): Record<string, unknown> {
@@ -50,7 +51,10 @@ function formatAmount(amount: unknown, transactionType: string | null | undefine
   const n = Number(amount);
   if (Number.isNaN(n)) return "";
   const abs = Math.abs(n);
-  const formatted = abs.toFixed(2);
+  const formatted = abs.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
   if (transactionType === "income") return `+$${formatted}`;
   return `-$${formatted}`;
 }
@@ -71,8 +75,15 @@ function formatCustomPropertyCsv(
   t: TxRow,
   col: string,
   def: TransactionPropertyDefinition | undefined,
-  memberDisplayById: Record<string, string>
+  memberDisplayById: Record<string, string>,
+  dataSourceNameById: Record<string, string>
 ): string {
+  if (def?.type === "account") {
+    const id = t.data_source_id as string | null | undefined;
+    if (!id) return "";
+    return dataSourceNameById[id] ?? "";
+  }
+
   if (def && isSystemTransactionPropertyType(def.type)) {
     switch (def.type) {
       case "created_time":
@@ -228,6 +239,9 @@ export function buildDbSelectParts(
     if (isUuidColumnKey(c)) {
       parts.add("custom_fields");
       const def = defsById.get(c);
+      if (def?.type === "account") {
+        parts.add("data_source_id");
+      }
       if (def && isSystemTransactionPropertyType(def.type)) {
         if (def.type === "created_time" || def.type === "created_by") {
           parts.add("created_at");
@@ -269,12 +283,16 @@ export function rowToCsvLine(
   t: TxRow,
   exportCols: string[],
   defsById: Map<string, TransactionPropertyDefinition>,
-  memberDisplayById: Record<string, string>
+  memberDisplayById: Record<string, string>,
+  dataSourceNameById: Record<string, string> = {}
 ): string {
   const cells = exportCols.map((col) => {
     let s: string;
-    if (isUuidColumnKey(col)) {
-      s = formatCustomPropertyCsv(t, col, defsById.get(col), memberDisplayById);
+    if (col === "data_source_id") {
+      const id = t.data_source_id as string | null | undefined;
+      s = id ? (dataSourceNameById[id] ?? "") : "";
+    } else if (isUuidColumnKey(col)) {
+      s = formatCustomPropertyCsv(t, col, defsById.get(col), memberDisplayById, dataSourceNameById);
     } else if ((ACTIVITY_VISIBLE_COLUMNS as readonly string[]).includes(col)) {
       s = formatStandardCsv(t, col as ActivityVisibleColumn);
     } else {

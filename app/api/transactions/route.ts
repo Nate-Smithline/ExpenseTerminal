@@ -18,6 +18,12 @@ import { safeErrorMessage } from "@/lib/api/safe-error";
 import { getActiveOrgId } from "@/lib/active-org";
 import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
 import { applyActivityColumnFilters, parseColumnFiltersQueryParam } from "@/lib/activity-column-filters";
+import { parseSortRulesQueryParam } from "@/lib/activity-sort-rules";
+import { fetchAccountPropertyIdsForOrg, mapActivitySortRulesToSqlColumns } from "@/lib/resolve-activity-sort-columns";
+import {
+  sanitizeTransactionSearchTerm,
+  TRANSACTION_TEXT_SEARCH_COLUMNS,
+} from "@/lib/transaction-text-search";
 
 const STANDARD_FILTERABLE_COLS = new Set<string>(ACTIVITY_FILTERABLE_STANDARD_COLUMNS);
 
@@ -58,6 +64,7 @@ export async function GET(req: Request) {
   const sortBy = sortByRaw && (ACTIVITY_SORT_COLUMNS as readonly string[]).includes(sortByRaw) ? sortByRaw : "date";
   const sortOrderRaw = searchParams.get("sort_order") ?? searchParams.get("order");
   const sortAsc = sortOrderRaw === "asc";
+  const sortRules = parseSortRulesQueryParam(searchParams.get("sort_rules"));
   const searchTerm = (searchParams.get("search") ?? searchParams.get("q"))?.trim() ?? "";
   const dateFrom = searchParams.get("date_from")?.trim() || null;
   const dateTo = searchParams.get("date_to")?.trim() || null;
@@ -94,9 +101,12 @@ export async function GET(req: Request) {
       .eq("status", "pending")
       .or("transaction_type.eq.income,and(transaction_type.eq.expense,ai_confidence.not.is.null)");
   }
-  if (searchTerm.length > 0) {
-    const pattern = `%${searchTerm}%`;
-    query = query.or(`vendor.ilike.${pattern},description.ilike.${pattern}`);
+  const safeSearch = sanitizeTransactionSearchTerm(searchTerm);
+  if (safeSearch != null) {
+    const pattern = `%${safeSearch}%`;
+    query = query.or(
+      TRANSACTION_TEXT_SEARCH_COLUMNS.map((col) => `${col}.ilike.${pattern}`).join(",")
+    );
   }
 
   if (columnFilters.length > 0) {
@@ -125,7 +135,25 @@ export async function GET(req: Request) {
   }
 
   if (!countOnly) {
-    query = query.order(sortBy, { ascending: sortAsc }).range(offset, offset + limit - 1);
+    const rules = sortRules.length > 0 ? sortRules : [{ column: sortBy as any, asc: sortAsc }];
+    const hasUuidSortColumn = rules.some((r) => uuidSchema.safeParse(r.column).success);
+    let accountSortIds = new Set<string>();
+    if (hasUuidSortColumn) {
+      let orgIdForSort = await getActiveOrgId(supabase as any, userId);
+      if (!orgIdForSort) {
+        try {
+          orgIdForSort = await ensureActiveOrgForUser(userId);
+        } catch {
+          orgIdForSort = null;
+        }
+      }
+      accountSortIds = await fetchAccountPropertyIdsForOrg(supabase as any, orgIdForSort);
+    }
+    const resolvedRules = mapActivitySortRulesToSqlColumns(rules, accountSortIds);
+    for (const r of resolvedRules) {
+      query = query.order(r.column, { ascending: r.asc });
+    }
+    query = query.range(offset, offset + limit - 1);
   }
 
   if (countOnly) {
@@ -206,24 +234,43 @@ export async function POST(req: Request) {
 
   const draftParsed = transactionDraftBodySchema.safeParse(body);
   if (draftParsed.success) {
-    const { status: draftStatus, transaction_type: draftType } = draftParsed.data;
+    const {
+      status: draftStatus,
+      transaction_type: draftType,
+      date_from: draftDateFrom,
+      date_to: draftDateTo,
+      source: draftSource,
+      data_source_id: draftDataSourceId,
+    } = draftParsed.data;
     const today = new Date().toISOString().slice(0, 10);
-    const taxYear = new Date().getFullYear();
-    const insertCols = "id,user_id,date,vendor,description,amount,status,tax_year,source,transaction_type,vendor_normalized,created_at,updated_at";
+    let date = today;
+    if (draftDateFrom && date < draftDateFrom) date = draftDateFrom;
+    if (draftDateTo && date > draftDateTo) date = draftDateTo;
+    const taxYear = new Date(`${date}T12:00:00`).getFullYear();
+    const sourceVal =
+      draftSource === "manual" || draftSource === "csv_upload" || draftSource === "data_feed"
+        ? draftSource
+        : "manual";
+    const insertCols =
+      "id,user_id,date,vendor,description,amount,status,tax_year,source,transaction_type,vendor_normalized,data_source_id,created_at,updated_at";
+    const insertRow: Record<string, unknown> = {
+      user_id: userId,
+      date,
+      vendor: "",
+      description: null,
+      amount: 0,
+      status: draftStatus ?? "pending",
+      tax_year: taxYear,
+      source: sourceVal,
+      transaction_type: draftType ?? "expense",
+      vendor_normalized: null,
+    };
+    if (draftDataSourceId && uuidSchema.safeParse(draftDataSourceId).success) {
+      insertRow.data_source_id = draftDataSourceId;
+    }
     const { data: draftData, error: draftError } = await (supabase as any)
       .from("transactions")
-      .insert({
-        user_id: userId,
-        date: today,
-        vendor: "",
-        description: null,
-        amount: 0,
-        status: draftStatus ?? "pending",
-        tax_year: taxYear,
-        source: "manual",
-        transaction_type: draftType ?? "expense",
-        vendor_normalized: null,
-      })
+      .insert(insertRow)
       .select(insertCols)
       .single();
 

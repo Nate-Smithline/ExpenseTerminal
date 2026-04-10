@@ -165,7 +165,7 @@
        <div className="space-y-4">
          {/* Row 1: Revenue, Deductions, Additional — separate boxes */}
          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          <div className="border border-[#F0F1F7] rounded-none bg-white p-6">
+          <div className="rounded-3xl border border-black/[0.06] bg-white p-6 shadow-sm">
             <p className="text-xs font-medium text-mono-medium uppercase tracking-wider mb-1.5">Revenue</p>
              <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
               ${displayRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
@@ -174,32 +174,32 @@
                <button
                  type="button"
                  onClick={() => setLogIncomeOpen(true)}
-                 className="text-xs text-accent-sage font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded"
+                className="text-xs text-[#007aff] font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-[#007aff]/20 rounded-lg"
                >
                  Log more
                </button>
                <button
                  type="button"
                  onClick={() => setViewIncomeOpen(true)}
-                 className="text-xs text-accent-sage font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded"
+                className="text-xs text-[#007aff] font-medium hover:underline focus:outline-none focus:ring-2 focus:ring-[#007aff]/20 rounded-lg"
                >
                  View logged income
                </button>
              </div>
            </div>
-          <div className="border border-[#F0F1F7] rounded-none bg-white p-6">
+          <div className="rounded-3xl border border-black/[0.06] bg-white p-6 shadow-sm">
             <p className="text-xs font-medium text-mono-medium uppercase tracking-wider mb-1.5">Deductions</p>
              <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
               ${mergedDeductions.toLocaleString("en-US", { minimumFractionDigits: 2 })}
              </p>
             <p className="text-xs text-mono-light mt-1">Transactions + additional deductions</p>
             <div className="mt-2">
-              <Link href="/inbox" className="text-xs text-accent-sage font-medium inline-block hover:underline focus:outline-none focus:ring-2 focus:ring-accent-sage/30 rounded">
+              <Link href="/inbox" className="text-xs text-[#007aff] font-medium inline-block hover:underline focus:outline-none focus:ring-2 focus:ring-[#007aff]/20 rounded-lg">
                 Inbox
               </Link>
             </div>
            </div>
-          <div className="border border-[#F0F1F7] rounded-none bg-white p-6">
+          <div className="rounded-3xl border border-black/[0.06] bg-white p-6 shadow-sm">
             <p className="text-xs font-medium text-mono-medium uppercase tracking-wider mb-1.5">Net Profit</p>
              <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
               ${displayNetProfit.toLocaleString("en-US", { minimumFractionDigits: 2 })}
@@ -210,7 +210,7 @@
 
          {/* Row 2: Est. Savings, Est. Taxes — separate boxes */}
          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div className="border border-[#F0F1F7] rounded-none bg-white p-6">
+          <div className="rounded-3xl border border-black/[0.06] bg-white p-6 shadow-sm">
             <p className="text-xs font-medium text-mono-medium uppercase tracking-wider mb-1.5">Est. Savings</p>
             <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
               ${displayTotalSavings.toLocaleString("en-US", { minimumFractionDigits: 2 })}
@@ -219,7 +219,7 @@
               Estimated value captured from deductions
             </p>
            </div>
-          <div className="border border-[#F0F1F7] rounded-none bg-white p-6">
+          <div className="rounded-3xl border border-black/[0.06] bg-white p-6 shadow-sm">
             <p className="text-xs font-medium text-mono-medium uppercase tracking-wider mb-1.5">Est. Payment</p>
              <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
               ${estPayment.toLocaleString("en-US", { minimumFractionDigits: 2 })}
@@ -229,7 +229,7 @@
          </div>
          <p className="text-xs text-mono-medium max-w-xl">
            Savings: transaction deductions × {(taxRate * 100).toFixed(0)}% rate, plus additional deductions (home office, mileage, etc.) not multiplied by rate.
-           <Link href="/preferences/org" className="text-accent-sage ml-1 hover:underline font-medium">Edit rate</Link>
+          <Link href="/preferences/org" className="text-[#007aff] ml-1 hover:underline font-medium">Edit rate</Link>
          </p>
          <p className="text-xs text-mono-medium mt-2 pt-2 border-t border-bg-tertiary/40">
            {comparisonNote}

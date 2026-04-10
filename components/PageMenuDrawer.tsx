@@ -99,31 +99,48 @@ export function PageMenuDrawer({
   if (!open || !mounted) return null;
 
   const rowClass =
-    "w-full flex items-center gap-2.5 px-3 py-2 text-left text-[13px] text-mono-dark hover:bg-bg-secondary/80 transition-colors border-0 bg-white";
+    "w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-left font-sans text-[13px] text-neutral-800 hover:bg-neutral-100/80 transition-colors border-0 bg-transparent";
 
-  const toggleRowClass = `${rowClass} group/toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sovereign-blue/30 focus-visible:ring-offset-1 focus-visible:ring-offset-white`;
+  const toggleRowClass = `${rowClass} group/toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sovereign-blue/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white`;
 
   const panel = (
     <div
       ref={panelRef}
-      className="fixed z-[200] flex w-[248px] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-none border border-bg-tertiary/60 bg-white shadow-lg"
+      className="fixed z-[200] flex w-[260px] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-2xl border border-black/[0.08] bg-white/95 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.25)] backdrop-blur-md"
       style={{ top: pos.top, right: pos.right }}
       role="dialog"
       aria-modal="false"
-      aria-label="Page menu"
+      aria-labelledby="page-menu-drawer-title"
+      aria-describedby="page-menu-drawer-desc"
     >
-      <div className="flex items-center justify-between border-b border-bg-tertiary/40 px-2.5 py-1.5">
-        <span className="text-[12px] font-semibold text-mono-medium">Page options</span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-none text-mono-light hover:bg-bg-tertiary/40 hover:text-mono-dark"
-          aria-label="Close"
-        >
-          <span className="material-symbols-rounded text-[16px] leading-none">close</span>
-        </button>
+      <div className="shrink-0 border-b border-black/[0.06] px-3 py-2.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 pr-1">
+            <p className="font-sans text-[11px] font-medium uppercase tracking-wider text-neutral-400">Page</p>
+            <h2
+              id="page-menu-drawer-title"
+              className="mt-1 font-sans text-[15px] font-semibold leading-tight tracking-tight text-neutral-900"
+            >
+              Options
+            </h2>
+            <p
+              id="page-menu-drawer-desc"
+              className="mt-0.5 font-sans text-[12px] leading-snug text-neutral-500"
+            >
+              Share, duplicate, layout, and more
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+            aria-label="Close"
+          >
+            <span className="material-symbols-rounded text-[18px] leading-none">close</span>
+          </button>
+        </div>
       </div>
-      <nav className="flex flex-col py-1">
+      <nav className="flex flex-col gap-1 p-2">
         <button type="button" className={rowClass} onClick={() => { onCopyLink(); onClose(); }}>
           <span className="material-symbols-rounded shrink-0 text-mono-medium leading-none" style={menuIconStyle}>
             link
@@ -142,7 +159,7 @@ export function PageMenuDrawer({
           </span>
           Move to trash
         </button>
-        <div className="mx-2.5 my-1 border-t border-bg-tertiary/50" />
+        <div className="my-1 border-t border-black/[0.06]" />
         <button
           type="button"
           role="switch"

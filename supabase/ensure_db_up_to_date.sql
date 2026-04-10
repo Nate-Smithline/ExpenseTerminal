@@ -28,8 +28,19 @@ ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_item_id TEXT;
 ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_cursor TEXT;
 ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_institution_id TEXT;
 
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_account_id TEXT;
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_balance_current NUMERIC(18, 2);
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_balance_available NUMERIC(18, 2);
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_balance_limit NUMERIC(18, 2);
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_balance_iso_currency_code TEXT DEFAULT 'USD';
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_balance_as_of TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS idx_data_sources_plaid_item_id
   ON public.data_sources(plaid_item_id)
+  WHERE plaid_item_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_data_sources_plaid_item_account
+  ON public.data_sources (plaid_item_id, plaid_account_id)
   WHERE plaid_item_id IS NOT NULL;
 
 -- Unique index: one data source per Stripe FC account per user
@@ -157,3 +168,65 @@ CREATE POLICY "Users can manage own disclaimer acks"
   USING (auth.uid() = user_id);
 CREATE INDEX IF NOT EXISTS idx_disclaimer_acks_user
   ON public.disclaimer_acknowledgments(user_id, tax_year);
+
+-- -----------------------------------------------------------------------------
+-- Orgs: Accounts & Data page access (org-wide)
+-- -----------------------------------------------------------------------------
+ALTER TABLE public.orgs ADD COLUMN IF NOT EXISTS accounts_page_visibility TEXT NOT NULL DEFAULT 'org';
+ALTER TABLE public.orgs DROP CONSTRAINT IF EXISTS orgs_accounts_page_visibility_check;
+ALTER TABLE public.orgs ADD CONSTRAINT orgs_accounts_page_visibility_check
+  CHECK (accounts_page_visibility IN ('org', 'restricted'));
+
+ALTER TABLE public.orgs ADD COLUMN IF NOT EXISTS icon_emoji TEXT;
+ALTER TABLE public.orgs ADD COLUMN IF NOT EXISTS icon_image_url TEXT;
+
+-- -----------------------------------------------------------------------------
+-- data_sources: manual account balance (optional)
+-- -----------------------------------------------------------------------------
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS manual_balance NUMERIC(18, 2);
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS manual_balance_iso_currency_code TEXT DEFAULT 'USD';
+
+-- Brand palette key for sidebar / activity (see lib/brand-palette.ts)
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS brand_color_id TEXT NOT NULL DEFAULT 'blue';
+ALTER TABLE public.data_sources DROP CONSTRAINT IF EXISTS data_sources_brand_color_id_check;
+ALTER TABLE public.data_sources ADD CONSTRAINT data_sources_brand_color_id_check CHECK (
+  brand_color_id IN (
+    'black', 'white', 'blue', 'purple', 'pink', 'red', 'orange', 'yellow', 'green', 'grey'
+  )
+);
+
+-- transaction_property_definitions: add type 'account' (see migration 202604081400)
+ALTER TABLE public.transaction_property_definitions DROP CONSTRAINT IF EXISTS transaction_property_definitions_type_check;
+ALTER TABLE public.transaction_property_definitions
+  ADD CONSTRAINT transaction_property_definitions_type_check CHECK (type IN (
+    'multi_select', 'select', 'date', 'short_text', 'long_text', 'checkbox', 'org_user',
+    'number', 'files', 'phone', 'email', 'created_time', 'created_by', 'last_edited_date',
+    'last_edited_time', 'account'
+  ));
+
+-- -----------------------------------------------------------------------------
+-- Org transaction rules (conditions + actions JSON, RLS via org_memberships)
+-- Apply: supabase/migrations/202604081900_org_transaction_rules.sql
+-- Apply: supabase/migrations/202604091200_org_rules_apply_to.sql (trigger_mode apply-to)
+-- -----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
+-- user_financial_snapshots (daily net worth; see migration 202604101200)
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.user_financial_snapshots (
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  snapshot_date DATE NOT NULL,
+  net_worth NUMERIC(18, 2) NOT NULL,
+  total_assets NUMERIC(18, 2) NOT NULL,
+  total_liabilities NUMERIC(18, 2) NOT NULL,
+  accounts JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, snapshot_date)
+);
+CREATE INDEX IF NOT EXISTS idx_user_financial_snapshots_user_date_desc
+  ON public.user_financial_snapshots (user_id, snapshot_date DESC);
+ALTER TABLE public.user_financial_snapshots ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view own financial snapshots" ON public.user_financial_snapshots;
+CREATE POLICY "Users can view own financial snapshots"
+  ON public.user_financial_snapshots FOR SELECT
+  USING (auth.uid() = user_id);

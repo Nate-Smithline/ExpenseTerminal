@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -29,6 +30,7 @@ const STANDARD_LABELS: Record<ActivityVisibleColumn, string> = {
   quick_label: "Quick label",
   notes: "Notes",
   created_at: "Created",
+  data_source_id: "Account",
 };
 
 const STANDARD_ICONS: Record<ActivityVisibleColumn, string> = {
@@ -46,6 +48,7 @@ const STANDARD_ICONS: Record<ActivityVisibleColumn, string> = {
   quick_label: "bookmark",
   notes: "sticky_note_2",
   created_at: "schedule",
+  data_source_id: "database",
 };
 
 function orgPropertyIcon(type: string): string {
@@ -77,6 +80,8 @@ function orgPropertyIcon(type: string): string {
     case "last_edited_date":
     case "last_edited_time":
       return "schedule";
+    case "account":
+      return "database";
     default:
       return "label";
   }
@@ -101,10 +106,20 @@ function buildInitialOrder(
 }
 
 const rowGlyphStyle = {
-  fontSize: 15,
+  fontSize: 18,
   lineHeight: 1,
-  fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20",
+  fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24",
 } as const;
+
+const panelGlyphMuted = {
+  fontSize: 18,
+  lineHeight: 1,
+  fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24",
+} as const;
+
+/** Horizontal insertion guide while reordering (matches table column drop line) */
+const PROPERTIES_DROP_LINE_CLASS =
+  "pointer-events-none mx-2 h-[2px] shrink-0 rounded-full bg-sovereign-blue shadow-[0_0_6px_rgba(91,130,180,0.45)]";
 
 type Props = {
   open: boolean;
@@ -131,7 +146,9 @@ export function ActivityPropertyVisibilityPanel({
   const orderedKeysRef = useRef<string[]>([]);
   const visibleSetRef = useRef<Set<string>>(new Set());
   const [dragKey, setDragKey] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  /** Insertion index 0..length — line before row i, or after last when length */
+  const [dropBeforeIndex, setDropBeforeIndex] = useState<number | null>(null);
+  const dropBeforeIndexRef = useRef<number | null>(null);
   const wasOpen = useRef(false);
 
   useEffect(() => {
@@ -250,6 +267,8 @@ export function ActivityPropertyVisibilityPanel({
 
   const onDragStart = useCallback((e: React.DragEvent, key: string) => {
     setDragKey(key);
+    setDropBeforeIndex(null);
+    dropBeforeIndexRef.current = null;
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", key);
   }, []);
@@ -257,33 +276,42 @@ export function ActivityPropertyVisibilityPanel({
   const onDragOver = useCallback((e: React.DragEvent, key: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    setDropTarget(key);
+    const list = orderedKeysRef.current;
+    const i = list.indexOf(key);
+    if (i < 0) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    const insertAt = before ? i : i + 1;
+    setDropBeforeIndex(insertAt);
+    dropBeforeIndexRef.current = insertAt;
   }, []);
 
   const onDrop = useCallback(
-    (e: React.DragEvent, targetKey: string) => {
+    (e: React.DragEvent) => {
       e.preventDefault();
       const sourceKey = e.dataTransfer.getData("text/plain");
+      const insertAt = dropBeforeIndexRef.current;
       setDragKey(null);
-      setDropTarget(null);
-      if (!sourceKey || sourceKey === targetKey) return;
-      const prev = orderedKeysRef.current;
+      setDropBeforeIndex(null);
+      dropBeforeIndexRef.current = null;
+      if (!sourceKey || insertAt == null) return;
+      const prev = [...orderedKeysRef.current];
       const oldIdx = prev.indexOf(sourceKey);
-      const newIdx = prev.indexOf(targetKey);
-      if (oldIdx === -1 || newIdx === -1) return;
-      const nextOrder = [...prev];
-      nextOrder.splice(oldIdx, 1);
-      nextOrder.splice(newIdx, 0, sourceKey);
-      setOrderedKeys(nextOrder);
+      if (oldIdx === -1) return;
+      const newIdx = insertAt > oldIdx ? insertAt - 1 : insertAt;
+      prev.splice(oldIdx, 1);
+      prev.splice(newIdx, 0, sourceKey);
+      setOrderedKeys(prev);
       const vis = visibleSetRef.current;
-      onVisibleColumnsChange(nextOrder.filter((k) => vis.has(k)));
+      onVisibleColumnsChange(prev.filter((k) => vis.has(k)));
     },
     [onVisibleColumnsChange]
   );
 
   const onDragEnd = useCallback(() => {
     setDragKey(null);
-    setDropTarget(null);
+    setDropBeforeIndex(null);
+    dropBeforeIndexRef.current = null;
   }, []);
 
   if (!open || !mounted) return null;
@@ -291,111 +319,126 @@ export function ActivityPropertyVisibilityPanel({
   const panel = (
     <div
       ref={panelRef}
-      className="fixed z-[200] flex max-h-[min(420px,calc(100dvh-24px))] w-[min(300px,calc(100vw-16px))] flex-col overflow-hidden rounded-none border border-bg-tertiary/60 bg-white shadow-lg"
+      className="fixed z-[200] flex max-h-[min(420px,calc(100dvh-24px))] w-[min(288px,calc(100vw-16px))] flex-col overflow-hidden rounded-2xl border border-black/[0.08] bg-white/95 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.25)] backdrop-blur-md"
       style={{ top: pos.top, right: pos.right }}
       role="dialog"
       aria-modal="false"
       aria-labelledby="activity-properties-panel-title"
       aria-describedby="activity-properties-panel-desc"
     >
-      <div className="shrink-0 border-b border-bg-tertiary/40 px-2.5 py-2">
+      <div className="shrink-0 border-b border-black/[0.06] px-3 py-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 pr-1">
+            <p className="font-sans text-[11px] font-medium uppercase tracking-wider text-neutral-400">Columns</p>
             <h2
               id="activity-properties-panel-title"
-              className="font-sans text-[14px] font-semibold leading-tight text-mono-dark"
+              className="mt-1 font-sans text-[15px] font-semibold leading-tight tracking-tight text-neutral-900"
             >
               Properties
             </h2>
             <p
               id="activity-properties-panel-desc"
-              className="mt-1 font-sans text-[11px] leading-snug text-mono-light"
+              className="mt-0.5 font-sans text-[12px] leading-snug text-neutral-500"
             >
-              Manage which columns are visible or not
+              Show, hide, and reorder columns
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-none text-mono-light hover:bg-bg-tertiary/40 hover:text-mono-dark"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
             aria-label="Close"
           >
-            <span className="material-symbols-rounded text-[16px] leading-none">close</span>
+            <span className="material-symbols-rounded text-[18px] leading-none">close</span>
           </button>
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center justify-between border-b border-bg-tertiary/30 px-2.5 py-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-mono-light">
+      <div className="flex shrink-0 items-center justify-between border-b border-black/[0.06] px-3 py-2">
+        <span className="font-sans text-[11px] font-medium uppercase tracking-wider text-neutral-400">
           Shown in table
         </span>
         <button
           type="button"
           onClick={hideAll}
-          className="text-[12px] font-medium text-sovereign-blue hover:underline"
+          className="rounded-lg px-2 py-1 font-sans text-[12px] font-medium text-neutral-600 transition hover:bg-neutral-100 hover:text-neutral-900"
         >
           Hide all
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-0.5">
-        {orderedKeys.map((key) => {
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1"
+        onDragLeave={(e) => {
+          if (!dragKey) return;
+          const related = e.relatedTarget as Node | null;
+          if (related && e.currentTarget.contains(related)) return;
+          setDropBeforeIndex(null);
+          dropBeforeIndexRef.current = null;
+        }}
+      >
+        {orderedKeys.map((key, idx) => {
           const visible = visibleSet.has(key);
-          const isDrop = dropTarget === key && dragKey != null && dragKey !== key;
+          const showLineAbove = dragKey != null && dropBeforeIndex === idx;
           return (
-            <div
-              key={key}
-              onDragOver={(e) => onDragOver(e, key)}
-              onDrop={(e) => onDrop(e, key)}
-              onDragEnd={onDragEnd}
-              className={`flex items-center gap-1.5 border-b border-bg-tertiary/15 px-2.5 py-1.5 transition-colors ${
-                isDrop ? "bg-sovereign-blue/10" : "hover:bg-bg-secondary/50"
-              } ${dragKey === key ? "opacity-50" : ""}`}
-            >
-              <span
-                draggable
-                onDragStart={(e) => onDragStart(e, key)}
-                className="material-symbols-rounded shrink-0 cursor-grab text-mono-light active:cursor-grabbing"
-                style={{ fontSize: 16, fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20" }}
-                aria-hidden
-              >
-                drag_indicator
-              </span>
-              <span
-                className="material-symbols-rounded shrink-0 text-mono-medium"
-                style={rowGlyphStyle}
-                aria-hidden
-              >
-                {iconFor(key)}
-              </span>
-              <span className="min-w-0 flex-1 font-sans text-[12px] leading-snug text-mono-dark">
-                {labelFor(key)}
-              </span>
-              <button
-                type="button"
-                onClick={() => toggleVisible(key)}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none text-mono-dark hover:bg-bg-tertiary/40"
-                aria-label={visible ? `Hide ${labelFor(key)}` : `Show ${labelFor(key)}`}
-                aria-pressed={visible}
+            <Fragment key={key}>
+              {showLineAbove ? <div className={PROPERTIES_DROP_LINE_CLASS} aria-hidden /> : null}
+              <div
+                onDragOver={(e) => onDragOver(e, key)}
+                onDrop={onDrop}
+                onDragEnd={onDragEnd}
+                className={`flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-neutral-100/80 ${
+                  dragKey === key ? "opacity-45" : ""
+                }`}
               >
                 <span
-                  className={`material-symbols-rounded leading-none ${
-                    visible ? "text-sovereign-blue" : "text-mono-light"
-                  }`}
-                  style={{
-                    fontSize: 18,
-                    lineHeight: 1,
-                    fontVariationSettings: visible
-                      ? ("'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 20" as const)
-                      : ("'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20" as const),
-                  }}
+                  draggable
+                  onDragStart={(e) => onDragStart(e, key)}
+                  className="material-symbols-rounded shrink-0 cursor-grab text-neutral-400 active:cursor-grabbing"
+                  style={panelGlyphMuted}
+                  aria-hidden
                 >
-                  {visible ? "visibility" : "visibility_off"}
+                  drag_indicator
                 </span>
-              </button>
-            </div>
+                <span
+                  className="material-symbols-rounded shrink-0 text-neutral-500"
+                  style={rowGlyphStyle}
+                  aria-hidden
+                >
+                  {iconFor(key)}
+                </span>
+                <span className="min-w-0 flex-1 font-sans text-[13px] leading-snug text-neutral-800">
+                  {labelFor(key)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleVisible(key)}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-neutral-700 transition hover:bg-neutral-200/60"
+                  aria-label={visible ? `Hide ${labelFor(key)}` : `Show ${labelFor(key)}`}
+                  aria-pressed={visible}
+                >
+                  <span
+                    className={`material-symbols-rounded leading-none ${
+                      visible ? "text-sovereign-blue" : "text-neutral-400"
+                    }`}
+                    style={{
+                      fontSize: 18,
+                      lineHeight: 1,
+                      fontVariationSettings: visible
+                        ? ("'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" as const)
+                        : ("'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24" as const),
+                    }}
+                  >
+                    {visible ? "visibility" : "visibility_off"}
+                  </span>
+                </button>
+              </div>
+            </Fragment>
           );
         })}
+        {dragKey != null && dropBeforeIndex === orderedKeys.length ? (
+          <div className={PROPERTIES_DROP_LINE_CLASS} aria-hidden />
+        ) : null}
       </div>
     </div>
   );

@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import type { Database, Json } from "@/lib/types/database";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { createSupabaseClient } from "@/lib/supabase/client";
-import { ActivityToolbar, type ActivityViewState } from "./ActivityToolbar";
-import { ActivityTable } from "./ActivityTable";
+import { ActivityToolbar, type ActivityViewState, type ActivityViewStatePatch } from "./ActivityToolbar";
+import { ActivityTable, type DataSourceCellInfo } from "./ActivityTable";
 import { TransactionDetailPanel, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
 import type { TransactionPropertyDefinition } from "@/lib/transaction-property-definition";
 import type { OrgMemberOption } from "@/components/TransactionDetailCustomFields";
@@ -16,6 +16,32 @@ import { parseColumnFiltersJson, serializeColumnFiltersForQuery } from "@/lib/ac
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
 const PAGE_SIZE = 100;
+
+function dedupeById<T extends { id: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of rows) {
+    if (!r?.id) continue;
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    out.push(r);
+  }
+  return out;
+}
+
+function appendUniqueById<T extends { id: string }>(prev: T[], next: T[]): T[] {
+  if (prev.length === 0) return dedupeById(next);
+  if (next.length === 0) return prev;
+  const seen = new Set(prev.map((r) => r.id));
+  const merged = [...prev];
+  for (const r of next) {
+    if (!r?.id) continue;
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    merged.push(r);
+  }
+  return merged;
+}
 
 function defaultDateRange() {
   const y = new Date().getFullYear();
@@ -77,6 +103,10 @@ export function ActivityPageClient({
   const [viewState, setViewState] = useState<ActivityViewState>(DEFAULT_VIEW_STATE);
   const [viewSettingsLoaded, setViewSettingsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const transactionsRef = useRef(transactions);
+  useEffect(() => {
+    transactionsRef.current = transactions;
+  }, [transactions]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [reanalyzing, setReanalyzing] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -93,6 +123,56 @@ export function ActivityPageClient({
     }
     return m;
   }, [orgMembers]);
+
+  const [dataSourceById, setDataSourceById] = useState<Record<string, DataSourceCellInfo>>({});
+
+  const dataSourceNameById = useMemo(() => {
+    const o: Record<string, string> = {};
+    for (const [id, v] of Object.entries(dataSourceById)) {
+      o[id] = v.name;
+    }
+    return o;
+  }, [dataSourceById]);
+
+  const dataSourceBrandColorIdById = useMemo(() => {
+    const o: Record<string, string> = {};
+    for (const [id, v] of Object.entries(dataSourceById)) {
+      o[id] = v.brandColorId ?? "blue";
+    }
+    return o;
+  }, [dataSourceById]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAccounts() {
+      try {
+        const res = await fetch("/api/data-sources?limit=200");
+        if (!res.ok || cancelled) return;
+        const body = await res.json().catch(() => ({}));
+        const rows = Array.isArray(body.data) ? body.data : [];
+        const m: Record<string, DataSourceCellInfo> = {};
+        for (const r of rows as { id?: string; name?: string; brand_color_id?: string }[]) {
+          if (!r?.id) continue;
+          m[String(r.id)] = {
+            name: String(r.name ?? "").trim() || String(r.id),
+            brandColorId: typeof r.brand_color_id === "string" ? r.brand_color_id : "blue",
+          };
+        }
+        if (!cancelled) setDataSourceById(m);
+      } catch {
+        /* ignore */
+      }
+    }
+    void loadAccounts();
+    function onAccountsChanged() {
+      void loadAccounts();
+    }
+    window.addEventListener("accounts-changed", onAccountsChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("accounts-changed", onAccountsChanged);
+    };
+  }, []);
 
   const baseQueryParams = useCallback((): Record<string, string> => {
     const params: Record<string, string> = {
@@ -125,17 +205,20 @@ export function ActivityPageClient({
   ]);
 
   const loadTransactions = useCallback(async () => {
-    setLoading(true);
+    if (transactionsRef.current.length === 0) setLoading(true);
     const params = baseQueryParams();
 
-    const [txs, count] = await Promise.all([
-      fetchTransactions(params),
-      fetchCount(params),
-    ]);
-    setTransactions(txs);
-    setTotalCount(count);
-    setLoading(false);
-    return txs;
+    try {
+      const [txs, count] = await Promise.all([
+        fetchTransactions(params),
+        fetchCount(params),
+      ]);
+      setTransactions(dedupeById(txs));
+      setTotalCount(count);
+      return txs;
+    } finally {
+      setLoading(false);
+    }
   }, [baseQueryParams]);
 
   const canLoadMore = transactions.length < totalCount;
@@ -147,7 +230,7 @@ export function ActivityPageClient({
       const params = { ...baseQueryParams(), offset: String(transactions.length) };
       const next = await fetchTransactions(params);
       if (next.length > 0) {
-        setTransactions((prev) => [...prev, ...next]);
+        setTransactions((prev) => appendUniqueById(prev, next));
       }
     } finally {
       setLoadingMore(false);
@@ -249,12 +332,34 @@ export function ActivityPageClient({
     }
   }, []);
 
+  // Minimal deep links (from dashboard cards): transaction_type + date range.
+  useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const txType = sp.get("transaction_type");
+      const dateFrom = sp.get("date_from");
+      const dateTo = sp.get("date_to");
+      if (!txType && !dateFrom && !dateTo) return;
+      setViewState((prev) => ({
+        ...prev,
+        filters: {
+          ...prev.filters,
+          transaction_type: txType || prev.filters.transaction_type,
+          date_from: typeof dateFrom === "string" && dateFrom ? dateFrom : prev.filters.date_from,
+          date_to: typeof dateTo === "string" && dateTo ? dateTo : prev.filters.date_to,
+        },
+      }));
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     if (!viewSettingsLoaded) return;
     loadTransactions();
   }, [viewSettingsLoaded, loadTransactions]);
 
-  const persistViewState = useCallback((patch: Partial<ActivityViewState>) => {
+  const persistViewState = useCallback((patch: ActivityViewStatePatch) => {
     setViewState((prev) => {
       const next: ActivityViewState = {
         ...prev,
@@ -262,7 +367,7 @@ export function ActivityPageClient({
         column_widths: patch.column_widths
           ? { ...prev.column_widths, ...patch.column_widths }
           : prev.column_widths,
-        filters: patch.filters ?? prev.filters,
+        filters: patch.filters ? { ...prev.filters, ...patch.filters } : prev.filters,
       };
       savePayloadRef.current = next;
       if (patchDebounceRef.current) clearTimeout(patchDebounceRef.current);
@@ -353,7 +458,7 @@ export function ActivityPageClient({
   // Mark when we persist locally so we can skip echoed realtime events
   const originalPersistViewState = persistViewState;
   const persistViewStateWithMark = useCallback(
-    (patch: Partial<ActivityViewState>) => {
+    (patch: ActivityViewStatePatch) => {
       lastPersistRef.current = Date.now();
       originalPersistViewState(patch);
     },
@@ -476,6 +581,35 @@ export function ActivityPageClient({
     await loadTransactions();
   }
 
+  const patchCheckboxCustomField = useCallback(
+    async (transactionId: string, propertyId: string, value: boolean) => {
+      const res = await fetch("/api/transactions/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: transactionId, custom_fields: { [propertyId]: value } }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setToast((body as { error?: string }).error ?? "Could not update field");
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+      setSidebarTransaction((prev) => {
+        if (!prev || prev.id !== transactionId) return prev;
+        const prevCf =
+          prev.custom_fields && typeof prev.custom_fields === "object" && !Array.isArray(prev.custom_fields)
+            ? { ...(prev.custom_fields as Record<string, Json>) }
+            : {};
+        return {
+          ...prev,
+          custom_fields: { ...prevCf, [propertyId]: value } as Transaction["custom_fields"],
+        };
+      });
+      await loadTransactions();
+    },
+    [loadTransactions]
+  );
+
   const handleCheckSimilar = useCallback(
     async (vendor: string, excludeId: string): Promise<Transaction[]> => {
       const normalized = normalizeVendor(vendor);
@@ -520,9 +654,13 @@ export function ActivityPageClient({
   /** New transaction: create draft in DB with current filters (status, type) applied, open in sidebar. Shortcut "n". */
   const openNewTransaction = useCallback(async () => {
     try {
-      const body: { draft: true; status?: string; transaction_type?: string } = { draft: true };
+      const body: Record<string, unknown> = { draft: true };
       if (viewState.filters.status) body.status = viewState.filters.status;
       if (viewState.filters.transaction_type) body.transaction_type = viewState.filters.transaction_type;
+      if (viewState.filters.source) body.source = viewState.filters.source;
+      if (viewState.filters.data_source_id) body.data_source_id = viewState.filters.data_source_id;
+      if (viewState.filters.date_from) body.date_from = viewState.filters.date_from;
+      if (viewState.filters.date_to) body.date_to = viewState.filters.date_to;
 
       const res = await fetch("/api/transactions", {
         method: "POST",
@@ -578,7 +716,15 @@ export function ActivityPageClient({
       setToast(e instanceof Error ? e.message : "Failed to create transaction");
       setTimeout(() => setToast(null), 5000);
     }
-  }, [viewState.filters.status, viewState.filters.transaction_type, loadTransactions]);
+  }, [
+    viewState.filters.status,
+    viewState.filters.transaction_type,
+    viewState.filters.source,
+    viewState.filters.data_source_id,
+    viewState.filters.date_from,
+    viewState.filters.date_to,
+    loadTransactions,
+  ]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -613,18 +759,8 @@ export function ActivityPageClient({
         </div>
       )}
 
-      {viewSettingsLoaded && !loading && transactions.length === 0 && (
-        <div className="card p-8 text-center">
-          <p className="text-mono-medium">No transactions match these filters.</p>
-        </div>
-      )}
-
-      {loading && (
-        <p className="text-sm text-mono-medium">Loading…</p>
-      )}
-
-      {!loading && transactions.length > 0 && (
-        <>
+      <div className="relative min-h-[200px]">
+        <div className="relative">
           <ActivityTable
             transactions={transactions}
             visibleColumns={viewState.visible_columns}
@@ -639,26 +775,44 @@ export function ActivityPageClient({
             }}
             transactionProperties={transactionProperties}
             memberDisplayById={memberDisplayById}
+            onPatchCustomField={patchCheckboxCustomField}
+            dataSourceById={dataSourceById}
           />
-          {loadingMore && (
-            <div className="flex justify-center py-3 text-sm text-mono-light">Loading…</div>
+          {((!viewSettingsLoaded && transactions.length === 0) ||
+            (loading && transactions.length === 0)) && (
+            <div
+              className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-[#f5f5f7]/90 transition-opacity duration-300 ease-out"
+              aria-busy="true"
+              aria-live="polite"
+            >
+              <div
+                className="h-7 w-7 animate-spin rounded-full border-2 border-neutral-200/90 border-t-[#007aff]"
+                aria-label="Loading transactions"
+              />
+            </div>
           )}
-          {canLoadMore && (
-            <div ref={loadMoreSentinelRef} className="h-4 w-full shrink-0" aria-hidden />
-          )}
-        </>
-      )}
+        </div>
+        {loadingMore && (
+          <div className="flex justify-center py-2 text-xs text-mono-light">Loading…</div>
+        )}
+        {canLoadMore && (
+          <div ref={loadMoreSentinelRef} className="h-4 w-full shrink-0" aria-hidden />
+        )}
+        {viewSettingsLoaded && !loading && transactions.length === 0 && (
+          <div className="card mt-3 p-6 text-center">
+            <p className="text-sm text-mono-medium">No transactions match these filters.</p>
+          </div>
+        )}
+      </div>
 
       {sidebarTransaction && (
         <TransactionDetailPanel
           transaction={sidebarTransaction}
           onClose={() => setSidebarTransaction(null)}
           onReanalyze={handleReanalyze}
-          onMarkPersonal={async () => {
-            await handleSave(sidebarTransaction.id, { status: "personal" });
-            setSidebarTransaction(null);
-          }}
           editable
+          dataSourceNameById={dataSourceNameById}
+          dataSourceBrandColorIdById={dataSourceBrandColorIdById}
           onSave={async (id, update) => {
             await handleSave(id, update);
             setSidebarTransaction((prev) => {

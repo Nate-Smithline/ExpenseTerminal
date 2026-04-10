@@ -31,7 +31,7 @@ type InvoiceItem = {
 };
 
 const PREF_TABS = [
-  { href: "/preferences/automations", label: "Automations" },
+  { href: "/preferences/org", label: "Org" },
   { href: "/preferences/profile", label: "Profile" },
 ] as const;
 

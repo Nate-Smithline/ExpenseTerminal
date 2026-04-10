@@ -96,11 +96,15 @@ export const transactionPostBodySchema = z.object({
   transaction_type: z.enum(["income", "expense"]).optional(),
 });
 
-/** Create a blank draft transaction; optional status and transaction_type from current table filters. */
+/** Create a blank draft transaction; optional fields align new rows with the current activity view filters. */
 export const transactionDraftBodySchema = z.object({
   draft: z.literal(true),
   status: z.enum(["pending", "completed", "auto_sorted", "personal"]).optional(),
   transaction_type: z.enum(["income", "expense"]).optional(),
+  date_from: z.string().trim().optional(),
+  date_to: z.string().trim().optional(),
+  source: z.enum(["manual", "csv_upload", "data_feed"]).optional(),
+  data_source_id: z.string().uuid().optional().nullable(),
 });
 
 export function parseQueryLimit(value: string | null): number {
@@ -138,17 +142,45 @@ export const deductionDeleteSchema = z.object({
   tax_year: taxYearSchema,
 });
 
-/** Allowed sort columns for activity table */
+/** Allowed sort columns for activity table (PostgREST `.order()` on `transactions`) */
 export const ACTIVITY_SORT_COLUMNS = [
   "date",
-  "amount",
   "vendor",
-  "status",
+  "description",
+  "amount",
   "transaction_type",
+  "status",
   "category",
+  "schedule_c_line",
+  "source",
+  "ai_confidence",
+  "business_purpose",
+  "quick_label",
+  "notes",
+  "deduction_percent",
+  "vendor_normalized",
+  "data_source_id",
   "created_at",
+  "updated_at",
 ] as const;
 export type ActivitySortColumn = (typeof ACTIVITY_SORT_COLUMNS)[number];
+
+/** Built-in sort field or UUID of an org property (e.g. type `account` → orders by `data_source_id`). */
+export const activitySortColumnSchema = z.union([z.enum(ACTIVITY_SORT_COLUMNS), uuidSchema]);
+
+export type ActivitySortColumnKey = z.infer<typeof activitySortColumnSchema>;
+
+export type ActivitySortRule = {
+  column: ActivitySortColumnKey;
+  asc: boolean;
+};
+
+export const activitySortRuleSchema = z.object({
+  column: activitySortColumnSchema,
+  asc: z.boolean(),
+});
+
+export const activitySortRulesSchema = z.array(activitySortRuleSchema).min(1).max(5);
 
 /** Allowed visible column keys for activity table */
 export const ACTIVITY_VISIBLE_COLUMNS = [
@@ -166,6 +198,7 @@ export const ACTIVITY_VISIBLE_COLUMNS = [
   "quick_label",
   "notes",
   "created_at",
+  "data_source_id",
 ] as const;
 export type ActivityVisibleColumn = (typeof ACTIVITY_VISIBLE_COLUMNS)[number];
 
@@ -247,6 +280,7 @@ export const TRANSACTION_PROPERTY_TYPES = [
   "created_by",
   "last_edited_date",
   "last_edited_time",
+  "account",
 ] as const;
 
 export type TransactionPropertyType = (typeof TRANSACTION_PROPERTY_TYPES)[number];
@@ -300,10 +334,12 @@ export const pagePublishPatchSchema = z.object({
   published: z.boolean(),
 });
 
-export const pageActivityViewSettingsPatchSchema = activityViewSettingsPatchSchema;
+export const pageActivityViewSettingsPatchSchema = activityViewSettingsPatchSchema.extend({
+  sort_rules: activitySortRulesSchema.optional(),
+});
 
 // Notification preferences
 export const notificationPreferencesSchema = z.object({
-  type: z.enum(["count_based", "interval_based"]),
+  type: z.enum(["count_based", "interval_based", "never"]),
   value: z.string().min(1, "Value is required"),
 });

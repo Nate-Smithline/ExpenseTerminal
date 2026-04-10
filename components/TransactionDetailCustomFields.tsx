@@ -12,6 +12,7 @@ type TxLike = {
   user_id: string;
   created_at: string;
   updated_at: string;
+  data_source_id?: string | null;
 };
 
 function formatDateShort(iso: string) {
@@ -52,6 +53,8 @@ type Props = {
   setEditCustomFields: React.Dispatch<React.SetStateAction<Record<string, unknown>>>;
   memberDisplayById: Record<string, string>;
   orgMembers: OrgMemberOption[];
+  /** Account names by data_source_id for read-only Account property. */
+  dataSourceNameById?: Record<string, string>;
 };
 
 export function TransactionDetailCustomFields({
@@ -62,6 +65,7 @@ export function TransactionDetailCustomFields({
   setEditCustomFields,
   memberDisplayById,
   orgMembers,
+  dataSourceNameById = {},
 }: Props) {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
 
@@ -101,7 +105,6 @@ export function TransactionDetailCustomFields({
   return (
     <>
       <div className="border-t border-bg-tertiary/40 my-2 pt-2">
-        <p className="text-[10px] font-medium text-mono-light uppercase tracking-wider px-0 pb-2">Org properties</p>
         {sorted.length === 0 && editable && (
           <p className="text-xs text-mono-light pb-3">
             No custom properties yet. Add one below to use it as a column and field here.
@@ -109,6 +112,16 @@ export function TransactionDetailCustomFields({
         )}
         {sorted.map((def) => {
           const raw = editCustomFields[def.id];
+
+          if (def.type === "account") {
+            const dsId = transaction.data_source_id ?? null;
+            const label = dsId ? dataSourceNameById[dsId] ?? "—" : "—";
+            return (
+              <NotionStylePropertyRow icon={transactionPropertyTypeIcon(def.type)} key={def.id} label={def.name}>
+                <span className="text-sm text-mono-dark">{label}</span>
+              </NotionStylePropertyRow>
+            );
+          }
 
           if (isSystemTransactionPropertyType(def.type)) {
             return (

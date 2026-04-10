@@ -3,6 +3,7 @@ import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { getPlaidClient, encryptAccessToken } from "@/lib/plaid";
+import { persistPlaidBalancesForPlaidItem } from "@/lib/plaid-balance-persist";
 
 function getRequestHostname(req: Request): string {
   const xfHost = req.headers.get("x-forwarded-host");
@@ -90,27 +91,25 @@ export async function POST(req: Request) {
       .from("data_sources")
       .select("id")
       .eq("user_id", userId)
-      .eq("plaid_item_id", itemId)
-      .limit(1);
+      .eq("plaid_item_id", itemId);
 
     if (existingByItem && existingByItem.length > 0) {
-      // Reconnecting an existing item -- update the access token
-      for (const existing of existingByItem) {
-        const { error: updateErr } = await (supabase as any)
-          .from("data_sources")
-          .update({
-            plaid_access_token: encryptedToken,
-            connected_at: now,
-            last_failed_sync_at: null,
-            last_error_summary: null,
-          })
-          .eq("id", existing.id)
-          .eq("user_id", userId);
-        if (updateErr) {
-          firstSaveError = firstSaveError ?? updateErr.message ?? String(updateErr);
-        } else {
-          createdIds.push(existing.id);
-        }
+      // Reconnecting an existing item — refresh the access token on every row for this Plaid item
+      const existingIds = existingByItem.map((r: { id: string }) => r.id);
+      const { error: bulkUpdateErr } = await (supabase as any)
+        .from("data_sources")
+        .update({
+          plaid_access_token: encryptedToken,
+          connected_at: now,
+          last_failed_sync_at: null,
+          last_error_summary: null,
+        })
+        .in("id", existingIds)
+        .eq("user_id", userId);
+      if (bulkUpdateErr) {
+        firstSaveError = firstSaveError ?? bulkUpdateErr.message ?? String(bulkUpdateErr);
+      } else {
+        createdIds.push(...existingIds);
       }
     } else {
       // New connection -- create a data source per account (or one for the item)
@@ -131,6 +130,7 @@ export async function POST(req: Request) {
               source_type: "plaid",
               plaid_access_token: encryptedToken,
               plaid_item_id: itemId,
+              plaid_account_id: acc.id ?? null,
               plaid_institution_id: institutionId,
               plaid_cursor: null,
               connected_at: now,
@@ -189,6 +189,12 @@ export async function POST(req: Request) {
         },
         { status: 500 },
       );
+    }
+
+    try {
+      await persistPlaidBalancesForPlaidItem(supabase, userId, hostname, accessToken, itemId);
+    } catch (balErr) {
+      console.warn("[plaid/exchange-token] Balance snapshot failed", balErr);
     }
 
     return NextResponse.json({

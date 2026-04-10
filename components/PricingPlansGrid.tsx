@@ -31,13 +31,12 @@ export function PricingPlansGrid() {
       {plans.map((plan) => (
         <div
           key={plan.id}
-          className="rounded-none px-5 py-6 text-sm"
-          style={{ background: "#F5F0E8" }}
+          className="rounded-3xl px-6 py-7 text-sm border border-black/10 bg-white shadow-sm"
         >
           <div className="flex items-center justify-between mb-2">
             <span className="font-medium text-mono-dark">{plan.label}</span>
             {plan.badge && (
-              <span className="text-xs uppercase tracking-[0.16em] text-mono-medium">
+              <span className="text-[11px] uppercase tracking-[0.16em] text-black/70 bg-[#F5F5F7] border border-black/10 rounded-full px-3 py-1">
                 {plan.badge}
               </span>
             )}
@@ -51,7 +50,10 @@ export function PricingPlansGrid() {
           <p className="text-sm text-mono-medium mb-3">{plan.description}</p>
           <ul className="text-sm text-mono-medium space-y-1.5">
             {plan.highlights.map((h) => (
-              <li key={h}>• {h}</li>
+              <li key={h} className="flex gap-2">
+                <span className="text-[#007aff] mt-[2px]">•</span>
+                <span>{h}</span>
+              </li>
             ))}
           </ul>
         </div>

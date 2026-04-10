@@ -54,12 +54,18 @@ export interface Database {
           name: string;
           created_at: string;
           updated_at: string;
+          accounts_page_visibility: string;
+          icon_emoji: string | null;
+          icon_image_url: string | null;
         };
         Insert: {
           id?: string;
           name?: string;
           created_at?: string;
           updated_at?: string;
+          accounts_page_visibility?: string;
+          icon_emoji?: string | null;
+          icon_image_url?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["orgs"]["Insert"]>;
       };
@@ -283,8 +289,20 @@ export interface Database {
           stripe_sync_start_date: string | null;
           plaid_access_token: string | null;
           plaid_item_id: string | null;
+          plaid_account_id: string | null;
           plaid_cursor: string | null;
           plaid_institution_id: string | null;
+          plaid_balance_current: number | string | null;
+          plaid_balance_available: number | string | null;
+          plaid_balance_limit: number | string | null;
+          plaid_balance_iso_currency_code: string | null;
+          plaid_balance_as_of: string | null;
+          manual_balance: number | string | null;
+          manual_balance_iso_currency_code: string | null;
+          balance_class: string | null;
+          include_in_net_worth: boolean;
+          balance_value_preference: string | null;
+          brand_color_id: string;
           created_at: string;
         };
         Insert: {
@@ -305,8 +323,20 @@ export interface Database {
           stripe_sync_start_date?: string | null;
           plaid_access_token?: string | null;
           plaid_item_id?: string | null;
+          plaid_account_id?: string | null;
           plaid_cursor?: string | null;
           plaid_institution_id?: string | null;
+          plaid_balance_current?: number | string | null;
+          plaid_balance_available?: number | string | null;
+          plaid_balance_limit?: number | string | null;
+          plaid_balance_iso_currency_code?: string | null;
+          plaid_balance_as_of?: string | null;
+          manual_balance?: number | string | null;
+          manual_balance_iso_currency_code?: string | null;
+          balance_class?: string | null;
+          include_in_net_worth?: boolean;
+          balance_value_preference?: string | null;
+          brand_color_id?: string;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["data_sources"]["Insert"]>;
@@ -510,6 +540,85 @@ export interface Database {
           updated_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["transaction_property_definitions"]["Insert"]>;
+      };
+      org_transaction_rules: {
+        Row: {
+          id: string;
+          org_id: string;
+          name: string;
+          enabled: boolean;
+          position: number;
+          conditions_json: Json;
+          actions_json: Json;
+          trigger_mode: string;
+          once_completed_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          name?: string;
+          enabled?: boolean;
+          position?: number;
+          conditions_json?: Json;
+          actions_json?: Json;
+          trigger_mode?: string;
+          once_completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["org_transaction_rules"]["Insert"]>;
+      };
+      org_transaction_rule_runs: {
+        Row: {
+          id: string;
+          org_id: string;
+          rule_id: string | null;
+          started_at: string;
+          finished_at: string | null;
+          status: string;
+          match_count: number;
+          update_count: number;
+          ai_count: number;
+          error_summary: string | null;
+          context: Json;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          rule_id?: string | null;
+          started_at?: string;
+          finished_at?: string | null;
+          status?: string;
+          match_count?: number;
+          update_count?: number;
+          ai_count?: number;
+          error_summary?: string | null;
+          context?: Json;
+        };
+        Update: Partial<Database["public"]["Tables"]["org_transaction_rule_runs"]["Insert"]>;
+      };
+      user_financial_snapshots: {
+        Row: {
+          user_id: string;
+          snapshot_date: string;
+          net_worth: number | string;
+          total_assets: number | string;
+          total_liabilities: number | string;
+          accounts: Json;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          snapshot_date: string;
+          net_worth: number | string;
+          total_assets: number | string;
+          total_liabilities: number | string;
+          accounts?: Json;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["user_financial_snapshots"]["Insert"]>;
       };
     };
   };

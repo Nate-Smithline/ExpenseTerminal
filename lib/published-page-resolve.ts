@@ -39,7 +39,7 @@ export async function fetchPublishedPageBundle(svc: Svc, rawToken: string): Prom
 
   const { data: settings } = await (svc as any)
     .from("page_activity_view_settings")
-    .select("sort_column,sort_asc,visible_columns,column_widths,filters")
+    .select("sort_rules,sort_column,sort_asc,visible_columns,column_widths,filters")
     .eq("page_id", page.id)
     .maybeSingle();
 

@@ -10,6 +10,7 @@ import { TransactionCard } from "@/components/TransactionCard";
 import type { TransactionUpdate, TransactionCardRef } from "@/components/TransactionCard";
 import { TransactionDetailPanel, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
 import { SimilarTransactionsPopup } from "@/components/SimilarTransactionsPopup";
+import { brandColorHex } from "@/lib/brand-palette";
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
 interface InboxPageClientProps {
@@ -116,6 +117,9 @@ export function InboxPageClient({
   const [aiProgress, setAiProgress] = useState<{ completed: number; total: number; current: string } | null>(null);
   const [aiStalled, setAiStalled] = useState(false);
 
+  const [dataSourceNameById, setDataSourceNameById] = useState<Record<string, string>>({});
+  const [dataSourceBrandColorIdById, setDataSourceBrandColorIdById] = useState<Record<string, string>>({});
+
 
   // If we ever end up in a "bulkAnalyzing" UI state without the real AI progress
   // starting (e.g. while testing preview UI), automatically reset back.
@@ -130,6 +134,55 @@ export function InboxPageClient({
   }, [bulkAnalyzing, aiProgress]);
 
   const cardRefs = useRef<Map<string, TransactionCardRef>>(new Map());
+
+  const loadAccounts = useCallback(() => {
+    fetch("/api/data-sources")
+      .then(async (r) => {
+        const text = await r.text().catch(() => "");
+        let json: Record<string, unknown> = {};
+        try {
+          json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+        } catch {
+          json = {};
+        }
+        if (!r.ok) return { data: [] as unknown[] };
+        return json;
+      })
+      .then((d) => {
+        const rows = Array.isArray(d.data) ? d.data : [];
+        const m: Record<string, string> = {};
+        const c: Record<string, string> = {};
+        for (const raw of rows) {
+          if (!raw || typeof raw !== "object") continue;
+          const id = (raw as { id?: unknown }).id;
+          if (typeof id !== "string" || !id) continue;
+          const name = typeof (raw as { name?: unknown }).name === "string" ? (raw as { name: string }).name : "";
+          m[id] = name.trim() || "Account";
+          const colorId =
+            typeof (raw as { brand_color_id?: unknown }).brand_color_id === "string"
+              ? (raw as { brand_color_id: string }).brand_color_id
+              : "";
+          if (colorId) c[id] = colorId;
+        }
+        setDataSourceNameById(m);
+        setDataSourceBrandColorIdById(c);
+      })
+      .catch(() => {
+        /* ignore */
+      });
+  }, []);
+
+  useEffect(() => {
+    loadAccounts();
+  }, [loadAccounts]);
+
+  useEffect(() => {
+    function onAccountsChanged() {
+      loadAccounts();
+    }
+    window.addEventListener("accounts-changed", onAccountsChanged);
+    return () => window.removeEventListener("accounts-changed", onAccountsChanged);
+  }, [loadAccounts]);
 
   function formatDollars(n: number): string {
     return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -974,7 +1027,11 @@ export function InboxPageClient({
                 <ul className="text-xs text-mono-dark space-y-1">
                   {group.map((t) => (
                     <li key={t.id}>
-                      {t.vendor} — {t.date} — ${Number(t.amount).toFixed(2)}
+                      {t.vendor} — {t.date} — $
+                      {Math.abs(Number(t.amount)).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </li>
                   ))}
                 </ul>
@@ -1031,6 +1088,8 @@ export function InboxPageClient({
               else cardRefs.current.delete(t.id);
             }}
             transaction={t}
+            accountName={t.data_source_id ? (dataSourceNameById[t.data_source_id] ?? null) : null}
+            accountBrandColorHex={t.data_source_id ? brandColorHex(dataSourceBrandColorIdById[t.data_source_id]) : null}
             isActive={i === activeIdx}
             onFocus={() => setActiveIdx(i)}
             taxRate={taxRate}
@@ -1089,14 +1148,12 @@ export function InboxPageClient({
           transaction={manageTx}
           onClose={() => setManageTx(null)}
           onReanalyze={manageTx.transaction_type === "expense" ? handleReanalyze : undefined}
-          onMarkPersonal={async () => {
-            await handleMarkPersonal(manageTx.id);
-            setManageTx(null);
-          }}
           onDelete={async () => {
             await handleDelete(manageTx.id);
           }}
           editable
+          dataSourceNameById={dataSourceNameById}
+          dataSourceBrandColorIdById={dataSourceBrandColorIdById}
           onSave={async (txId, update) => {
             await saveTransactionUpdate(txId, update);
             setManageTx(null);

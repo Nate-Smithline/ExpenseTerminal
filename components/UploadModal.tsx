@@ -7,6 +7,20 @@ import ExcelJS from "exceljs";
 
 const BATCH_SIZE = 500;
 
+const appleOverlayClass =
+  "fixed inset-0 z-50 flex min-h-[100dvh] items-center justify-center bg-black/40 px-4 backdrop-blur-md";
+const applePanelClass =
+  "relative w-full max-w-md overflow-hidden rounded-2xl border border-black/[0.08] bg-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.18)]";
+const appleModalHeadClass = "px-5 pt-5 pb-1";
+const appleModalBodyClass = "px-5 py-3";
+const appleModalFooterClass = "flex justify-end gap-2 border-t border-black/[0.06] bg-[#fafafa]/80 px-5 py-4";
+const appleBtnPrimary =
+  "rounded-full bg-[#0071e3] px-5 py-2.5 text-[15px] font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40";
+const appleBtnSecondary =
+  "rounded-full bg-[#e5e5ea] px-5 py-2.5 text-[15px] font-medium text-[#1d1d1f] transition hover:bg-[#d8d8dc] disabled:opacity-40";
+const appleInputClass =
+  "w-full rounded-xl border border-black/[0.12] bg-white px-3 py-2.5 text-sm text-mono-dark outline-none transition focus:border-[#0071e3] focus:ring-1 focus:ring-[#0071e3]/25";
+
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -580,19 +594,10 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
   }
 
   return (
-    <div
-      className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="upload-modal-title"
-    >
-      <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
-        <div className="bg-white px-6 pt-6 pb-1 flex items-start">
-          <h2
-            id="upload-modal-title"
-            className="text-xl text-mono-dark font-medium"
-            style={{ fontFamily: "var(--font-sans)" }}
-          >
+    <div className={appleOverlayClass} role="dialog" aria-modal="true" aria-labelledby="upload-modal-title">
+      <div className={applePanelClass}>
+        <div className={appleModalHeadClass}>
+          <h2 id="upload-modal-title" className="text-[20px] font-semibold tracking-tight text-mono-dark">
             {step === "choose_source"
               ? "Choose account"
               : resolvedDirectFeed
@@ -601,7 +606,7 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
           </h2>
         </div>
 
-        <div className="px-6 py-3 space-y-3">
+        <div className={`${appleModalBodyClass} space-y-3`}>
           {step === "choose_source" ? (
             <>
               <p className="text-xs text-mono-medium">
@@ -613,13 +618,13 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                 <>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-mono-dark block">Account</label>
-                    <div className="space-y-1.5 max-h-40 overflow-y-auto border border-bg-tertiary/60 rounded-none p-1">
+                    <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-black/[0.08] p-1">
                       {dataSources.map((ds) => (
                         <button
                           key={ds.id}
                           type="button"
                           onClick={() => setSelectedDataSourceId(ds.id)}
-                          className={`w-full text-left px-3 py-2.5 rounded-none text-sm transition ${
+                          className={`w-full rounded-lg px-3 py-2.5 text-left text-sm transition ${
                             selectedDataSourceId === ds.id
                               ? "bg-accent-sage/12 text-accent-sage font-medium"
                               : "text-mono-dark hover:bg-bg-secondary"
@@ -646,24 +651,24 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                       Create new account
                     </button>
                   ) : (
-                    <div className="border border-bg-tertiary/60 rounded-none p-4 space-y-3 bg-bg-secondary/30">
+                    <div className="space-y-3 rounded-xl border border-black/[0.08] bg-[#fafafa]/80 p-4">
                       <h3 className="text-sm font-semibold text-mono-dark">New account</h3>
                       <div>
-                        <label className="text-sm font-medium text-mono-dark block mb-2">Account name *</label>
+                        <label className="mb-1.5 block text-sm font-medium text-mono-dark">Account name *</label>
                         <input
                           type="text"
                           value={createName}
                           onChange={(e) => setCreateName(e.target.value)}
                           placeholder="e.g. Chase Business Checking"
-                          className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
+                          className={appleInputClass}
                         />
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-mono-dark block mb-2">Account type *</label>
+                        <label className="mb-1.5 block text-sm font-medium text-mono-dark">Account type *</label>
                         <select
                           value={createAccountType}
                           onChange={(e) => setCreateAccountType(e.target.value)}
-                          className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
+                          className={appleInputClass}
                         >
                           {ACCOUNT_TYPES.map((t) => (
                             <option key={t.value} value={t.value}>{t.label}</option>
@@ -671,28 +676,24 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
                         </select>
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-mono-dark block mb-2">Institution</label>
+                        <label className="mb-1.5 block text-sm font-medium text-mono-dark">Institution</label>
                         <input
                           type="text"
                           value={createInstitution}
                           onChange={(e) => setCreateInstitution(e.target.value)}
                           placeholder="e.g. Chase, Amex"
-                          className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
+                          className={appleInputClass}
                         />
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowCreateForm(false)}
-                          className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors"
-                        >
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => setShowCreateForm(false)} className={appleBtnSecondary}>
                           Cancel
                         </button>
                         <button
                           type="button"
                           onClick={handleCreateDataSource}
                           disabled={createSaving || !createName.trim()}
-                          className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 disabled:opacity-40 transition-colors"
+                          className={appleBtnPrimary}
                         >
                           {createSaving ? "Creating…" : "Create account"}
                         </button>
@@ -729,10 +730,10 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
             onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            className={`relative flex min-h-[160px] flex-col items-center justify-center gap-2 rounded-none border-2 border-dashed transition-colors ${
+            className={`relative flex min-h-[160px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed transition-colors ${
               isDragging
                 ? "border-accent-terracotta bg-accent-terracotta/5"
-                : "border-bg-tertiary bg-bg-secondary/50"
+                : "border-black/[0.12] bg-[#fafafa]/80"
             }`}
           >
             <input
@@ -839,33 +840,35 @@ export function UploadModal({ onClose, onCompleted, dataSourceId: dataSourceIdPr
           )}
         </div>
 
-        <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
+        <div className={appleModalFooterClass}>
           {step === "choose_source" ? (
             <>
-              <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors">
+              <button type="button" onClick={onClose} className={appleBtnSecondary}>
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={() => { setStep("upload"); setError(null); }}
                 disabled={!selectedDataSourceId || dataSourcesLoading}
-                className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors disabled:opacity-40"
+                className={appleBtnPrimary}
               >
                 Continue
               </button>
             </>
           ) : stage === "done" ? (
-            <button onClick={onClose} className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors">
+            <button type="button" onClick={onClose} className={appleBtnPrimary}>
               Done
             </button>
           ) : (
             <>
-              <button onClick={onClose} disabled={loading} className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors disabled:opacity-40">
+              <button type="button" onClick={onClose} disabled={loading} className={appleBtnSecondary}>
                 Cancel
               </button>
               <button
+                type="button"
                 disabled={!file || loading || (needsDataSourceStep && !effectiveDataSourceId)}
                 onClick={handleImport}
-                className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 transition-colors disabled:opacity-40"
+                className={appleBtnPrimary}
               >
                 {loading ? "Importing..." : "Import"}
               </button>

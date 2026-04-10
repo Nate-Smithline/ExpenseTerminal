@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import type { Database } from "@/lib/types/database";
 import type { NormalizedRule, RuleConditions, RuleAction } from "@/lib/rules/types";
-import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
 import { PreferencesTabs } from "@/app/preferences/PreferencesTabs";
 
 type NotificationPrefs = {
@@ -47,23 +45,25 @@ function notificationSummary(prefs: NotificationPrefs): string {
   return `Every ${prefs.value} transactions`;
 }
 
-type TaxYearSetting = Database["public"]["Tables"]["tax_year_settings"]["Row"];
-
 interface RulesPageClientProps {
   initialRules: NormalizedRule[];
   initialNotificationPreferences: NotificationPrefs;
-  initialTaxSettings: TaxYearSetting[];
+  /** When set, show a link to org-wide transaction rules (Plaid/CSV + AI). */
+  orgRulesHref?: string;
+  /** Hide page title and preference tabs (e.g. embedded on Org settings). */
+  embedded?: boolean;
 }
 
 const PREF_TABS = [
-  { href: "/preferences/automations", label: "Automations" },
+  { href: "/preferences/org", label: "Org" },
   { href: "/preferences/profile", label: "Profile" },
 ] as const;
 
 export function RulesPageClient({
   initialRules,
   initialNotificationPreferences,
-  initialTaxSettings,
+  orgRulesHref,
+  embedded = false,
 }: RulesPageClientProps) {
   const [rules, setRules] = useState<NormalizedRule[]>(initialRules);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPrefs>(initialNotificationPreferences);
@@ -74,13 +74,6 @@ export function RulesPageClient({
   const [notificationModalOpen, setNotificationModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  const [taxSettings, setTaxSettings] = useState<TaxYearSetting[]>(initialTaxSettings);
-  const [newYear, setNewYear] = useState(new Date().getFullYear());
-  const [newRate, setNewRate] = useState("24");
-  const [savingTax, setSavingTax] = useState(false);
-  const [taxModalOpen, setTaxModalOpen] = useState(false);
-  const [taxError, setTaxError] = useState<string | null>(null);
-
   const reload = useCallback(async () => {
     const res = await fetch("/api/rules");
     if (!res.ok) return;
@@ -89,42 +82,6 @@ export function RulesPageClient({
     setNotificationPreferences(data.notificationPreferences ?? null);
   }, []);
 
-  async function handleAddTaxYear() {
-    const rate = parseFloat(newRate);
-    if (isNaN(rate) || rate < 0 || rate > 100) {
-      setTaxError("Enter a rate between 0 and 100.");
-      return;
-    }
-    setSavingTax(true);
-
-    const res = await fetch("/api/tax-year-settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tax_year: newYear, tax_rate: rate / 100 }),
-    });
-
-    if (res.ok) {
-      const { data } = await res.json();
-      setTaxSettings((prev) => {
-        const filtered = prev.filter((s) => s.tax_year !== newYear);
-        return [data as TaxYearSetting, ...filtered].sort((a, b) => b.tax_year - a.tax_year);
-      });
-      setTaxModalOpen(false);
-      setTaxError(null);
-    }
-    setSavingTax(false);
-  }
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setTaxModalOpen(false);
-    }
-    if (taxModalOpen) {
-      document.addEventListener("keydown", onKey);
-      return () => document.removeEventListener("keydown", onKey);
-    }
-  }, [taxModalOpen]);
-
   useEffect(() => {
     const t = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(t);
@@ -132,21 +89,48 @@ export function RulesPageClient({
 
   return (
     <div className="space-y-6">
-      <div className="space-y-3">
-        <div>
-          <div
-            role="heading"
-            aria-level={1}
-            className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
-          >
-            Automations
+      {!embedded && (
+        <div className="space-y-3">
+          <div>
+            <div
+              role="heading"
+              aria-level={1}
+              className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
+            >
+              Automations
+            </div>
+            <p className="text-base text-mono-medium mt-1 font-sans">
+              Set policies to help automate decisions and save even more time.
+            </p>
           </div>
-          <p className="text-base text-mono-medium mt-1 font-sans">
-            Set policies to help automate decisions and save even more time.
-          </p>
+          <PreferencesTabs tabs={PREF_TABS} />
         </div>
-        <PreferencesTabs tabs={PREF_TABS} />
-      </div>
+      )}
+
+      {orgRulesHref && (
+        <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
+          <div className="px-4 py-3 flex items-center justify-between gap-4">
+            <div>
+              <div
+                role="heading"
+                aria-level={2}
+                className="text-base md:text-lg font-normal font-sans text-mono-dark"
+              >
+                Transaction rules
+              </div>
+              <p className="mt-1 text-xs text-mono-medium font-sans">
+                Org-wide rules for Plaid, CSV, and AI (amount, vendor, date, properties).
+              </p>
+            </div>
+            <a
+              href={orgRulesHref}
+              className="rounded-none bg-[#E8EEF5] px-4 py-2 text-sm font-medium font-sans text-mono-dark hover:opacity-80 shrink-0"
+            >
+              Open
+            </a>
+          </div>
+        </section>
+      )}
 
       {/* Notifications header + summary in flat card */}
       <section className="border border-[#F0F1F7] divide-y divide-[#F0F1F7] bg-white">
@@ -178,59 +162,6 @@ export function RulesPageClient({
               {notificationSummary(notificationPreferences)}
             </span>
           </div>
-        </div>
-      </section>
-
-      {/* Tax Rates summary under Notifications */}
-      <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
-        <div className="px-4 py-3 flex items-center justify-between gap-4">
-          <div>
-            <div
-              role="heading"
-              aria-level={2}
-              className="text-base md:text-lg font-normal font-sans text-mono-dark"
-            >
-              Tax Rates
-            </div>
-            <p className="mt-1 text-xs text-mono-medium font-sans">
-              Custom marginal rates that override the default 24%.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setTaxError(null);
-              setTaxModalOpen(true);
-            }}
-            className="rounded-none bg-[#E8EEF5] px-4 py-2 text-sm font-medium font-sans text-mono-dark hover:opacity-80"
-          >
-            Edit Rate
-          </button>
-        </div>
-        <div className="px-4 py-3 space-y-3">
-          {taxSettings.length > 0 ? (
-            <div className="space-y-3 text-xs font-sans text-mono-medium">
-              {taxSettings.map((s) => (
-                <div
-                  key={s.id}
-                  className="flex flex-wrap gap-x-4 gap-y-1 border-t border-[#F0F1F7] first:border-t-0 pt-2 first:pt-0"
-                >
-                  <div className="min-w-[110px]">
-                    <span className="font-semibold text-mono-dark">{s.tax_year}</span>
-                  </div>
-                  <div className="flex-1">
-                    <span className="tabular-nums">
-                      {(Number(s.tax_rate) * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-mono-medium font-sans">
-              No custom tax rates yet. Use Edit Rate to add a yearly rate.
-            </p>
-          )}
         </div>
       </section>
 
@@ -321,92 +252,6 @@ export function RulesPageClient({
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-lg bg-mono-dark px-4 py-2.5 text-sm text-white shadow-lg z-50">
           {toast}
-        </div>
-      )}
-
-      {/* Tax Rate Modal */}
-      {taxModalOpen && (
-        <div
-          className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 overflow-hidden">
-            <div className="bg-white px-6 pt-6 pb-1 flex items-start">
-              <h2
-                className="text-xl text-mono-dark font-medium"
-                style={{ fontFamily: "var(--font-sans)" }}
-              >
-                Set Tax Rate
-              </h2>
-            </div>
-            <div className="px-6 py-3 space-y-3">
-              <p className="text-xs text-mono-medium">
-                Choose a tax year and set a custom marginal rate. This overrides the default 24% for that year.
-              </p>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs text-mono-medium mb-1">Year</label>
-                  <select
-                    value={newYear}
-                    onChange={(e) => setNewYear(parseInt(e.target.value, 10))}
-                    className="w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none border-bg-tertiary/60"
-                  >
-                    {[0, 1, 2].map((offset) => {
-                      const y = new Date().getFullYear() - offset;
-                      return (
-                        <option key={y} value={y}>
-                          {y}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-mono-medium mb-1">Rate (%)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.1}
-                    value={newRate}
-                    onChange={(e) => {
-                      setNewRate(e.target.value);
-                      setTaxError(null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAddTaxYear();
-                      }
-                    }}
-                    placeholder="e.g. 24"
-                    className={`w-full border px-4 py-3 text-sm text-mono-dark bg-white rounded-none focus:border-black outline-none tabular-nums ${
-                      taxError ? "border-amber-500" : "border-bg-tertiary/60"
-                    }`}
-                  />
-                  {taxError && <p className="text-xs text-amber-600 mt-1">{taxError}</p>}
-                </div>
-              </div>
-            </div>
-            <div className="px-6 pt-2 pb-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setTaxModalOpen(false)}
-                className="px-4 py-2.5 text-sm font-medium font-sans bg-[#F0F1F7] text-mono-dark rounded-none hover:bg-[#E4E7F0] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleAddTaxYear}
-                disabled={savingTax}
-                className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 disabled:opacity-50 transition-colors"
-              >
-                {savingTax ? "Saving…" : "Save"}
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

@@ -2,8 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type DragEvent } from "react";
 import { normalizePageIconColorId, pageIconTextClass } from "@/lib/page-icon-colors";
 
 type PageNavItem = {
@@ -12,15 +11,36 @@ type PageNavItem = {
   icon_type: "emoji" | "material" | string;
   icon_value: string | null;
   icon_color: string | null;
+  position?: number;
   updated_at?: string;
+};
+
+type MainNavItem = {
+  href: string;
+  label: string;
+  icon: string;
+  external?: boolean;
+  trailingIcon?: string;
 };
 
 const mainNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
-  { href: "/data-sources", label: "Accounts & Data", icon: "database" },
-];
+  { href: "/data-sources", label: "Accounts", icon: "database" },
+  { href: "/rules", label: "Rules", icon: "rule" },
+  {
+    href: "https://expense-terminal-staging.vercel.app/",
+    label: "Old Site",
+    icon: "public",
+    external: true,
+    trailingIcon: "arrow_outward",
+  },
+] as const satisfies readonly MainNavItem[];
 
-const bottomNav = [{ href: "/preferences/automations", label: "Preferences", icon: "tune" }];
+const bottomNav = [{ href: "/preferences/org", label: "Preferences", icon: "tune" }];
+
+type OrgBrandingSummary = {
+  name: string;
+};
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -32,22 +52,23 @@ export function Sidebar() {
   const [favoritePages, setFavoritePages] = useState<PageNavItem[]>([]);
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const [favoritesError, setFavoritesError] = useState<string | null>(null);
+  const [orgBranding, setOrgBranding] = useState<OrgBrandingSummary | null>(null);
+  const pagesRef = useRef<PageNavItem[]>([]);
+  const favoriteOverrideRef = useRef<Record<string, { favorited: boolean; untilMs: number }>>({});
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
 
-  const navLink = (item: { href: string; label: string; icon: string }) => {
-    const active = isActive(item.href);
-    return (
-      <Link
-        key={item.href}
-        href={item.href}
-        className={`flex items-center gap-2 ml-5 mr-2 rounded-md pl-3 pr-2 py-1.5 text-[13px] font-medium transition-colors ${
-          active
-            ? "text-mono-dark bg-mono-dark/[0.06]"
-            : "text-mono-medium hover:text-mono-dark hover:bg-mono-dark/[0.04]"
-        }`}
-      >
+  const navLink = (item: MainNavItem) => {
+    const active = !item.external && isActive(item.href);
+    const className = `flex items-center gap-2 ml-5 mr-2 rounded-md pl-3 pr-2 py-1.5 text-[13px] font-medium transition-colors ${
+      active
+        ? "text-mono-dark bg-mono-dark/[0.06]"
+        : "text-mono-medium hover:text-mono-dark hover:bg-mono-dark/[0.04]"
+    }`;
+
+    const content = (
+      <>
         <span
           className={`shrink-0 flex h-5 w-5 items-center justify-start ${
             active ? "text-mono-dark" : "text-mono-light"
@@ -64,6 +85,39 @@ export function Sidebar() {
           </span>
         </span>
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
+        {item.trailingIcon ? (
+          <span className="shrink-0 text-mono-light">
+            <span
+              className="material-symbols-rounded leading-none"
+              style={{
+                fontSize: 16,
+                fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20",
+              }}
+            >
+              {item.trailingIcon}
+            </span>
+          </span>
+        ) : null}
+      </>
+    );
+
+    if (item.external) {
+      return (
+        <a
+          key={item.href}
+          href={item.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={className}
+        >
+          {content}
+        </a>
+      );
+    }
+
+    return (
+      <Link key={item.href} href={item.href} className={className}>
+        {content}
       </Link>
     );
   };
@@ -106,6 +160,37 @@ export function Sidebar() {
     };
   }, []);
 
+  const loadOrgBranding = useCallback(async () => {
+    try {
+      const res = await fetch("/api/orgs/active-summary");
+      if (!res.ok) return;
+      const d = (await res.json()) as Record<string, unknown>;
+      if (typeof d.name === "string") {
+        setOrgBranding({ name: d.name });
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOrgBranding();
+    const onBranding = (ev: Event) => {
+      const ce = ev as CustomEvent<{ name?: string }>;
+      if (ce.detail?.name) {
+        setOrgBranding({ name: ce.detail.name });
+      } else {
+        void loadOrgBranding();
+      }
+    };
+    window.addEventListener("org-branding-updated", onBranding);
+    return () => window.removeEventListener("org-branding-updated", onBranding);
+  }, [loadOrgBranding]);
+
+  useEffect(() => {
+    pagesRef.current = pages;
+  }, [pages]);
+
   const loadFavorites = useCallback(() => {
     fetch("/api/pages/favorites")
       .then(async (r) => {
@@ -129,7 +214,47 @@ export function Sidebar() {
       })
       .then((d) => {
         setFavoritesError(null);
-        setFavoritePages(Array.isArray(d.pages) ? (d.pages as PageNavItem[]) : []);
+        const serverList = Array.isArray(d.pages) ? (d.pages as PageNavItem[]) : [];
+        const now = Date.now();
+        const overrides = favoriteOverrideRef.current;
+        // Drop expired overrides.
+        for (const [id, o] of Object.entries(overrides)) {
+          if (!o || now >= o.untilMs) delete overrides[id];
+        }
+        const activeOverrides = favoriteOverrideRef.current;
+        if (Object.keys(activeOverrides).length === 0) {
+          setFavoritePages(serverList);
+          setFavoritesLoaded(true);
+          return;
+        }
+        const byId = new Map(serverList.map((p) => [p.id, p]));
+        for (const [pageId, o] of Object.entries(activeOverrides)) {
+          if (o.favorited) {
+            if (!byId.has(pageId)) {
+              const fromPages = pagesRef.current.find((p) => p.id === pageId);
+              if (fromPages) byId.set(pageId, fromPages);
+            }
+          } else {
+            byId.delete(pageId);
+          }
+        }
+        // Preserve the server ordering for existing rows, then prepend any optimistic adds.
+        const ordered: PageNavItem[] = [];
+        const used = new Set<string>();
+        for (const p of serverList) {
+          const row = byId.get(p.id);
+          if (row) {
+            ordered.push(row);
+            used.add(row.id);
+          }
+        }
+        for (const [pageId, o] of Object.entries(activeOverrides)) {
+          if (!o.favorited) continue;
+          if (used.has(pageId)) continue;
+          const row = byId.get(pageId);
+          if (row) ordered.unshift(row);
+        }
+        setFavoritePages(ordered);
         setFavoritesLoaded(true);
       })
       .catch((e: unknown) => {
@@ -160,7 +285,27 @@ export function Sidebar() {
   }, [loadFavorites]);
 
   useEffect(() => {
-    function onFavoriteChanged() {
+    function onFavoriteChanged(e: Event) {
+      const d = (e as CustomEvent<{ pageId?: string; favorited?: boolean }>).detail;
+      const pageId = typeof d?.pageId === "string" ? d.pageId : "";
+      const favorited = typeof d?.favorited === "boolean" ? d.favorited : null;
+
+      // Optimistic: patch favorites list immediately if we have enough info.
+      if (pageId && favorited != null) {
+        favoriteOverrideRef.current[pageId] = { favorited, untilMs: Date.now() + 2000 };
+        setFavoritePages((prev) => {
+          if (favorited) {
+            if (prev.some((p) => p.id === pageId)) return prev;
+            const fromPages = pagesRef.current.find((p) => p.id === pageId);
+            if (!fromPages) return prev;
+            return [fromPages, ...prev];
+          }
+          return prev.filter((p) => p.id !== pageId);
+        });
+        setFavoritesLoaded(true);
+      }
+
+      // Reconcile from server in the background.
       loadFavorites();
     }
     window.addEventListener("page-favorite-changed", onFavoriteChanged);
@@ -239,6 +384,97 @@ export function Sidebar() {
     );
   };
 
+  const [dragPageId, setDragPageId] = useState<string | null>(null);
+  const [dropAtIndex, setDropAtIndex] = useState<number | null>(null);
+  const dropAtIndexRef = useRef<number | null>(null);
+  const favoriteIdSet = useMemo(() => new Set(favoritePages.map((p) => p.id)), [favoritePages]);
+  const reorderablePages = useMemo(() => pages.filter((p) => !favoriteIdSet.has(p.id)), [pages, favoriteIdSet]);
+  const reorderableIndexById = useMemo(() => {
+    const m = new Map<string, number>();
+    reorderablePages.forEach((p, i) => m.set(p.id, i));
+    return m;
+  }, [reorderablePages]);
+
+  const onPageDragStart = useCallback((e: DragEvent, pageId: string) => {
+    if (favoriteIdSet.has(pageId)) return;
+    setDragPageId(pageId);
+    setDropAtIndex(null);
+    dropAtIndexRef.current = null;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", pageId);
+  }, [favoriteIdSet]);
+
+  const onPageDragOver = useCallback((e: DragEvent, overPageId: string) => {
+    if (!dragPageId) return;
+    if (favoriteIdSet.has(overPageId)) return;
+    const overIndex = reorderableIndexById.get(overPageId);
+    if (overIndex == null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    const at = before ? overIndex : overIndex + 1;
+    setDropAtIndex(at);
+    dropAtIndexRef.current = at;
+  }, [dragPageId, favoriteIdSet, reorderableIndexById]);
+
+  const onPageDrop = useCallback(async (e: DragEvent) => {
+    e.preventDefault();
+    const sourceId = e.dataTransfer.getData("text/plain");
+    const at = dropAtIndexRef.current;
+    setDragPageId(null);
+    setDropAtIndex(null);
+    dropAtIndexRef.current = null;
+    if (!sourceId || at == null) return;
+    if (favoriteIdSet.has(sourceId)) return;
+
+    const list = reorderablePages;
+    const fromIdx = list.findIndex((p) => p.id === sourceId);
+    if (fromIdx === -1) return;
+    let toIdx = at;
+    const next = [...list];
+    const [moved] = next.splice(fromIdx, 1);
+    if (!moved) return;
+    if (fromIdx < toIdx) toIdx -= 1;
+    toIdx = Math.max(0, Math.min(next.length, toIdx));
+    next.splice(toIdx, 0, moved);
+
+    // Optimistic: update pages list while preserving favorites and their ordering.
+    setPages((prev) => {
+      const fav = prev.filter((p) => favoriteIdSet.has(p.id));
+      const rest = prev.filter((p) => !favoriteIdSet.has(p.id));
+      // rest order becomes `next` (reorderablePages).
+      const restById = new Map(rest.map((p) => [p.id, p]));
+      const orderedRest = next.map((p) => restById.get(p.id) ?? p);
+      return [...fav, ...orderedRest];
+    });
+
+    try {
+      const res = await fetch("/api/pages/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_ids: next.map((p) => p.id) }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      window.dispatchEvent(new CustomEvent("pages-changed"));
+    } catch {
+      // If save fails, reload from server (keeps client consistent).
+      try {
+        const r = await fetch("/api/pages");
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && Array.isArray(d.pages)) setPages(d.pages);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [favoriteIdSet, reorderablePages]);
+
+  const onPageDragEnd = useCallback(() => {
+    setDragPageId(null);
+    setDropAtIndex(null);
+    dropAtIndexRef.current = null;
+  }, []);
+
   const createPage = async () => {
     if (creatingPage) return;
     setCreatingPage(true);
@@ -283,22 +519,18 @@ export function Sidebar() {
 
   return (
     <aside className="sticky top-0 h-screen w-[260px] shrink-0 bg-white flex flex-col border-r border-bg-tertiary/60">
-      {/* Small XT logo header */}
+      {/* Workspace name (home) */}
       <div className="pl-8 pr-5 pt-6 pb-4">
-        <Link href="/" className="inline-flex items-center">
-          <Image
-            src="/xt-logo-v2.png"
-            alt="XT"
-            width={80}
-            height={32}
-            className="h-8 w-auto object-contain"
-            priority={false}
-          />
+        <Link
+          href="/"
+          className="inline-flex min-w-0 max-w-full text-[15px] font-semibold text-mono-dark truncate hover:opacity-80"
+        >
+          {orgBranding?.name ?? "Expense Terminal"}
         </Link>
       </div>
 
       {/* Main nav - block extends to left edge; content stays aligned (pl-8 = 5+3) */}
-      <nav className="flex-1 pl-0 pr-5">
+      <nav className="flex-1 min-h-0 overflow-y-auto pl-0 pr-5 overscroll-contain">
         <div className="space-y-1">
           {mainNav.map(navLink)}
         </div>
@@ -328,7 +560,7 @@ export function Sidebar() {
               type="button"
               onClick={createPage}
               disabled={creatingPage}
-              className="inline-flex items-center justify-center rounded-none h-7 w-7 text-mono-light hover:text-mono-medium hover:bg-sovereign-blue/10 transition disabled:opacity-50"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full text-mono-light transition hover:bg-black/[0.04] hover:text-mono-medium active:scale-[0.98] disabled:opacity-50"
               aria-label="Add page"
               title="Add page"
             >
@@ -357,7 +589,36 @@ export function Sidebar() {
                 No pages yet
               </div>
             ) : (
-              pages.map(pageNavLink)
+              <div onDragOver={(e) => e.preventDefault()} onDrop={onPageDrop}>
+                {pages.map((p) => {
+                  const isFav = favoriteIdSet.has(p.id);
+                  const idx = reorderableIndexById.get(p.id) ?? -1;
+                  const showLineAbove = !isFav && dragPageId && dropAtIndex === idx;
+                  const showLineEnd =
+                    !isFav &&
+                    dragPageId &&
+                    dropAtIndex === reorderablePages.length &&
+                    idx === reorderablePages.length - 1;
+                  return (
+                    <div
+                      key={p.id}
+                      draggable={!isFav}
+                      onDragStart={(e) => onPageDragStart(e, p.id)}
+                      onDragOver={(e) => onPageDragOver(e, p.id)}
+                      onDragEnd={onPageDragEnd}
+                      className={`relative ${isFav ? "" : "cursor-grab active:cursor-grabbing"}`}
+                    >
+                      {showLineAbove ? (
+                        <div className="pointer-events-none absolute left-8 right-3 top-0 h-[2px] -translate-y-1/2 rounded-full bg-[#007aff]" />
+                      ) : null}
+                      {pageNavLink(p)}
+                      {showLineEnd ? (
+                        <div className="pointer-events-none absolute left-8 right-3 bottom-0 h-[2px] translate-y-1/2 rounded-full bg-[#007aff]" />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>

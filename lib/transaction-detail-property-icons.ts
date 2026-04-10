@@ -16,6 +16,7 @@ const PROPERTY_TYPE_ICONS: Record<TransactionPropertyType, string> = {
   created_by: "person",
   last_edited_date: "calendar_month",
   last_edited_time: "schedule",
+  account: "database",
 };
 
 /** Material Symbols names (rounded) — Notion-style property icons */
