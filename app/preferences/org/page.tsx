@@ -3,7 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
 import { getActiveOrgId } from "@/lib/active-org";
 import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
-import { enrichOrgMemberRows } from "@/lib/orgs/enrich-org-members";
+import { enrichOrgMemberRows, type OrgMemberRow } from "@/lib/orgs/enrich-org-members";
 import { OrgPreferencesClient } from "@/app/preferences/OrgPreferencesClient";
 
 export default async function PreferencesOrgPage() {
@@ -42,7 +42,7 @@ export default async function PreferencesOrgPage() {
   }
 
   const profileById = new Map(profiles.map((p: any) => [p.id, p]));
-  const rawMembers = rows.map((r: { user_id: string; role: string }) => {
+  const rawMembers: OrgMemberRow[] = rows.map((r: { user_id: string; role: string }) => {
     const p = profileById.get(r.user_id) as
       | { email?: string | null; display_name?: string | null; avatar_url?: string | null }
       | undefined;
