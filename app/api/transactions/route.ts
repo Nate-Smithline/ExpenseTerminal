@@ -69,6 +69,7 @@ export async function GET(req: Request) {
   const dateFrom = searchParams.get("date_from")?.trim() || null;
   const dateTo = searchParams.get("date_to")?.trim() || null;
   const source = searchParams.get("source")?.trim() || null;
+  /** Pending review queue (query param name kept for compatibility). */
   const inboxOnly = searchParams.get("inbox") === "true";
   const columnFilters = parseColumnFiltersQueryParam(searchParams.get("column_filters"));
 
@@ -94,7 +95,7 @@ export async function GET(req: Request) {
   if (analyzedOnly === true) query = query.not("ai_confidence", "is", null);
   if (analyzedOnly === false) query = query.is("ai_confidence", null);
   if (inboxOnly) {
-    // Inbox semantics: pending items that are either:
+    // Pending review queue: pending items that are either:
     // - expense transactions already analyzed by AI, or
     // - income transactions (AI optional)
     query = query

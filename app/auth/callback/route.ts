@@ -3,6 +3,7 @@ import { createSupabaseRouteClient, createSupabaseServiceClient } from "@/lib/su
 import { claimPendingOrgMembershipsForSessionUser } from "@/lib/orgs/claim-pending-invites";
 
 const ALLOWED_REDIRECT_PATHS = [
+  "/review",
   "/inbox",
   "/dashboard",
   "/reports",
@@ -25,11 +26,11 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
   const nextParam = requestUrl.searchParams.get("next") ?? "/dashboard";
-  const nextNormalized = nextParam.startsWith("/") ? nextParam : `/${nextParam}`;
-  const next =
-    isAllowedRedirect(nextParam) && !nextNormalized.startsWith("/inbox")
+  const next = isAllowedRedirect(nextParam)
+    ? nextParam.startsWith("/")
       ? nextParam
-      : "/dashboard";
+      : `/${nextParam}`
+    : "/dashboard";
 
   if (code) {
     const supabase = await createSupabaseRouteClient();
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
           console.warn("[auth/callback] claim pending org invites failed", e);
         }
       }
-      return NextResponse.redirect(new URL(next.startsWith("/") ? next : `/${next}`, requestUrl.origin));
+      return NextResponse.redirect(new URL(next, requestUrl.origin));
     }
     console.error("[auth/callback] exchangeCodeForSession error:", error.message);
     return NextResponse.redirect(new URL("/login?error=session_exchange_failed", requestUrl.origin));

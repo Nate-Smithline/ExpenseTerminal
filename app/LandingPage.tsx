@@ -46,7 +46,7 @@ const FEATURES = [
   },
   {
     icon: "inbox",
-    title: "Inbox-First Workflow",
+    title: "Guided Review Workflow",
     description: "Review transactions one at a time with keyboard shortcuts for rapid categorization.",
   },
   {

@@ -780,7 +780,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                         onClick={() => onMarkPersonal()}
                         disabled={saving}
                         className="flex items-center justify-center gap-1.5 rounded-none bg-white border border-bg-tertiary px-3 py-2.5 text-xs font-medium text-mono-light hover:text-mono-dark hover:bg-bg-secondary transition disabled:opacity-40 max-[700px]:flex-1"
-                        title="Mark as personal (removes from inbox)"
+                        title="Mark as personal (removes from pending review)"
                       >
                         <kbd className="kbd-hint kbd-warm !rounded-none !border-transparent">p</kbd>
                         Personal

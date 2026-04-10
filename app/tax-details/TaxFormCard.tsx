@@ -145,7 +145,7 @@ export function TaxFormCard({
 
   return (
     <div className={containerClass}>
-      {/* Undo bar (same style as Inbox) */}
+      {/* Undo bar */}
       {undoState && (
         <div className="flex items-center justify-between rounded-lg bg-mono-dark px-4 py-2.5 text-sm text-white mb-4">
           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
@@ -308,7 +308,7 @@ export function TaxFormCard({
 
       {linesWithAmounts.length === 0 && (
         <p className="text-sm text-mono-light text-center py-8">
-          No categorized expenses yet. Complete transactions in your Inbox to see them here.
+          No categorized expenses yet. Complete transactions in Review to see them here.
         </p>
       )}
     </div>

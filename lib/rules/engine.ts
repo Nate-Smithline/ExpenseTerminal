@@ -27,7 +27,7 @@ export function buildUpdateForAction(
   if (action.category != null && action.category !== "") {
     update.category = action.category;
   }
-  // Let existing inbox flows decide status; default to auto_sorted if we touch it here.
+  // Let existing review flows decide status; default to auto_sorted if we touch it here.
   if (!tx.status || tx.status === "pending") {
     update.status = "auto_sorted";
   }

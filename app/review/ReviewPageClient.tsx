@@ -13,7 +13,7 @@ import { SimilarTransactionsPopup } from "@/components/SimilarTransactionsPopup"
 import { brandColorHex } from "@/lib/brand-palette";
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
-interface InboxPageClientProps {
+interface ReviewPageClientProps {
   initialYear: number;
   initialPendingCount: number;
   initialTotalPendingCount?: number;
@@ -76,7 +76,7 @@ async function fetchUnanalyzedIds(params: Record<string, string>): Promise<strin
   return allIds;
 }
 
-export function InboxPageClient({
+export function ReviewPageClient({
   initialYear,
   initialPendingCount,
   initialTotalPendingCount,
@@ -84,7 +84,7 @@ export function InboxPageClient({
   initialTransactions,
   userId,
   taxRate = 0.24,
-}: InboxPageClientProps) {
+}: ReviewPageClientProps) {
   const [selectedYear, setSelectedYear] = useState(initialYear);
   const [pendingCount, setPendingCount] = useState(initialTotalPendingCount ?? initialPendingCount);
   const [unanalyzedCount, setUnanalyzedCount] = useState(initialUnanalyzedCount);
@@ -233,7 +233,7 @@ export function InboxPageClient({
     (group) => group.length >= 2 && !dismissedDuplicateKeys.has(duplicateKey(group[0])),
   );
 
-  const reloadInbox = useCallback(async () => {
+  const reloadReviewQueue = useCallback(async () => {
     const [txs, countForYear, totalPending, unanalyzed] = await Promise.all([
       fetchTransactions({
         tax_year: String(selectedYear),
@@ -256,7 +256,7 @@ export function InboxPageClient({
     setPendingCount(totalPending);
     setUnanalyzedCount(unanalyzed);
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("inbox-count-changed"));
+      window.dispatchEvent(new CustomEvent("pending-review-count-changed"));
     }
   }, [selectedYear]);
 
@@ -369,7 +369,7 @@ export function InboxPageClient({
                     setToast(`${s} categorized by AI`);
                   }
                   setTimeout(() => setToast(null), 5000);
-                  await reloadInbox();
+                  await reloadReviewQueue();
                 } else if (event.type === "error") {
                   setToast((event.message as string) ?? "AI analysis error");
                   setTimeout(() => setToast(null), 4000);
@@ -450,7 +450,7 @@ export function InboxPageClient({
                 setToast(`Categorized: ${event.category}`);
                 setTimeout(() => setToast(null), 3000);
               }
-              if (event.type === "done") await reloadInbox();
+              if (event.type === "done") await reloadReviewQueue();
             } catch { /* skip */ }
           }
         }
@@ -463,13 +463,13 @@ export function InboxPageClient({
 
   useEffect(() => {
     setLoading(true);
-    reloadInbox().finally(() => setLoading(false));
-  }, [reloadInbox]);
+    reloadReviewQueue().finally(() => setLoading(false));
+  }, [reloadReviewQueue]);
 
 
-  function notifyInboxCountChanged() {
+  function notifyPendingReviewCountChanged() {
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("inbox-count-changed"));
+      window.dispatchEvent(new CustomEvent("pending-review-count-changed"));
     }
   }
 
@@ -548,14 +548,14 @@ export function InboxPageClient({
             });
           }
         }
-        notifyInboxCountChanged();
+        notifyPendingReviewCountChanged();
       } catch (e) {
         setUndoState(null);
         setTransactions((prev) => [...prev, tx]);
         setPendingCount((prev) => prev + 1);
         const message = e instanceof Error ? e.message : "Failed to save";
         // eslint-disable-next-line no-console
-        console.warn("[inbox] save failed", { id, update, error: message });
+        console.warn("[review] save failed", { id, update, error: message });
         setToast(message);
         setTimeout(() => setToast(null), 4000);
       }
@@ -576,7 +576,7 @@ export function InboxPageClient({
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(body.error ?? "Failed to save");
     }
-    notifyInboxCountChanged();
+    notifyPendingReviewCountChanged();
   }
 
   function handleDelete(id: string) {
@@ -602,7 +602,7 @@ export function InboxPageClient({
           }
           throw new Error(message);
         }
-        notifyInboxCountChanged();
+        notifyPendingReviewCountChanged();
       } catch (e) {
         setTransactions((prev) => {
           const next = [...prev];
@@ -612,7 +612,7 @@ export function InboxPageClient({
         setPendingCount((prev) => prev + 1);
         const message = e instanceof Error ? e.message : "Failed to delete";
         // eslint-disable-next-line no-console
-        console.warn("[inbox] delete failed", { id, error: message });
+        console.warn("[review] delete failed", { id, error: message });
         setToast(message);
         setTimeout(() => setToast(null), 4000);
       }
@@ -656,9 +656,9 @@ export function InboxPageClient({
       }
       setToast(`${body.updatedCount ?? 0} transaction${(body.updatedCount ?? 0) === 1 ? "" : "s"} auto-sorted`);
       setTimeout(() => setToast(null), 4000);
-      await reloadInbox();
+      await reloadReviewQueue();
     },
-    [selectedYear, reloadInbox],
+    [selectedYear, reloadReviewQueue],
   );
 
   const handleUndoLast = useCallback(async () => {
@@ -694,15 +694,15 @@ export function InboxPageClient({
         }
         throw new Error(message);
       }
-      notifyInboxCountChanged();
+      notifyPendingReviewCountChanged();
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to undo";
       // eslint-disable-next-line no-console
-      console.warn("[inbox] undo failed", { id, error: message });
+      console.warn("[review] undo failed", { id, error: message });
       setToast(message);
       setTimeout(() => setToast(null), 4000);
     }
-  }, [undoState, notifyInboxCountChanged, setTransactions, setPendingCount]);
+  }, [undoState, notifyPendingReviewCountChanged, setTransactions, setPendingCount]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -814,7 +814,7 @@ export function InboxPageClient({
             aria-level={1}
             className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
           >
-            Inbox
+            Review
           </div>
           <p className="text-base text-mono-medium mt-1 font-sans">
             {pendingCount} {pendingCount === 1 ? "item" : "items"} to review
@@ -882,7 +882,7 @@ export function InboxPageClient({
         </div>
       )}
 
-      {/* Unanalyzed: need AI before they appear in inbox */}
+      {/* Unanalyzed: need AI before they appear here */}
       {!loading && unanalyzedCount > 0 && !aiProgress && (
         <div className="border border-bg-tertiary bg-white p-4 space-y-3">
           <p className="text-base font-sans font-medium text-mono-dark leading-snug">
@@ -913,7 +913,7 @@ export function InboxPageClient({
                   <div className="h-full w-2/5 bg-frost animate-pulse" />
                 </div>
                 <p className="text-xs text-black">
-                  Reviewing uncategorized transactions and queuing categorized results for inbox verification.
+                  Reviewing uncategorized transactions and queuing categorized results for you to verify.
                 </p>
               </div>
             )}
@@ -1137,7 +1137,7 @@ export function InboxPageClient({
               setToast("No transactions to import");
               setTimeout(() => setToast(null), 3000);
             }
-            await reloadInbox();
+            await reloadReviewQueue();
           }}
         />
       )}
@@ -1157,7 +1157,7 @@ export function InboxPageClient({
           onSave={async (txId, update) => {
             await saveTransactionUpdate(txId, update);
             setManageTx(null);
-            await reloadInbox();
+            await reloadReviewQueue();
           }}
           taxRate={taxRate}
         />

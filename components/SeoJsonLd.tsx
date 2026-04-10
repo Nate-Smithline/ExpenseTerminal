@@ -109,14 +109,14 @@ export const baseMarketingMetadata: Metadata = {
   openGraph: {
     title: "ExpenseTerminal — AI-powered expense tracking for self‑employed tax deductions",
     description:
-      "Inbox-first expense tracking and tax deduction software for self-employed professionals and small businesses.",
+      "Streamlined expense review and tax deduction software for self-employed professionals and small businesses.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "ExpenseTerminal — AI-powered expense tracking for self‑employed tax deductions",
     description:
-      "Inbox-first expense tracking and tax deduction software for self-employed professionals and small businesses.",
+      "Streamlined expense review and tax deduction software for self-employed professionals and small businesses.",
   },
 };
 

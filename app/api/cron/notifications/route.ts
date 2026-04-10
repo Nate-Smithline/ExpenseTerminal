@@ -112,7 +112,7 @@ export async function GET(req: Request) {
 
     const now = new Date();
     const dateRange = `${now.getFullYear() - 1} – ${now.getFullYear()}`;
-    const sortNowUrl = `${APP_URL.replace(/\/$/, "")}/login?redirect=/inbox`;
+    const sortNowUrl = `${APP_URL.replace(/\/$/, "")}/login?redirect=/review`;
 
     try {
       await sendUnsortedReminder({

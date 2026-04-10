@@ -62,7 +62,7 @@ export function DashboardHeader({ pendingCount, userName }: DashboardHeaderProps
       </div>
       {(pendingCount ?? 0) > 0 && (
         <Link
-          href="/inbox"
+          href="/review"
           className="md:hidden inline-flex items-center justify-center rounded-full border border-bg-tertiary/60 bg-white px-6 py-3 text-sm font-medium text-mono-dark transition-all hover:border-accent-sage/40 hover:shadow-sm"
         >
           {pendingCount} pending

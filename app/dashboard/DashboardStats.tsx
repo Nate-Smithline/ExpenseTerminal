@@ -194,8 +194,8 @@
              </p>
             <p className="text-xs text-mono-light mt-1">Transactions + additional deductions</p>
             <div className="mt-2">
-              <Link href="/inbox" className="text-xs text-[#007aff] font-medium inline-block hover:underline focus:outline-none focus:ring-2 focus:ring-[#007aff]/20 rounded-lg">
-                Inbox
+              <Link href="/review" className="text-xs text-[#007aff] font-medium inline-block hover:underline focus:outline-none focus:ring-2 focus:ring-[#007aff]/20 rounded-lg">
+                Review
               </Link>
             </div>
            </div>

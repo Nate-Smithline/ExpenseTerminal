@@ -26,7 +26,7 @@ export const plans: Record<PlanId, PlanDefinition> = {
     stripeProductId: null,
     description: "The full ExpenseTerminal experience — no limits.",
     highlights: [
-      "Inbox-first review of your business expenses",
+      "Guided review of your business expenses",
       "CSV uploads for bank and card exports",
       "Unlimited AI-reviewed transactions",
       "Live bank syncing via Plaid (up to 24 months)",
@@ -45,7 +45,7 @@ export const plans: Record<PlanId, PlanDefinition> = {
     description: "A calm, dependable tax companion (legacy plan).",
     highlights: [
       "Unlimited AI-reviewed CSV transactions",
-      "Rich Inbox workflows and keyboard shortcuts",
+      "Rich review workflows and keyboard shortcuts",
       "Custom tax-year settings and reporting",
       "Export-ready summaries for your accountant",
     ],
@@ -63,7 +63,7 @@ export const plans: Record<PlanId, PlanDefinition> = {
     highlights: [
       "Unlimited AI-reviewed transactions",
       "Live bank syncing via Plaid (up to 24 months)",
-      "Rich Inbox workflows and keyboard shortcuts",
+      "Rich review workflows and keyboard shortcuts",
       "Export-ready summaries for your accountant",
     ],
     maxCsvTransactionsForAi: null,

@@ -64,6 +64,18 @@ export type StripeSyncDiagnostics = {
   startDateExceedsFcLookback: boolean;
 };
 
+const PLAID_TRANSACTIONS_SYNC_COUNT = 500;
+
+function isPlaidInvalidCursorError(e: unknown): boolean {
+  const err = e as { response?: { data?: { error_code?: string } } };
+  const code = err?.response?.data?.error_code;
+  return (
+    code === "TRANSACTIONS_SYNC_INVALID_CURSOR" ||
+    code === "INVALID_CURSOR" ||
+    code === "SYNC_CURSOR_INVALID"
+  );
+}
+
 /** Returned on successful Plaid /transactions/sync. */
 export type PlaidSyncDiagnostics = {
   plaidItemId: string;
@@ -483,7 +495,7 @@ export async function runSyncForDataSource(
     try {
       const { data: row, error: fetchError } = await (supabase as any)
         .from("data_sources")
-        .select("id, plaid_access_token, plaid_item_id, plaid_cursor")
+        .select("id, plaid_access_token, plaid_item_id, plaid_cursor, plaid_account_id")
         .eq("id", dataSourceId)
         .eq("user_id", userId)
         .single();
@@ -506,8 +518,148 @@ export async function runSyncForDataSource(
 
       const plaid = getPlaidClient(options?.hostname);
       const accessToken = decryptAccessToken(row.plaid_access_token as string);
-      let cursor: string | undefined = (row.plaid_cursor as string) || undefined;
+      const storedCursor: string | undefined = (row.plaid_cursor as string) || undefined;
+      const plaidAccountId = (row.plaid_account_id as string | null) ?? null;
 
+      const buildSyncOptions = (requestCursor: string | undefined) => {
+        const opt: { account_id?: string; days_requested?: number } = {};
+        if (plaidAccountId) opt.account_id = plaidAccountId;
+        if (!requestCursor) opt.days_requested = 730;
+        return Object.keys(opt).length > 0 ? opt : undefined;
+      };
+
+      const runPlaidSyncPages = async (startCursor: string | undefined) => {
+        let cursor: string | undefined = startCursor;
+        let addedCount = 0;
+        let modifiedCount = 0;
+        let removedCount = 0;
+        let upsertedCount = 0;
+        let updatedCount = 0;
+        let deletedCount = 0;
+        let syncPages = 0;
+        let earliestDate: string | null = null;
+        let latestDate: string | null = null;
+        let firstInsertError: string | null = null;
+        const addedPlaidExternalIds = new Set<string>();
+
+        let hasMore = true;
+        while (hasMore) {
+          syncPages += 1;
+          const syncRes = await plaid.transactionsSync({
+            access_token: accessToken,
+            count: PLAID_TRANSACTIONS_SYNC_COUNT,
+            ...(cursor ? { cursor } : {}),
+            options: buildSyncOptions(cursor),
+          });
+          const data = syncRes.data;
+          hasMore = data.has_more;
+          cursor = data.next_cursor;
+
+          for (const tx of data.added) {
+            addedCount += 1;
+            if (tx.transaction_id) addedPlaidExternalIds.add(tx.transaction_id);
+            const dateStr = tx.date;
+            const year = new Date(dateStr).getFullYear();
+            const amount = Number((-tx.amount).toFixed(2));
+            const vendor = (tx.merchant_name ?? tx.name ?? "Unknown").slice(0, 255);
+            const vendorNormalized = vendor.trim() ? normalizeVendor(vendor) : null;
+
+            if (!earliestDate || dateStr < earliestDate) earliestDate = dateStr;
+            if (!latestDate || dateStr > latestDate) latestDate = dateStr;
+
+            const { error: insErr } = await (supabase as any)
+              .from("transactions")
+              .upsert(
+                {
+                  user_id: userId,
+                  date: dateStr,
+                  vendor,
+                  vendor_normalized: vendorNormalized,
+                  description: tx.name ?? null,
+                  amount,
+                  status: "pending",
+                  tax_year: year,
+                  source: "data_feed",
+                  transaction_type: amount > 0 ? "income" : "expense",
+                  data_source_id: dataSourceId,
+                  data_feed_external_id: tx.transaction_id,
+                  updated_at: new Date().toISOString(),
+                },
+                {
+                  onConflict: "data_source_id,data_feed_external_id",
+                  ignoreDuplicates: true,
+                },
+              );
+            if (insErr && !firstInsertError) {
+              firstInsertError = insErr.message ?? String(insErr);
+              console.warn("[sync-runner/plaid] First insert error", {
+                dataSourceId,
+                error: firstInsertError,
+                txId: tx.transaction_id,
+              });
+            }
+            if (!insErr) upsertedCount++;
+          }
+
+          for (const tx of data.modified) {
+            modifiedCount += 1;
+            const amount = Number((-tx.amount).toFixed(2));
+            const vendor = (tx.merchant_name ?? tx.name ?? "Unknown").slice(0, 255);
+            const vendorNormalized = vendor.trim() ? normalizeVendor(vendor) : null;
+            const { error: updErr } = await (supabase as any)
+              .from("transactions")
+              .update({
+                date: tx.date,
+                vendor,
+                vendor_normalized: vendorNormalized,
+                description: tx.name ?? null,
+                amount,
+                transaction_type: amount > 0 ? "income" : "expense",
+                updated_at: new Date().toISOString(),
+              })
+              .eq("data_source_id", dataSourceId)
+              .eq("data_feed_external_id", tx.transaction_id);
+            if (!updErr) updatedCount++;
+          }
+
+          for (const tx of data.removed) {
+            removedCount += 1;
+            const txId = tx.transaction_id;
+            if (!txId) continue;
+            const { error: delErr } = await (supabase as any)
+              .from("transactions")
+              .delete()
+              .eq("data_source_id", dataSourceId)
+              .eq("data_feed_external_id", txId);
+            if (!delErr) deletedCount++;
+          }
+        }
+
+        return {
+          endCursor: cursor,
+          addedCount,
+          modifiedCount,
+          removedCount,
+          upsertedCount,
+          updatedCount,
+          deletedCount,
+          syncPages,
+          earliestDate,
+          latestDate,
+          firstInsertError,
+          addedPlaidExternalIds,
+        };
+      };
+
+      if (!storedCursor) {
+        try {
+          await plaid.transactionsRefresh({ access_token: accessToken });
+        } catch (rErr) {
+          console.warn("[sync-runner/plaid] transactionsRefresh (non-fatal)", rErr);
+        }
+      }
+
+      let cursor: string | undefined;
       let addedCount = 0;
       let modifiedCount = 0;
       let removedCount = 0;
@@ -520,95 +672,38 @@ export async function runSyncForDataSource(
       let firstInsertError: string | null = null;
       const addedPlaidExternalIds = new Set<string>();
 
-      // Plaid /transactions/sync uses cursor-based pagination: loop until has_more is false.
-      let hasMore = true;
-      while (hasMore) {
-        syncPages += 1;
-        const syncRes = await plaid.transactionsSync({
-          access_token: accessToken,
-          ...(cursor ? { cursor } : {}),
-        });
-        const data = syncRes.data;
-        hasMore = data.has_more;
-        cursor = data.next_cursor;
+      let cursorStart: string | undefined = storedCursor;
+      let didResetCursor = false;
 
-        // Process added transactions
-        for (const tx of data.added) {
-          addedCount += 1;
-          if (tx.transaction_id) addedPlaidExternalIds.add(tx.transaction_id);
-          const dateStr = tx.date;
-          const year = new Date(dateStr).getFullYear();
-          // Plaid: positive = money out (expense), negative = money in (income)
-          const amount = Number((-tx.amount).toFixed(2));
-          const vendor = (tx.merchant_name ?? tx.name ?? "Unknown").slice(0, 255);
-          const vendorNormalized = vendor.trim() ? normalizeVendor(vendor) : null;
-
-          if (!earliestDate || dateStr < earliestDate) earliestDate = dateStr;
-          if (!latestDate || dateStr > latestDate) latestDate = dateStr;
-
-          const { error: insErr } = await (supabase as any)
-            .from("transactions")
-            .upsert(
-              {
-                user_id: userId,
-                date: dateStr,
-                vendor,
-                vendor_normalized: vendorNormalized,
-                description: tx.name ?? null,
-                amount,
-                status: "pending",
-                tax_year: year,
-                source: "data_feed",
-                transaction_type: amount > 0 ? "income" : "expense",
-                data_source_id: dataSourceId,
-                data_feed_external_id: tx.transaction_id,
-                updated_at: new Date().toISOString(),
-              },
-              {
-                onConflict: "data_source_id,data_feed_external_id",
-                ignoreDuplicates: true,
-              },
-            );
-          if (insErr && !firstInsertError) {
-            firstInsertError = insErr.message ?? String(insErr);
-            console.warn("[sync-runner/plaid] First insert error", { dataSourceId, error: firstInsertError, txId: tx.transaction_id });
+      for (;;) {
+        try {
+          const result = await runPlaidSyncPages(cursorStart);
+          cursor = result.endCursor;
+          addedCount = result.addedCount;
+          modifiedCount = result.modifiedCount;
+          removedCount = result.removedCount;
+          upsertedCount = result.upsertedCount;
+          updatedCount = result.updatedCount;
+          deletedCount = result.deletedCount;
+          syncPages = result.syncPages;
+          earliestDate = result.earliestDate;
+          latestDate = result.latestDate;
+          firstInsertError = result.firstInsertError;
+          result.addedPlaidExternalIds.forEach((id) => addedPlaidExternalIds.add(id));
+          break;
+        } catch (syncErr) {
+          if (!didResetCursor && storedCursor && isPlaidInvalidCursorError(syncErr)) {
+            didResetCursor = true;
+            cursorStart = undefined;
+            console.warn("[sync-runner/plaid] Resetting invalid Plaid cursor and retrying", { dataSourceId });
+            await (supabase as any)
+              .from("data_sources")
+              .update({ plaid_cursor: null })
+              .eq("id", dataSourceId)
+              .eq("user_id", userId);
+            continue;
           }
-          if (!insErr) upsertedCount++;
-        }
-
-        // Process modified transactions (update existing rows)
-        for (const tx of data.modified) {
-          modifiedCount += 1;
-          const amount = Number((-tx.amount).toFixed(2));
-          const vendor = (tx.merchant_name ?? tx.name ?? "Unknown").slice(0, 255);
-          const vendorNormalized = vendor.trim() ? normalizeVendor(vendor) : null;
-          const { error: updErr } = await (supabase as any)
-            .from("transactions")
-            .update({
-              date: tx.date,
-              vendor,
-              vendor_normalized: vendorNormalized,
-              description: tx.name ?? null,
-              amount,
-              transaction_type: amount > 0 ? "income" : "expense",
-              updated_at: new Date().toISOString(),
-            })
-            .eq("data_source_id", dataSourceId)
-            .eq("data_feed_external_id", tx.transaction_id);
-          if (!updErr) updatedCount++;
-        }
-
-        // Process removed transactions
-        for (const tx of data.removed) {
-          removedCount += 1;
-          const txId = tx.transaction_id;
-          if (!txId) continue;
-          const { error: delErr } = await (supabase as any)
-            .from("transactions")
-            .delete()
-            .eq("data_source_id", dataSourceId)
-            .eq("data_feed_external_id", txId);
-          if (!delErr) deletedCount++;
+          throw syncErr;
         }
       }
 

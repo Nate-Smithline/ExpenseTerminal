@@ -257,7 +257,7 @@ export function CategoryBreakout({
 
   return (
     <div className={containerClass}>
-      {/* Undo bar (same style as Inbox) */}
+      {/* Undo bar */}
       {undoState && (
         <div className="flex items-center justify-between rounded-lg bg-mono-dark px-4 py-2.5 text-sm text-white mb-4">
           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">

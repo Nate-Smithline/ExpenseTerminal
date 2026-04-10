@@ -61,7 +61,7 @@ export function welcomeEmailHtml(firstName: string): string {
                           <span style="font-family:Georgia,'Times New Roman',serif;font-size:13px;color:#b87c5e;font-style:italic;">02</span>
                         </td>
                         <td>
-                          <strong style="color:#2a2a2a;font-size:14px;">Review your inbox</strong>
+                          <strong style="color:#2a2a2a;font-size:14px;">Review your transactions</strong>
                           <p style="margin:4px 0 0;font-size:13px;color:#636363;line-height:1.6;">AI categorizes each transaction &mdash; confirm, adjust, or skip.</p>
                         </td>
                       </tr>
@@ -101,8 +101,8 @@ export function welcomeEmailHtml(firstName: string): string {
           </tr>
           <tr>
             <td style="padding:0 48px 48px;text-align:center;">
-              <a href="${appUrl}/inbox" style="display:inline-block;background:#3f5147;color:#ffffff;text-decoration:none;font-size:15px;font-weight:500;padding:14px 48px;border-radius:999px;font-family:'Satoshi',Helvetica,Arial,sans-serif;">
-                Go to Your Inbox
+              <a href="${appUrl}/review" style="display:inline-block;background:#3f5147;color:#ffffff;text-decoration:none;font-size:15px;font-weight:500;padding:14px 48px;border-radius:999px;font-family:'Satoshi',Helvetica,Arial,sans-serif;">
+                Open Review
               </a>
             </td>
           </tr>
@@ -137,12 +137,12 @@ Your ExpenseTerminal account is verified and ready. We help you turn a year of m
 
 Here are a few good next steps:
 - Connect a CSV or Excel file with your transactions.
-- Review the AI suggestions in your inbox.
+- Review the AI suggestions in the app.
 - Export a summary for your records or your CPA.
 
 You can always see current plans and pricing here: ${appUrl}/pricing
 
-Go to your inbox: ${appUrl}/inbox
+Open Review: ${appUrl}/review
 
 Questions or feedback? Just hit reply — I read every message.
 

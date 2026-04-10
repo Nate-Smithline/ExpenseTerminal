@@ -6,7 +6,7 @@ import { sendWelcomeEmailForUser } from "@/lib/email/send-welcome";
 /**
  * GET /auth/verify?token=ark-the-olive-dove
  * Validates the Bible-word token, marks the email as verified,
- * and redirects to the inbox.
+ * and redirects into the app.
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);

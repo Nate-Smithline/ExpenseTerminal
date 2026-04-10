@@ -99,7 +99,7 @@ export const passwordChangeLimit = {
   keyPrefix: "password-change",
 };
 
-/** General API: 300 requests per minute per user/IP (inbox + many transaction cards trigger many GETs) */
+/** General API: 300 requests per minute per user/IP (review queue + many transaction cards trigger many GETs) */
 export const generalApiLimit = {
   limit: 300,
   windowMs: 60 * 1000,

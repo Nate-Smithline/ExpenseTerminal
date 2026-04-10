@@ -513,7 +513,7 @@ export function DataSourcesClient({
         const diag = data.plaidDiagnostics ?? data.diagnostics;
         logSyncDiagnostics(diag);
         await reloadSources();
-        window.dispatchEvent(new CustomEvent("inbox-count-changed"));
+        window.dispatchEvent(new CustomEvent("pending-review-count-changed"));
         setSyncStatusBar({ message: syncStatusMessage(diag), type: "success" });
         setTimeout(() => setSyncStatusBar(null), 8000);
       } else {
@@ -560,8 +560,6 @@ export function DataSourcesClient({
             transactionCount: 0,
             totalIncome: 0,
             totalExpenses: 0,
-            pctReviewed: 0,
-            totalSavings: 0,
             earliestTransactionDateInTaxYear: null,
           },
         }));
@@ -1337,7 +1335,7 @@ export function DataSourcesClient({
                       logSyncDiagnostics(diag);
                       setPullModalSource(null);
                       await reloadSources();
-                      window.dispatchEvent(new CustomEvent("inbox-count-changed"));
+                      window.dispatchEvent(new CustomEvent("pending-review-count-changed"));
                       setSyncStatusBar({ message: syncStatusMessage(diag), type: "success" });
                       setTimeout(() => setSyncStatusBar(null), 8000);
                       setToast(data.message ?? "Sync completed. Duplicates are skipped.");
@@ -1417,7 +1415,7 @@ export function DataSourcesClient({
                       setDeleteConfirmSource(null);
                       setEditSource(null);
                       await reloadSources();
-                      window.dispatchEvent(new CustomEvent("inbox-count-changed"));
+                      window.dispatchEvent(new CustomEvent("pending-review-count-changed"));
                       setToast("Account deleted.");
                       setTimeout(() => setToast(null), 3000);
                     } else {
@@ -1518,7 +1516,7 @@ export function DataSourcesClient({
                           }
                           setShowPostConnectDateModal(false);
                           await reloadSources();
-                          window.dispatchEvent(new CustomEvent("inbox-count-changed"));
+                          window.dispatchEvent(new CustomEvent("pending-review-count-changed"));
                           const okCount = unsyncedSources.length - failed.length;
                           if (okCount > 0) {
                             const singleOk = okCount === 1 && unsyncedSources.length === 1 && failed.length === 0;
@@ -1542,7 +1540,7 @@ export function DataSourcesClient({
                           let count = 0;
                           const t = setInterval(() => {
                             count += 1;
-                            window.dispatchEvent(new CustomEvent("inbox-count-changed"));
+                            window.dispatchEvent(new CustomEvent("pending-review-count-changed"));
                             if (count >= 10) clearInterval(t);
                           }, 3000);
                         } finally {
@@ -1588,15 +1586,9 @@ export function DataSourcesClient({
               transactionCount: 0,
               totalIncome: 0,
               totalExpenses: 0,
-              pctReviewed: 0,
-              totalSavings: 0,
               earliestTransactionDateInTaxYear: null,
             };
             const totalTxCount = s.transactionCount ?? 0;
-            const reviewedTxCount =
-              totalTxCount > 0
-                ? Math.round((Math.min(100, Math.max(0, s.pctReviewed ?? 0)) / 100) * totalTxCount)
-                : 0;
             const hasSyncFailure = !!source.last_failed_sync_at;
             const showEarliestYearLine =
               totalTxCount > 0 &&
@@ -1869,38 +1861,18 @@ export function DataSourcesClient({
                     </div>
                   )}
                   {s.transactionCount > 0 && !hasSyncFailure && (
-                    <>
-                  <div className="mt-2">
-                    <p className="text-xs text-mono-light mb-1.5">
-                      <span className="tabular-nums font-medium text-mono-dark">{reviewedTxCount}</span>
-                      <span className="tabular-nums"> / {totalTxCount}</span>
-                      {" transactions"}
-                      {isDirectFeed(source.source_type) && (
-                        <>
-                          <span className="mx-2">·</span>
-                          <span className="tabular-nums">Synced: {formatLastPulled(source)}</span>
-                        </>
-                      )}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 overflow-hidden rounded-full bg-[#e8e8ed]">
-                        <div
-                          className="h-full rounded-full bg-[#86868b] transition-all duration-300"
-                          style={{ width: `${Math.min(100, Math.max(0, s.pctReviewed))}%` }}
-                        />
-                      </div>
-                      <span className="text-[12px] tabular-nums font-medium text-[#6e6e73] shrink-0">
-                        {(s.pctReviewed ?? 0).toFixed(2)}% reviewed
-                      </span>
+                    <div className="mt-2">
+                      <p className="text-xs text-mono-light">
+                        <span className="tabular-nums font-medium text-mono-dark">{totalTxCount}</span>
+                        {" transactions"}
+                        {isDirectFeed(source.source_type) && (
+                          <>
+                            <span className="mx-2">·</span>
+                            <span className="tabular-nums">Synced: {formatLastPulled(source)}</span>
+                          </>
+                        )}
+                      </p>
                     </div>
-                  </div>
-                  <div className="mt-2">
-                    <p className="text-xs text-mono-light">Est. savings</p>
-                    <p className="text-base tabular-nums font-semibold text-accent-sage">
-                      {formatCurrency(s.totalSavings)}
-                    </p>
-                  </div>
-                    </>
                   )}
                   <div className="mt-3 flex flex-wrap items-center gap-1.5">
                     <button
@@ -1998,9 +1970,6 @@ export function DataSourcesClient({
       {(toast || debugCallouts) && (
         <div className="fixed bottom-6 left-1/2 z-50 flex max-w-[min(100%-2rem,480px)] -translate-x-1/2 items-center gap-3 rounded-full border border-black/[0.06] bg-white/95 px-5 py-3 text-[14px] text-[#1d1d1f] shadow-[0_8px_32px_rgba(0,0,0,0.12)] backdrop-blur-md">
           {toast ?? "Account deleted."}
-          <Link href="/inbox" className="shrink-0 font-medium text-[#0071e3] underline underline-offset-2 hover:no-underline">
-            Open Inbox
-          </Link>
         </div>
       )}
 
@@ -2058,7 +2027,7 @@ export function DataSourcesClient({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ transactionIds: result.transactionIds }),
               }).catch(() => {});
-              setToast(`${result.transactionIds.length} imported — AI categorization started. Check Inbox to review.`);
+              setToast(`${result.transactionIds.length} imported — AI categorization started. Open Review when you’re ready.`);
               setTimeout(() => setToast(null), 5000);
             }
           }}
