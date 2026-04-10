@@ -126,6 +126,12 @@ function LoginContent() {
           // Non-fatal; other parts of the app can still function.
         }
 
+        try {
+          await fetch("/api/orgs/claim-pending-invites", { method: "POST" });
+        } catch {
+          // Non-fatal; magic-link / OAuth users are claimed in /auth/callback.
+        }
+
         router.refresh();
         router.push("/dashboard");
       }

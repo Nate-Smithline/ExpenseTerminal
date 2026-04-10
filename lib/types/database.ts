@@ -86,6 +86,25 @@ export interface Database {
         };
         Update: Partial<Database["public"]["Tables"]["org_memberships"]["Insert"]>;
       };
+      org_pending_invites: {
+        Row: {
+          id: string;
+          org_id: string;
+          email: string;
+          invited_by: string | null;
+          created_at: string;
+          last_sent_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          email: string;
+          invited_by?: string | null;
+          created_at?: string;
+          last_sent_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["org_pending_invites"]["Insert"]>;
+      };
       email_verifications: {
         Row: {
           id: string;

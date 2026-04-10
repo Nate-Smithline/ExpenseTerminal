@@ -230,3 +230,203 @@ DROP POLICY IF EXISTS "Users can view own financial snapshots" ON public.user_fi
 CREATE POLICY "Users can view own financial snapshots"
   ON public.user_financial_snapshots FOR SELECT
   USING (auth.uid() = user_id);
+
+-- -----------------------------------------------------------------------------
+-- handle_new_user + finish_invited_workspace_join
+-- Apply: supabase/migrations/202604101400_handle_new_user_invited_org.sql
+--        supabase/migrations/202604101800_defer_invited_org_until_email_confirmed.sql
+-- Workspace invite: membership only after email_confirmed_at (not when generateLink pre-creates the user).
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  new_org_id UUID;
+  invite_org_id UUID;
+BEGIN
+  invite_org_id := NULL;
+  IF NEW.raw_user_meta_data IS NOT NULL
+     AND (NEW.raw_user_meta_data->>'invited_org_id') IS NOT NULL
+     AND btrim(NEW.raw_user_meta_data->>'invited_org_id') <> '' THEN
+    BEGIN
+      invite_org_id := (NEW.raw_user_meta_data->>'invited_org_id')::uuid;
+    EXCEPTION WHEN OTHERS THEN
+      invite_org_id := NULL;
+    END;
+  END IF;
+
+  IF invite_org_id IS NOT NULL AND EXISTS (SELECT 1 FROM public.orgs WHERE id = invite_org_id) THEN
+    INSERT INTO public.profiles (id, email, first_name, last_name, email_opt_in, terms_accepted_at)
+    VALUES (
+      NEW.id,
+      NEW.email,
+      NEW.raw_user_meta_data->>'first_name',
+      NEW.raw_user_meta_data->>'last_name',
+      COALESCE((NEW.raw_user_meta_data->>'email_opt_in')::boolean, false),
+      CASE WHEN NEW.raw_user_meta_data->>'terms_accepted_at' IS NOT NULL
+           THEN (NEW.raw_user_meta_data->>'terms_accepted_at')::timestamptz
+           ELSE NULL END
+    );
+
+    IF NEW.email_confirmed_at IS NOT NULL THEN
+      INSERT INTO public.org_memberships (org_id, user_id, role)
+      VALUES (invite_org_id, NEW.id, 'member');
+      UPDATE public.profiles SET active_org_id = invite_org_id WHERE id = NEW.id;
+    END IF;
+
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO public.profiles (id, email, first_name, last_name, email_opt_in, terms_accepted_at)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    NEW.raw_user_meta_data->>'first_name',
+    NEW.raw_user_meta_data->>'last_name',
+    COALESCE((NEW.raw_user_meta_data->>'email_opt_in')::boolean, false),
+    CASE WHEN NEW.raw_user_meta_data->>'terms_accepted_at' IS NOT NULL
+         THEN (NEW.raw_user_meta_data->>'terms_accepted_at')::timestamptz
+         ELSE NULL END
+  );
+
+  INSERT INTO public.orgs (name) VALUES ('My Organization')
+  RETURNING id INTO new_org_id;
+
+  INSERT INTO public.org_memberships (org_id, user_id, role)
+  VALUES (new_org_id, NEW.id, 'owner');
+
+  UPDATE public.profiles SET active_org_id = new_org_id WHERE id = NEW.id;
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.finish_invited_workspace_join()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  invite_org_id UUID;
+BEGIN
+  IF OLD.email_confirmed_at IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.email_confirmed_at IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  invite_org_id := NULL;
+  IF NEW.raw_user_meta_data IS NOT NULL
+     AND (NEW.raw_user_meta_data->>'invited_org_id') IS NOT NULL
+     AND btrim(NEW.raw_user_meta_data->>'invited_org_id') <> '' THEN
+    BEGIN
+      invite_org_id := (NEW.raw_user_meta_data->>'invited_org_id')::uuid;
+    EXCEPTION WHEN OTHERS THEN
+      invite_org_id := NULL;
+    END;
+  END IF;
+
+  IF invite_org_id IS NULL OR NOT EXISTS (SELECT 1 FROM public.orgs WHERE id = invite_org_id) THEN
+    RETURN NEW;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.org_memberships m
+    WHERE m.org_id = invite_org_id AND m.user_id = NEW.id
+  ) THEN
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO public.org_memberships (org_id, user_id, role)
+  VALUES (invite_org_id, NEW.id, 'member');
+
+  UPDATE public.profiles SET active_org_id = invite_org_id WHERE id = NEW.id;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_invited_workspace_confirm ON auth.users;
+CREATE TRIGGER on_auth_user_invited_workspace_confirm
+  AFTER UPDATE ON auth.users
+  FOR EACH ROW
+  WHEN (OLD.email_confirmed_at IS NULL AND NEW.email_confirmed_at IS NOT NULL)
+  EXECUTE FUNCTION public.finish_invited_workspace_join();
+
+-- -----------------------------------------------------------------------------
+-- Pending org invites + auth lookup by email
+-- Apply: supabase/migrations/202604101600_org_pending_invites_and_auth_lookup.sql
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.lookup_auth_user_for_invite(check_email text)
+RETURNS TABLE (user_id uuid, user_email text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = auth, public
+AS $$
+  SELECT u.id,
+         COALESCE(u.email, '')
+  FROM auth.users u
+  WHERE lower(btrim(u.email)) = lower(btrim(check_email))
+  LIMIT 1;
+$$;
+
+REVOKE ALL ON FUNCTION public.lookup_auth_user_for_invite(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.lookup_auth_user_for_invite(text) TO service_role;
+
+CREATE TABLE IF NOT EXISTS public.org_pending_invites (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.orgs(id) ON DELETE CASCADE,
+  email text NOT NULL,
+  invited_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_sent_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT org_pending_invites_org_email_lower UNIQUE (org_id, email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_org_pending_invites_org ON public.org_pending_invites(org_id);
+
+ALTER TABLE public.org_pending_invites ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Org members can view pending invites for their workspace" ON public.org_pending_invites;
+CREATE POLICY "Org members can view pending invites for their workspace"
+  ON public.org_pending_invites FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.org_memberships m
+      WHERE m.org_id = org_pending_invites.org_id
+        AND m.user_id = auth.uid()
+    )
+  );
+
+CREATE OR REPLACE FUNCTION public.clear_org_pending_invite_on_membership()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  member_email text;
+BEGIN
+  SELECT lower(btrim(p.email)) INTO member_email
+  FROM public.profiles p
+  WHERE p.id = NEW.user_id;
+
+  IF member_email IS NOT NULL AND member_email <> '' THEN
+    DELETE FROM public.org_pending_invites pi
+    WHERE pi.org_id = NEW.org_id
+      AND lower(btrim(pi.email)) = member_email;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_clear_org_pending_on_membership ON public.org_memberships;
+CREATE TRIGGER trg_clear_org_pending_on_membership
+  AFTER INSERT ON public.org_memberships
+  FOR EACH ROW
+  EXECUTE FUNCTION public.clear_org_pending_invite_on_membership();

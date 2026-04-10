@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createSupabaseRouteClient } from "@/lib/supabase/server";
+import { createSupabaseRouteClient, createSupabaseServiceClient } from "@/lib/supabase/server";
+import { claimPendingOrgMembershipsForSessionUser } from "@/lib/orgs/claim-pending-invites";
 
 const ALLOWED_REDIRECT_PATHS = [
   "/inbox",
@@ -34,6 +35,18 @@ export async function GET(request: Request) {
     const supabase = await createSupabaseRouteClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const email = user?.email ?? "";
+      if (user?.id && email) {
+        try {
+          const svc = createSupabaseServiceClient();
+          await claimPendingOrgMembershipsForSessionUser(svc, user.id, email);
+        } catch (e) {
+          console.warn("[auth/callback] claim pending org invites failed", e);
+        }
+      }
       return NextResponse.redirect(new URL(next.startsWith("/") ? next : `/${next}`, requestUrl.origin));
     }
     console.error("[auth/callback] exchangeCodeForSession error:", error.message);

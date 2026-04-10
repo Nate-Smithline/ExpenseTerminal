@@ -2,9 +2,10 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { PreferencesTabs } from "@/app/preferences/PreferencesTabs";
-import type { OrgMemberRow } from "@/lib/orgs/enrich-org-members";
+import type { OrgMemberRow, OrgPendingInviteRow } from "@/lib/orgs/enrich-org-members";
+import { brandColorHex } from "@/lib/brand-palette";
 
-export type { OrgMemberRow };
+export type { OrgMemberRow, OrgPendingInviteRow };
 
 const PREF_TABS = [
   { href: "/preferences/org", label: "Org" },
@@ -15,6 +16,7 @@ export function OrgPreferencesClient({
   currentUserId,
   initialOrg,
   initialMembers,
+  initialPendingInvites,
 }: {
   currentUserId: string;
   initialOrg: {
@@ -23,6 +25,7 @@ export function OrgPreferencesClient({
     role: string;
   };
   initialMembers: OrgMemberRow[];
+  initialPendingInvites: OrgPendingInviteRow[];
 }) {
   const isOwner = initialOrg.role === "owner";
   const [orgName, setOrgName] = useState(initialOrg.name);
@@ -30,21 +33,28 @@ export function OrgPreferencesClient({
   const [nameError, setNameError] = useState<string | null>(null);
 
   const [members, setMembers] = useState<OrgMemberRow[]>(initialMembers);
+  const [pendingInvites, setPendingInvites] = useState<OrgPendingInviteRow[]>(initialPendingInvites);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmails, setInviteEmails] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteMsg, setInviteMsg] = useState<string | null>(null);
+  const [resendingPendingId, setResendingPendingId] = useState<string | null>(null);
 
   const refreshMembers = useCallback(async () => {
     const res = await fetch("/api/orgs/members");
     if (!res.ok) return;
     const data = await res.json();
     setMembers(data.members ?? []);
+    setPendingInvites(data.pendingInvites ?? []);
   }, []);
 
   useEffect(() => {
     setOrgName(initialOrg.name);
   }, [initialOrg]);
+
+  useEffect(() => {
+    setPendingInvites(initialPendingInvites);
+  }, [initialPendingInvites]);
 
   async function saveWorkspaceName() {
     setNameError(null);
@@ -84,24 +94,42 @@ export function OrgPreferencesClient({
     });
     const data = await res.json().catch(() => ({}));
     setInviteBusy(false);
-    if (!res.ok) {
-      setInviteMsg(typeof data.error === "string" ? data.error : "Invite failed");
-      return;
-    }
     const results = data.results as Array<{ email: string; ok: boolean; error?: string }> | undefined;
-    if (results?.length) {
+
+    if (Array.isArray(results) && results.length > 0) {
       const failed = results.filter((r) => !r.ok);
-      if (failed.length === 0) {
-        setInviteMsg(`Sent ${data.invited ?? results.filter((r) => r.ok).length} invite(s).`);
+      const succeeded = results.filter((r) => r.ok);
+      const anyPending = succeeded.some((r) => (r as { pending?: boolean }).pending);
+      if (succeeded.length > 0 && failed.length === 0) {
+        setInviteMsg(
+          anyPending
+            ? `Sent ${data.invited ?? succeeded.length} invite(s). Pending recipients appear in the list below until they join.`
+            : `Sent ${data.invited ?? succeeded.length} invite(s).`,
+        );
         setInviteEmails("");
         setInviteOpen(false);
         await refreshMembers();
-      } else {
+      } else if (failed.length > 0 && succeeded.length === 0) {
         setInviteMsg(
           failed.map((f) => `${f.email}: ${f.error ?? "failed"}`).join("\n"),
         );
+      } else if (failed.length > 0 && succeeded.length > 0) {
+        setInviteMsg(
+          [
+            anyPending
+              ? `Processed ${succeeded.length} (check the list for pending). Failed:`
+              : `Added ${succeeded.length}. Failed:`,
+            ...failed.map((f) => `${f.email}: ${f.error ?? "failed"}`),
+          ].join("\n"),
+        );
+        setInviteEmails("");
         await refreshMembers();
       }
+      return;
+    }
+
+    if (!res.ok) {
+      setInviteMsg(typeof data.error === "string" ? data.error : "Invite failed");
     }
   }
 
@@ -125,6 +153,38 @@ export function OrgPreferencesClient({
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       alert(typeof data.error === "string" ? data.error : "Could not remove");
+      return;
+    }
+    await refreshMembers();
+  }
+
+  async function resendPendingInvite(pendingId: string) {
+    setResendingPendingId(pendingId);
+    const res = await fetch("/api/orgs/members/pending-invites/resend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: pendingId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setResendingPendingId(null);
+    if (!res.ok) {
+      alert(typeof data.error === "string" ? data.error : "Could not resend");
+      await refreshMembers();
+      return;
+    }
+    if (data.resolved === "already_member" || data.resolved === "added_existing_account") {
+      await refreshMembers();
+      return;
+    }
+    await refreshMembers();
+  }
+
+  async function cancelPendingInvite(pendingId: string, emailLabel: string) {
+    if (!confirm(`Cancel the invitation for ${emailLabel}?`)) return;
+    const res = await fetch(`/api/orgs/members/pending-invites/${pendingId}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(typeof data.error === "string" ? data.error : "Could not cancel invite");
       return;
     }
     await refreshMembers();
@@ -218,52 +278,96 @@ export function OrgPreferencesClient({
         </div>
 
         <div className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
-          {members.length === 0 ? (
+          {members.length === 0 && pendingInvites.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-mono-medium">No members yet.</div>
           ) : (
-            members.map((m) => {
-              const primary = memberPrimaryLine(m);
-              const showEmailSub =
-                Boolean(m.email) &&
-                Boolean(m.display_name?.trim()) &&
-                m.email !== m.display_name?.trim();
-              return (
-                <div key={m.id} className="px-4 py-3 flex flex-wrap items-center gap-3 justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-mono-dark truncate">{primary}</div>
-                    {showEmailSub && (
-                      <div className="text-xs text-mono-medium truncate">{m.email}</div>
-                    )}
+            <>
+              {members.map((m) => {
+                const primary = memberPrimaryLine(m);
+                const showEmailSub =
+                  Boolean(m.email) &&
+                  Boolean(m.display_name?.trim()) &&
+                  m.email !== m.display_name?.trim();
+                return (
+                  <div key={m.id} className="px-4 py-3 flex flex-wrap items-center gap-3 justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-mono-dark truncate">{primary}</div>
+                      {showEmailSub && (
+                        <div className="text-xs text-mono-medium truncate">{m.email}</div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isOwner && m.id !== currentUserId ? (
+                        <>
+                          <select
+                            value={m.role}
+                            onChange={(e) =>
+                              updateMemberRole(m.id, e.target.value as "owner" | "member")
+                            }
+                            className="border border-bg-tertiary/60 text-sm px-2 py-1.5 bg-white rounded-none"
+                          >
+                            <option value="member">Member</option>
+                            <option value="owner">Owner</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => removeMember(m.id)}
+                            className="p-1.5 text-mono-light hover:text-red-600"
+                            aria-label="Remove member"
+                          >
+                            <span className="material-symbols-rounded text-[18px]">person_remove</span>
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-xs text-mono-medium capitalize">{m.role}</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {isOwner && m.id !== currentUserId ? (
-                      <>
-                        <select
-                          value={m.role}
-                          onChange={(e) =>
-                            updateMemberRole(m.id, e.target.value as "owner" | "member")
-                          }
-                          className="border border-bg-tertiary/60 text-sm px-2 py-1.5 bg-white rounded-none"
-                        >
-                          <option value="member">Member</option>
-                          <option value="owner">Owner</option>
-                        </select>
+                );
+              })}
+              {pendingInvites.map((p) => {
+                const blue = brandColorHex("blue");
+                return (
+                  <div
+                    key={p.id}
+                    className="px-4 py-3 flex flex-wrap items-center gap-3 justify-between bg-[#FAFBFD]"
+                  >
+                    <div className="min-w-0 flex-1 flex flex-wrap items-center gap-2">
+                      <div className="text-sm font-medium text-mono-dark truncate">{p.email}</div>
+                      <span
+                        className="text-[11px] font-medium font-sans uppercase tracking-wide px-2 py-0.5 rounded shrink-0"
+                        style={{
+                          color: blue,
+                          backgroundColor: `${blue}1A`,
+                        }}
+                      >
+                        Pending
+                      </span>
+                    </div>
+                    {isOwner ? (
+                      <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
-                          onClick={() => removeMember(m.id)}
-                          className="p-1.5 text-mono-light hover:text-red-600"
-                          aria-label="Remove member"
+                          onClick={() => resendPendingInvite(p.id)}
+                          disabled={resendingPendingId === p.id}
+                          className="rounded-none border border-bg-tertiary/60 px-3 py-1.5 text-xs font-medium font-sans text-mono-dark hover:bg-white disabled:opacity-50"
                         >
-                          <span className="material-symbols-rounded text-[18px]">person_remove</span>
+                          {resendingPendingId === p.id ? "Sending…" : "Resend"}
                         </button>
-                      </>
-                    ) : (
-                      <span className="text-xs text-mono-medium capitalize">{m.role}</span>
-                    )}
+                        <button
+                          type="button"
+                          onClick={() => cancelPendingInvite(p.id, p.email)}
+                          className="p-1.5 text-mono-light hover:text-red-600"
+                          aria-label="Cancel invitation"
+                        >
+                          <span className="material-symbols-rounded text-[18px]">close</span>
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </>
           )}
         </div>
       </section>
@@ -280,7 +384,11 @@ export function OrgPreferencesClient({
                 Add members
               </h2>
               <p className="text-xs text-mono-medium mt-2">
-                Type or paste emails below, separated by commas. We&apos;ll email each person a link to sign in.
+                Type or paste emails below, separated by commas. New addresses get an invite link and appear as{" "}
+                <span className="font-medium" style={{ color: brandColorHex("blue") }}>
+                  Pending
+                </span>{" "}
+                in the list until they open the email link and sign in. Existing accounts get a sign-in link instead of an invite.
               </p>
             </div>
             <div className="px-6 py-3 space-y-3">

@@ -43,20 +43,21 @@ export async function GET(req: Request) {
     }
 
     const userIds = [...new Set((rows ?? []).map((r: { user_id: string }) => r.user_id))];
-    if (userIds.length === 0) {
-      return NextResponse.json({ members: [] });
-    }
 
-    const { data: profiles, error: pErr } = await (supabase as any)
-      .from("profiles")
-      .select("id, email, display_name, avatar_url")
-      .in("id", userIds);
+    let profiles: any[] = [];
+    if (userIds.length > 0) {
+      const { data: p, error: pErr } = await (supabase as any)
+        .from("profiles")
+        .select("id, email, display_name, avatar_url")
+        .in("id", userIds);
 
-    if (pErr) {
-      return NextResponse.json(
-        { error: safeErrorMessage(pErr.message, "Failed to load profiles") },
-        { status: 500 }
-      );
+      if (pErr) {
+        return NextResponse.json(
+          { error: safeErrorMessage(pErr.message, "Failed to load profiles") },
+          { status: 500 }
+        );
+      }
+      profiles = p ?? [];
     }
 
     const profileById = new Map((profiles ?? []).map((p: any) => [p.id, p]));
@@ -75,7 +76,35 @@ export async function GET(req: Request) {
 
     const enriched = await enrichOrgMemberRows(members);
 
-    return NextResponse.json({ members: enriched });
+    const memberEmailsLower = new Set(
+      enriched
+        .map((m) => (typeof m.email === "string" ? m.email.trim().toLowerCase() : ""))
+        .filter(Boolean)
+    );
+
+    const { data: pendingRows, error: pendErr } = await (supabase as any)
+      .from("org_pending_invites")
+      .select("id, email, last_sent_at")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: true });
+
+    if (pendErr) {
+      return NextResponse.json(
+        { error: safeErrorMessage(pendErr.message, "Failed to load pending invites") },
+        { status: 500 }
+      );
+    }
+
+    type PendingRow = { id: string; email: string; last_sent_at: string };
+    const pendingInvites = (pendingRows ?? [])
+      .map((r: PendingRow) => ({
+        id: r.id,
+        email: r.email,
+        last_sent_at: r.last_sent_at,
+      }))
+      .filter((p: PendingRow) => !memberEmailsLower.has(String(p.email).trim().toLowerCase()));
+
+    return NextResponse.json({ members: enriched, pendingInvites });
   } catch (e: unknown) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to load members" },

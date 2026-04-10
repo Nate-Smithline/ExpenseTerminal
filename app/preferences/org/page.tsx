@@ -3,7 +3,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
 import { getActiveOrgId } from "@/lib/active-org";
 import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
-import { enrichOrgMemberRows, type OrgMemberRow } from "@/lib/orgs/enrich-org-members";
+import {
+  enrichOrgMemberRows,
+  type OrgMemberRow,
+  type OrgPendingInviteRow,
+} from "@/lib/orgs/enrich-org-members";
 import { OrgPreferencesClient } from "@/app/preferences/OrgPreferencesClient";
 
 export default async function PreferencesOrgPage() {
@@ -57,6 +61,24 @@ export default async function PreferencesOrgPage() {
 
   const initialMembers = await enrichOrgMemberRows(rawMembers);
 
+  const memberEmailsLower = new Set(
+    initialMembers
+      .map((m) => (typeof m.email === "string" ? m.email.trim().toLowerCase() : ""))
+      .filter(Boolean)
+  );
+
+  let initialPendingInvites: OrgPendingInviteRow[] = [];
+  const { data: pendingRows } = await db
+    .from("org_pending_invites")
+    .select("id, email, last_sent_at")
+    .eq("org_id", orgId)
+    .order("created_at", { ascending: true });
+  if (pendingRows?.length) {
+    initialPendingInvites = (pendingRows as OrgPendingInviteRow[]).filter(
+      (p) => !memberEmailsLower.has(String(p.email).trim().toLowerCase())
+    );
+  }
+
   return (
     <OrgPreferencesClient
       currentUserId={userId}
@@ -66,6 +88,7 @@ export default async function PreferencesOrgPage() {
         role: membership.role,
       }}
       initialMembers={initialMembers}
+      initialPendingInvites={initialPendingInvites}
     />
   );
 }

@@ -10,6 +10,12 @@ export type OrgMemberRow = {
   avatar_url: string | null;
 };
 
+export type OrgPendingInviteRow = {
+  id: string;
+  email: string;
+  last_sent_at: string;
+};
+
 export async function enrichOrgMemberRows(rows: OrgMemberRow[]): Promise<OrgMemberRow[]> {
   return rows;
 }
