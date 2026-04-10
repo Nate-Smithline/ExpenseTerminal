@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import type { DashboardPeriod } from "@/lib/dashboard-period";
 import type { DashboardSelectPage } from "@/lib/dashboard-pages";
 
@@ -17,28 +18,36 @@ const PERIODS: { id: DashboardPeriod; label: string }[] = [
   { id: "ytd", label: "YTD" },
 ];
 
+function dashboardHref(
+  pathname: string,
+  base: { period: DashboardPeriod; pageId: string | null },
+  patch: { period?: DashboardPeriod; pageId?: string | null },
+) {
+  const nextPeriod = patch.period ?? base.period;
+  const nextPageId = patch.pageId !== undefined ? patch.pageId : base.pageId;
+  const q = new URLSearchParams();
+  q.set("period", nextPeriod);
+  if (nextPageId) q.set("page_id", nextPageId);
+  const s = q.toString();
+  return s ? `${pathname}?${s}` : pathname;
+}
+
 export function DashboardPeriodPageToolbar({
   period,
   pages,
   scopedPageId,
 }: DashboardPeriodPageToolbarProps) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const pathname = usePathname() || "/dashboard";
 
-  const navigate = useCallback(
+  const base = { period, pageId: scopedPageId };
+
+  const pushQuery = useCallback(
     (patch: { period?: DashboardPeriod; pageId?: string | null }) => {
-      const q = new URLSearchParams(searchParams?.toString() ?? "");
-      if (patch.period != null) q.set("period", patch.period);
-      if (patch.pageId === null || patch.pageId === "") {
-        q.delete("page_id");
-      } else if (patch.pageId !== undefined) {
-        q.set("page_id", patch.pageId);
-      }
-      const qs = q.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname);
+      const href = dashboardHref(pathname, base, patch);
+      router.push(href, { scroll: false });
     },
-    [pathname, router, searchParams],
+    [pathname, router, period, scopedPageId],
   );
 
   return (
@@ -50,11 +59,12 @@ export function DashboardPeriodPageToolbar({
       >
         {PERIODS.map((p) => {
           const active = period === p.id;
+          const href = dashboardHref(pathname, base, { period: p.id });
           return (
-            <button
+            <Link
               key={p.id}
-              type="button"
-              onClick={() => navigate({ period: p.id })}
+              href={href}
+              scroll={false}
               className={
                 active
                   ? "rounded-md bg-white px-2.5 py-1 text-[12px] font-semibold text-mono-dark shadow-sm"
@@ -62,7 +72,7 @@ export function DashboardPeriodPageToolbar({
               }
             >
               {p.label}
-            </button>
+            </Link>
           );
         })}
       </div>
@@ -73,7 +83,7 @@ export function DashboardPeriodPageToolbar({
           value={scopedPageId ?? ""}
           onChange={(e) => {
             const v = e.target.value;
-            navigate({ pageId: v === "" ? null : v });
+            pushQuery({ pageId: v === "" ? null : v });
           }}
         >
           <option value="">All pages</option>

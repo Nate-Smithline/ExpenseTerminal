@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
@@ -94,15 +93,11 @@ export default async function DashboardPage({
       <section className="space-y-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-mono-light">This period</h2>
-          <Suspense
-            fallback={<div className="h-8 w-56 animate-pulse rounded-md bg-bg-secondary/40" aria-hidden />}
-          >
-            <DashboardPeriodPageToolbar
-              period={metrics.period}
-              pages={selectPages}
-              scopedPageId={metrics.pageScope?.id ?? null}
-            />
-          </Suspense>
+          <DashboardPeriodPageToolbar
+            period={metrics.period}
+            pages={selectPages}
+            scopedPageId={metrics.pageScope?.id ?? null}
+          />
         </div>
         <p className="text-[11px] text-mono-light -mt-1">
           {metrics.pageScope ? (

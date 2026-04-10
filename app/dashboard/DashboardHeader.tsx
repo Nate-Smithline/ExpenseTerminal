@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import Link from "next/link";
 
 interface DashboardHeaderProps {
@@ -13,7 +13,7 @@ export function DashboardHeader({ pendingCount, userName }: DashboardHeaderProps
   const [greeting, setGreeting] = useState<string | null>(null);
   const [todayLabel, setTodayLabel] = useState<string | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === "undefined") return;
     const now = new Date();
     const hour = now.getHours();
