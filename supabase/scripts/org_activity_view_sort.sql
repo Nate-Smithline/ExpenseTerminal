@@ -1,0 +1,58 @@
+-- Saved pages + Activity list: why "Date" sort appears everywhere, and how to change it.
+--
+-- Reasons:
+-- 1) Table public.page_activity_view_settings: sort_column defaults to 'date', sort_asc to false
+--    (see migration 202604071200_page_activity_view_settings_create.sql).
+-- 2) That migration backfilled sort_rules to '[{"column":"date","asc":false}]' for every page.
+-- 3) app/api/pages/route.ts inserts the same sort_rules when creating a page.
+-- 4) lib/activity-sort-rules.ts normalizeSortRulesFromSettingsRow(): if sort_rules is null/empty,
+--    it still builds one rule from sort_column (defaulting to date), so the UI always has a primary sort.
+-- 5) Org-wide "Activity" (not a saved page) uses public.activity_view_settings.sort_column (default date)
+--    via app/api/activity-view-settings/route.ts.
+--
+-- Run in Supabase SQL Editor as a privileged role. Replace the org UUID in each statement.
+
+-- ---------------------------------------------------------------------------
+-- Preview: saved pages in one org
+-- ---------------------------------------------------------------------------
+-- SELECT p.id, p.title, s.sort_column, s.sort_asc, s.sort_rules
+-- FROM public.page_activity_view_settings s
+-- JOIN public.pages p ON p.id = s.page_id
+-- WHERE p.org_id = '00000000-0000-0000-0000-000000000000'::uuid
+--   AND p.deleted_at IS NULL
+-- ORDER BY p.updated_at DESC;
+
+-- ---------------------------------------------------------------------------
+-- Option A — Change all saved pages in an org to another primary sort (example: created_at, newest first).
+--    Column must be allowed by ACTIVITY_SORT_COLUMNS in lib/validation/schemas.ts.
+-- ---------------------------------------------------------------------------
+-- UPDATE public.page_activity_view_settings s
+-- SET
+--   sort_column = 'created_at',
+--   sort_asc = false,
+--   sort_rules = '[{"column":"created_at","asc":false}]'::jsonb,
+--   updated_at = NOW()
+-- FROM public.pages p
+-- WHERE s.page_id = p.id
+--   AND p.org_id = '00000000-0000-0000-0000-000000000000'::uuid
+--   AND p.deleted_at IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- Option B — Drop explicit sort_rules only (sort_column still drives the inferred rule; often still "date").
+-- ---------------------------------------------------------------------------
+-- UPDATE public.page_activity_view_settings s
+-- SET sort_rules = NULL, updated_at = NOW()
+-- FROM public.pages p
+-- WHERE s.page_id = p.id
+--   AND p.org_id = '00000000-0000-0000-0000-000000000000'::uuid
+--   AND p.deleted_at IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- Option C — Org-wide Activity tab (not per-page): change sort_column / sort_asc
+-- ---------------------------------------------------------------------------
+-- UPDATE public.activity_view_settings
+-- SET
+--   sort_column = 'created_at',
+--   sort_asc = false,
+--   updated_at = NOW()
+-- WHERE org_id = '00000000-0000-0000-0000-000000000000'::uuid;
