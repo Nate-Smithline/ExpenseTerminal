@@ -37,7 +37,8 @@ function memberDisplayLabel(profile: {
 }
 
 /**
- * Cron: drain org_member_join_notify_queue and email all owners of each org (Resend).
+ * Cron: drain org_member_join_notify_queue and email all owners when a member joins (Resend).
+ * Vercel: `vercel.json` schedules this once daily (07:30 UTC) so Hobby plans stay within limits.
  * Authorization: Bearer CRON_SECRET (same as other cron routes).
  */
 export async function GET(req: Request) {
