@@ -4,7 +4,6 @@ import { getStripeClient } from "@/lib/stripe";
 import { getPlaidClient, decryptAccessToken } from "@/lib/plaid";
 import { persistPlaidBalancesForPlaidItem } from "@/lib/plaid-balance-persist";
 import { normalizeVendor } from "@/lib/vendor-matching";
-import { getActiveOrgId } from "@/lib/active-org";
 import { runOrgRulesForIngest } from "@/lib/org-rules/executor";
 
 /**
@@ -495,7 +494,7 @@ export async function runSyncForDataSource(
     try {
       const { data: row, error: fetchError } = await (supabase as any)
         .from("data_sources")
-        .select("id, plaid_access_token, plaid_item_id, plaid_cursor, plaid_account_id")
+        .select("id, org_id, plaid_access_token, plaid_item_id, plaid_cursor, plaid_account_id")
         .eq("id", dataSourceId)
         .eq("user_id", userId)
         .single();
@@ -717,9 +716,9 @@ export async function runSyncForDataSource(
             .eq("user_id", userId)
             .in("data_feed_external_id", extIds);
           const newIds = (ruleTxRows ?? []).map((r: { id: string }) => r.id).filter(Boolean);
-          const orgId = await getActiveOrgId(supabase as any, userId);
-          if (orgId && newIds.length > 0) {
-            await runOrgRulesForIngest(supabase as any, orgId, newIds);
+          const orgIdForRules = (row.org_id as string) ?? null;
+          if (orgIdForRules && newIds.length > 0) {
+            await runOrgRulesForIngest(supabase as any, orgIdForRules, newIds);
           }
         } catch (rulesErr) {
           console.warn("[sync-runner/plaid] Org transaction rules failed", rulesErr);
@@ -756,6 +755,7 @@ export async function runSyncForDataSource(
               options?.hostname,
               accessToken,
               itemId,
+              row.org_id as string | undefined,
             );
           }
         } catch (balErr) {

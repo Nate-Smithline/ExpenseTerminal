@@ -78,8 +78,16 @@ function needsMemberDisplayMap(
   return false;
 }
 
-async function loadDataSourceNameById(supabase: any, userId: string): Promise<Record<string, string>> {
-  const { data } = await supabase.from("data_sources").select("id,name").eq("user_id", userId);
+async function loadDataSourceNameById(
+  supabase: any,
+  userId: string,
+  orgId: string
+): Promise<Record<string, string>> {
+  const { data } = await supabase
+    .from("data_sources")
+    .select("id,name")
+    .eq("user_id", userId)
+    .eq("org_id", orgId);
   const out: Record<string, string> = {};
   for (const row of data ?? []) {
     if (row?.id) out[String(row.id)] = String(row.name ?? "").trim() || String(row.id);
@@ -161,7 +169,8 @@ async function csvExportResponse(supabase: any, userId: string, opt: ExportOptio
   const needsAccountNames =
     exportCols.includes("data_source_id") ||
     exportCols.some((c) => isUuidColumnKey(c) && defsById.get(c)?.type === "account");
-  const dataSourceNameById = needsAccountNames ? await loadDataSourceNameById(supabase as any, userId) : {};
+  const dataSourceNameById =
+    needsAccountNames && orgId ? await loadDataSourceNameById(supabase as any, userId, orgId) : {};
 
   const selectList = buildDbSelectParts(exportCols, defsById);
   const cols = selectList.join(",");

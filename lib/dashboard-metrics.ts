@@ -71,23 +71,36 @@ export type DashboardMetrics = {
 export async function computeDashboardMetrics(args: {
   supabase: unknown;
   userId: string;
+  /** When set, transactions and accounts are limited to this workspace's linked accounts. */
+  orgId: string | null;
   period: DashboardPeriod;
   pageId: string | null;
 }): Promise<DashboardMetrics> {
   const supabase = args.supabase as any;
-  const { userId, period, pageId } = args;
+  const { userId, period, pageId, orgId } = args;
 
   const { start, end, label } = dashboardPeriodRangeUTC(period);
 
+  const { data: orgSources } = orgId
+    ? await supabase.from("data_sources").select("id").eq("user_id", userId).eq("org_id", orgId)
+    : { data: [] as { id: string }[] };
+
+  const sourceIds = (orgSources ?? []).map((r: { id: string }) => r.id).filter(Boolean);
+
   const [txRes, dsRes] = await Promise.all([
-    supabase
-      .from("transactions")
-      .select("amount,transaction_type,status")
-      .eq("user_id", userId)
-      .gte("date", start)
-      .lte("date", end)
-      .neq("status", "personal"),
-    supabase.from("data_sources").select("*").eq("user_id", userId),
+    sourceIds.length > 0
+      ? supabase
+          .from("transactions")
+          .select("amount,transaction_type,status")
+          .eq("user_id", userId)
+          .in("data_source_id", sourceIds)
+          .gte("date", start)
+          .lte("date", end)
+          .neq("status", "personal")
+      : Promise.resolve({ data: [] }),
+    orgId
+      ? supabase.from("data_sources").select("*").eq("user_id", userId).eq("org_id", orgId)
+      : Promise.resolve({ data: [] }),
   ]);
 
   const txs = (txRes.data ?? []) as {

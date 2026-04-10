@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { decryptAccessToken } from "@/lib/plaid";
 import { persistPlaidBalancesForPlaidItem } from "@/lib/plaid-balance-persist";
+import { requireOrgIdForAccounts } from "@/lib/data-sources/require-active-org";
 
 function getRequestHostname(req: Request): string {
   const xfHost = req.headers.get("x-forwarded-host");
@@ -41,11 +42,17 @@ export async function POST(req: Request) {
   }
 
   const supabase = authClient;
+  const org = await requireOrgIdForAccounts(supabase as any, userId);
+  if ("error" in org) {
+    return NextResponse.json({ error: org.error }, { status: org.status });
+  }
+
   const { data: row, error: fetchErr } = await (supabase as any)
     .from("data_sources")
     .select("id, source_type, plaid_access_token, plaid_item_id")
     .eq("id", dataSourceId)
     .eq("user_id", userId)
+    .eq("org_id", org.orgId)
     .single();
 
   if (fetchErr || !row) {
@@ -64,6 +71,7 @@ export async function POST(req: Request) {
       hostname,
       accessToken,
       row.plaid_item_id as string,
+      org.orgId,
     );
     return NextResponse.json({ success: true });
   } catch (e) {

@@ -2,8 +2,8 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useState, useEffect, useCallback } from "react";
 import { SidebarPagesPanel } from "./SidebarPagesPanel";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import {
   SIDEBAR_BOTTOM_NAV,
   SIDEBAR_EXTERNAL_NAV,
@@ -13,13 +13,8 @@ import {
 
 const mainNav: SidebarNavItem[] = [...SIDEBAR_MAIN_NAV, ...SIDEBAR_EXTERNAL_NAV];
 
-type OrgBrandingSummary = {
-  name: string;
-};
-
 export function Sidebar() {
   const pathname = usePathname();
-  const [orgBranding, setOrgBranding] = useState<OrgBrandingSummary | null>(null);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
@@ -87,42 +82,10 @@ export function Sidebar() {
     );
   };
 
-  const loadOrgBranding = useCallback(async () => {
-    try {
-      const res = await fetch("/api/orgs/active-summary");
-      if (!res.ok) return;
-      const d = (await res.json()) as Record<string, unknown>;
-      if (typeof d.name === "string") {
-        setOrgBranding({ name: d.name });
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  useEffect(() => {
-    loadOrgBranding();
-    const onBranding = (ev: Event) => {
-      const ce = ev as CustomEvent<{ name?: string }>;
-      if (ce.detail?.name) {
-        setOrgBranding({ name: ce.detail.name });
-      } else {
-        void loadOrgBranding();
-      }
-    };
-    window.addEventListener("org-branding-updated", onBranding);
-    return () => window.removeEventListener("org-branding-updated", onBranding);
-  }, [loadOrgBranding]);
-
   return (
     <aside className="sticky top-0 h-screen w-[260px] shrink-0 bg-white flex flex-col border-r border-bg-tertiary/60">
       <div className="pl-8 pr-5 pt-6 pb-4">
-        <Link
-          href="/"
-          className="inline-flex min-w-0 max-w-full text-[15px] font-semibold text-mono-dark truncate hover:opacity-80"
-        >
-          {orgBranding?.name ?? "Expense Terminal"}
-        </Link>
+        <WorkspaceSwitcher layout="desktop" />
       </div>
 
       <nav className="flex-1 min-h-0 overflow-y-auto pl-0 pr-5 overscroll-contain">

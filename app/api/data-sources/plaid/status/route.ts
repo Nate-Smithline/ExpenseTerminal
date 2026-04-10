@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { getPlaidClient, decryptAccessToken } from "@/lib/plaid";
+import { requireOrgIdForAccounts } from "@/lib/data-sources/require-active-org";
 
 function getRequestHostname(req: Request): string {
   const xfHost = req.headers.get("x-forwarded-host");
@@ -29,11 +30,17 @@ export async function GET(req: Request) {
   }
 
   const supabase = authClient;
+  const org = await requireOrgIdForAccounts(supabase as any, userId);
+  if ("error" in org) {
+    return NextResponse.json({ error: org.error }, { status: org.status });
+  }
+
   const { data: row, error: fetchError } = await (supabase as any)
     .from("data_sources")
     .select("id, source_type, plaid_access_token, plaid_item_id")
     .eq("id", dataSourceId)
     .eq("user_id", userId)
+    .eq("org_id", org.orgId)
     .single();
 
   if (fetchError || !row) {

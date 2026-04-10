@@ -1,70 +1,42 @@
-import {
-  activitySortRuleSchema,
-  activitySortRulesSchema,
-  type ActivitySortRule,
-} from "@/lib/validation/schemas";
-
-const DEFAULT_RULES: ActivitySortRule[] = [{ column: "date", asc: false }];
-
-/** Query param value for `sort_rules` (URLSearchParams encodes; store raw JSON). */
-export function serializeSortRulesForQuery(rules: ActivitySortRule[]): string {
-  return JSON.stringify(rules);
-}
-
-function coerceRulesArray(raw: unknown): unknown[] {
-  if (Array.isArray(raw)) return raw.slice(0, 5);
-  return [];
-}
+import { activitySortRulesSchema, type ActivitySortRule } from "@/lib/validation/schemas";
 
 export function parseSortRulesJson(raw: unknown): ActivitySortRule[] {
-  if (raw == null) return [];
-  let v: unknown = raw;
-  if (typeof raw === "string") {
-    try {
-      v = JSON.parse(raw);
-    } catch {
-      return [];
-    }
-  }
-  const arr = coerceRulesArray(v);
-  if (arr.length === 0) return [];
-  const parsed = activitySortRulesSchema.safeParse(arr);
+  const parsed = activitySortRulesSchema.safeParse(raw);
   return parsed.success ? parsed.data : [];
 }
 
-export function parseSortRulesQueryParam(raw: string | null): ActivitySortRule[] {
-  if (raw == null || !String(raw).trim()) return [];
-  const t = String(raw).trim();
-  let parsedJson: unknown;
+export function serializeSortRulesForQuery(rules: ActivitySortRule[]): string {
   try {
-    parsedJson = JSON.parse(t);
+    return encodeURIComponent(JSON.stringify(rules));
   } catch {
-    try {
-      parsedJson = JSON.parse(decodeURIComponent(t));
-    } catch {
-      return [];
-    }
+    return encodeURIComponent("[]");
   }
-  return parseSortRulesJson(parsedJson);
 }
 
-/** Build canonical rules from `page_activity_view_settings` row (JSON + legacy columns). */
-export function normalizeSortRulesFromSettingsRow(
-  data: Record<string, unknown> | null | undefined
-): ActivitySortRule[] {
-  if (!data) return DEFAULT_RULES;
-  const fromJson = parseSortRulesJson(data.sort_rules);
-  if (fromJson.length > 0) return fromJson;
-  const col = typeof data.sort_column === "string" ? data.sort_column : "date";
-  const asc = typeof data.sort_asc === "boolean" ? data.sort_asc : false;
-  const one = activitySortRuleSchema.safeParse({ column: col, asc });
-  return one.success ? [one.data] : DEFAULT_RULES;
+export function parseSortRulesQueryParam(param: string | null): ActivitySortRule[] {
+  if (!param || !param.trim()) return [];
+  try {
+    const decoded = decodeURIComponent(param);
+    const json = JSON.parse(decoded) as unknown;
+    return parseSortRulesJson(json);
+  } catch {
+    return [];
+  }
 }
 
-export function primarySortFromRules(rules: ActivitySortRule[]): {
-  sort_column: string;
-  sort_asc: boolean;
-} {
-  const r = rules[0] ?? DEFAULT_RULES[0];
-  return { sort_column: String(r.column), sort_asc: r.asc };
+export function normalizeSortRulesFromSettingsRow(data: Record<string, unknown> | null): ActivitySortRule[] {
+  const rules = data ? parseSortRulesJson((data as any).sort_rules) : [];
+  if (rules.length > 0) return rules;
+
+  const sortCol = data && typeof (data as any).sort_column === "string" ? String((data as any).sort_column) : "date";
+  const sortAsc = data && typeof (data as any).sort_asc === "boolean" ? Boolean((data as any).sort_asc) : false;
+  // We intentionally validate via schema by filtering out invalid columns.
+  const fallback = parseSortRulesJson([{ column: sortCol as any, asc: sortAsc }]);
+  return fallback.length > 0 ? fallback : [{ column: "date", asc: false }];
 }
+
+export function primarySortFromRules(rules: ActivitySortRule[]): { sort_column: string; sort_asc: boolean } {
+  const first = rules[0];
+  return first ? { sort_column: first.column, sort_asc: first.asc } : { sort_column: "date", sort_asc: false };
+}
+

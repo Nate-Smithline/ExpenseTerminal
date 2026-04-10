@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { getPlaidClient, encryptAccessToken } from "@/lib/plaid";
 import { persistPlaidBalancesForPlaidItem } from "@/lib/plaid-balance-persist";
+import { requireOrgIdForAccounts } from "@/lib/data-sources/require-active-org";
 
 function getRequestHostname(req: Request): string {
   const xfHost = req.headers.get("x-forwarded-host");
@@ -48,6 +49,11 @@ export async function POST(req: Request) {
   }
 
   const supabase = authClient;
+  const org = await requireOrgIdForAccounts(supabase as any, userId);
+  if ("error" in org) {
+    return NextResponse.json({ error: org.error }, { status: org.status });
+  }
+
   const hostname = getRequestHostname(req);
   const plaid = getPlaidClient(hostname);
 
@@ -91,6 +97,7 @@ export async function POST(req: Request) {
       .from("data_sources")
       .select("id")
       .eq("user_id", userId)
+      .eq("org_id", org.orgId)
       .eq("plaid_item_id", itemId);
 
     if (existingByItem && existingByItem.length > 0) {
@@ -105,7 +112,8 @@ export async function POST(req: Request) {
           last_error_summary: null,
         })
         .in("id", existingIds)
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .eq("org_id", org.orgId);
       if (bulkUpdateErr) {
         firstSaveError = firstSaveError ?? bulkUpdateErr.message ?? String(bulkUpdateErr);
       } else {
@@ -123,6 +131,7 @@ export async function POST(req: Request) {
           const { data: inserted, error: insertErr } = await (supabase as any)
             .from("data_sources")
             .insert({
+              org_id: org.orgId,
               user_id: userId,
               name: displayName,
               account_type: accountType,
@@ -153,6 +162,7 @@ export async function POST(req: Request) {
         const { data: inserted, error: insertErr } = await (supabase as any)
           .from("data_sources")
           .insert({
+            org_id: org.orgId,
             user_id: userId,
             name: institutionName ?? "Bank account",
             account_type: "checking",
@@ -192,7 +202,7 @@ export async function POST(req: Request) {
     }
 
     try {
-      await persistPlaidBalancesForPlaidItem(supabase, userId, hostname, accessToken, itemId);
+      await persistPlaidBalancesForPlaidItem(supabase, userId, hostname, accessToken, itemId, org.orgId);
     } catch (balErr) {
       console.warn("[plaid/exchange-token] Balance snapshot failed", balErr);
     }

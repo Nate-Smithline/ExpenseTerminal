@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
 import { getActiveOrgId } from "@/lib/active-org";
+import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
 import { DataSourcesClient } from "./DataSourcesClient";
 
 export type DataSourceStats = {
@@ -20,7 +21,14 @@ export default async function DataSourcesPage() {
 
   const supabase = authClient;
 
-  const orgId = await getActiveOrgId(supabase as any, userId);
+  let orgId = await getActiveOrgId(supabase as any, userId);
+  if (!orgId) {
+    try {
+      orgId = await ensureActiveOrgForUser(userId);
+    } catch {
+      orgId = null;
+    }
+  }
   if (orgId) {
     const { data: org, error: orgVisErr } = await (supabase as any)
       .from("orgs")
@@ -40,11 +48,14 @@ export default async function DataSourcesPage() {
     }
   }
 
-  const { data: sources } = await (supabase as any)
-    .from("data_sources")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
+  const { data: sources } = orgId
+    ? await (supabase as any)
+        .from("data_sources")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false })
+    : { data: [] as unknown[] };
 
   const calendarYear = new Date().getFullYear();
 

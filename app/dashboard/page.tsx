@@ -13,6 +13,8 @@ import { computePageComparisonMetrics } from "@/lib/page-metrics";
 import { loadDashboardPageStrip, loadOrgPagesForDashboardSelect } from "@/lib/dashboard-pages";
 import { uuidSchema } from "@/lib/validation/schemas";
 import { computeDashboardSnapshotDeltas } from "@/lib/dashboard-snapshot-deltas";
+import { getActiveOrgId } from "@/lib/active-org";
+import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
 
 export default async function DashboardPage({
   searchParams,
@@ -36,8 +38,23 @@ export default async function DashboardPage({
   const pageIdFromQuery =
     typeof pageIdParam === "string" && uuidSchema.safeParse(pageIdParam).success ? pageIdParam : null;
 
+  let dashboardOrgId = await getActiveOrgId(supabase as any, userId);
+  if (!dashboardOrgId) {
+    try {
+      dashboardOrgId = await ensureActiveOrgForUser(userId);
+    } catch {
+      dashboardOrgId = null;
+    }
+  }
+
   const [metrics, selectPages] = await Promise.all([
-    computeDashboardMetrics({ supabase, userId, period, pageId: pageIdFromQuery }),
+    computeDashboardMetrics({
+      supabase,
+      userId,
+      orgId: dashboardOrgId,
+      period,
+      pageId: pageIdFromQuery,
+    }),
     loadOrgPagesForDashboardSelect(supabase, userId),
   ]);
 

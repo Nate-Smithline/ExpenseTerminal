@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { Sidebar } from "./Sidebar";
 import { SidebarPagesPanel } from "./SidebarPagesPanel";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { UpgradeModalProvider } from "./UpgradeModalContext";
 import { SIDEBAR_BOTTOM_NAV, SIDEBAR_MAIN_NAV } from "@/lib/nav/sidebar-main-nav";
 
@@ -189,6 +190,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <div className="px-5 pt-2 pb-1 shrink-0">
                 <div className="w-10 h-1 bg-black/15 mx-auto" />
+              </div>
+
+              <div className="shrink-0 px-4 pb-2 overflow-visible z-10">
+                <WorkspaceSwitcher layout="mobile" onNavigate={() => closeMenu()} />
               </div>
 
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-1 pb-2">

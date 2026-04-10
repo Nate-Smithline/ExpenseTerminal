@@ -10,18 +10,24 @@ export async function persistPlaidBalancesForPlaidItem(
   hostname: string | undefined,
   accessToken: string,
   plaidItemId: string,
+  /** When set, only update rows for this workspace (multi-org). */
+  orgId?: string | null,
 ): Promise<void> {
   const plaid = getPlaidClient(hostname);
   const res = await plaid.accountsBalanceGet({ access_token: accessToken });
   const accounts = res.data.accounts ?? [];
   const byId = new Map(accounts.map((a) => [a.account_id, a]));
 
-  const { data: rows, error } = await supabase
+  let q = supabase
     .from("data_sources")
     .select("id, plaid_account_id")
     .eq("user_id", userId)
     .eq("plaid_item_id", plaidItemId)
     .eq("source_type", "plaid");
+  if (orgId) {
+    q = q.eq("org_id", orgId);
+  }
+  const { data: rows, error } = await q;
 
   if (error) throw new Error(error.message);
 
@@ -60,7 +66,7 @@ export async function refreshAllPlaidItemBalances(
   const errors: string[] = [];
   const { data: rows, error } = await supabase
     .from("data_sources")
-    .select("user_id, plaid_item_id, plaid_access_token")
+    .select("user_id, org_id, plaid_item_id, plaid_access_token")
     .eq("source_type", "plaid")
     .not("plaid_item_id", "is", null)
     .not("plaid_access_token", "is", null);
@@ -75,13 +81,14 @@ export async function refreshAllPlaidItemBalances(
   for (const row of rows ?? []) {
     const uid = row.user_id as string;
     const itemId = row.plaid_item_id as string;
-    const key = `${uid}:${itemId}`;
+    const oid = row.org_id as string | undefined;
+    const key = `${uid}:${oid ?? ""}:${itemId}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
     try {
       const token = decryptAccessToken(row.plaid_access_token as string);
-      await persistPlaidBalancesForPlaidItem(supabase, uid, hostname, token, itemId);
+      await persistPlaidBalancesForPlaidItem(supabase, uid, hostname, token, itemId, oid);
       itemsProcessed += 1;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

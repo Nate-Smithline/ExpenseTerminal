@@ -1,164 +1,185 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-const overlayClass =
-  "fixed inset-0 z-[60] flex min-h-[100dvh] items-center justify-center bg-black/40 px-4 backdrop-blur-md";
-const panelClass =
-  "relative w-full max-w-md overflow-hidden rounded-2xl border border-black/[0.08] bg-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.18)]";
-const headClass = "px-5 pt-5 pb-1";
-const bodyClass = "px-5 py-3";
-const footerClass = "flex justify-end gap-2 border-t border-black/[0.06] bg-[#fafafa]/80 px-5 py-4";
-const btnPrimary =
-  "rounded-full bg-[#0071e3] px-5 py-2.5 text-[15px] font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-40";
-const btnSecondary =
-  "rounded-full bg-[#e5e5ea] px-5 py-2.5 text-[15px] font-medium text-[#1d1d1f] transition hover:bg-[#d8d8dc] disabled:opacity-40";
-const choiceClass =
-  "w-full rounded-xl border border-black/[0.10] px-4 py-3 text-left transition hover:bg-[#f5f5f7]";
+const appleOverlayClass =
+  "fixed inset-0 z-[240] flex min-h-[100dvh] items-center justify-center bg-black/40 px-4 backdrop-blur-md";
+const applePanelClass =
+  "relative flex max-h-[min(90vh,520px)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-black/[0.08] bg-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.18)]";
+const appleModalHeadClass = "shrink-0 border-b border-black/[0.06] px-5 py-4";
+const appleModalBodyClass = "min-h-0 flex-1 overflow-y-auto px-5 py-4";
+const appleModalFooterClass = "flex shrink-0 justify-end gap-2 border-t border-black/[0.06] bg-[#fafafa]/80 px-5 py-4";
+const appleBtnSecondary =
+  "rounded-full bg-[#e5e5ea] px-5 py-2.5 text-[15px] font-medium text-[#1d1d1f] transition hover:bg-[#d8d8dc]";
 
-type Visibility = "org" | "restricted";
-
-export function AccountsShareModal({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
+/**
+ * Org-level access for Accounts (mirrors page “Share” general access, without per-person invites).
+ */
+export function AccountsShareModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [visibility, setVisibility] = useState<"org" | "restricted">("org");
+  const [canManage, setCanManage] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [visibility, setVisibility] = useState<Visibility>("org");
-  const [canEdit, setCanEdit] = useState(false);
-  const [draft, setDraft] = useState<Visibility>("org");
+  const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/orgs/accounts-page-visibility");
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Could not load settings");
-        return;
-      }
-      const v = data.visibility === "restricted" ? "restricted" : "org";
-      setVisibility(v);
-      setDraft(v);
-      setCanEdit(Boolean(data.canEdit));
+      const res = await fetch("/api/data-sources/share");
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((json as { error?: string }).error ?? "Failed to load");
+      setVisibility((json as { visibility?: string }).visibility === "restricted" ? "restricted" : "org");
+      setCanManage(Boolean((json as { can_manage?: boolean }).can_manage));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (open) {
-      void load();
-    }
+    if (!open) return;
+    void load();
   }, [open, load]);
 
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-    }
-    if (open) {
-      document.addEventListener("keydown", onKey);
-      return () => document.removeEventListener("keydown", onKey);
-    }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  async function save() {
-    setSaving(true);
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  const setAccess = async (next: "org" | "restricted") => {
+    if (!canManage) return;
     setError(null);
     try {
-      const res = await fetch("/api/orgs/accounts-page-visibility", {
+      const res = await fetch("/api/data-sources/share", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visibility: draft }),
+        body: JSON.stringify({ visibility: next }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(typeof data.error === "string" ? data.error : "Could not save");
-        return;
-      }
-      const v = data.visibility === "restricted" ? "restricted" : "org";
-      setVisibility(v);
-      setDraft(v);
-      onClose();
-    } finally {
-      setSaving(false);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((json as { error?: string }).error ?? "Failed to update");
+      setVisibility(next);
+      setToast("Access updated");
+      setTimeout(() => setToast(null), 2400);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to update");
     }
-  }
+  };
 
   if (!open) return null;
 
   return (
-    <div className={overlayClass} role="dialog" aria-modal="true" aria-labelledby="accounts-share-title">
-      <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
-      <div className={`${panelClass} z-10`}>
-        <div className={headClass}>
-          <h2 id="accounts-share-title" className="text-lg font-semibold text-[#1d1d1f]">
-            Share Accounts page
+    <div className={appleOverlayClass} role="presentation" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="accounts-share-title"
+        className={applePanelClass}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={appleModalHeadClass}>
+          <h2 id="accounts-share-title" className="text-[20px] font-semibold tracking-tight text-mono-dark">
+            Share Accounts
           </h2>
+          <p className="mt-1 text-sm text-mono-medium">Control who in your organization can open Accounts.</p>
         </div>
-        <div className={bodyClass}>
-          <p className="text-sm text-mono-medium leading-relaxed">
-            Choose who in your workspace can open the Accounts page (bank feeds, balances, and uploads).
-          </p>
+
+        <div className={appleModalBodyClass}>
           {loading ? (
-            <p className="mt-4 text-sm text-mono-light">Loading…</p>
+            <div className="py-8 text-center text-sm text-mono-medium">Loading…</div>
           ) : (
             <>
-              {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-              {canEdit ? (
-                <div className="mt-4 space-y-2">
-                  <button
-                    type="button"
-                    className={`${choiceClass} ${draft === "org" ? "border-[#0071e3] bg-[#f0f7ff]" : ""}`}
-                    onClick={() => setDraft("org")}
-                  >
-                    <div className="text-[15px] font-medium text-[#1d1d1f]">All workspace members</div>
-                    <div className="mt-1 text-xs text-mono-medium">
-                      Everyone in the org can view and manage accounts.
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    className={`${choiceClass} ${draft === "restricted" ? "border-[#0071e3] bg-[#f0f7ff]" : ""}`}
-                    onClick={() => setDraft("restricted")}
-                  >
-                    <div className="text-[15px] font-medium text-[#1d1d1f]">Owners only</div>
-                    <div className="mt-1 text-xs text-mono-medium">
-                      Only workspace owners can open Accounts; other members are redirected to Home.
-                    </div>
-                  </button>
-                </div>
-              ) : (
-                <p className="mt-4 text-sm text-mono-medium">
-                  {visibility === "restricted"
-                    ? "This page is limited to workspace owners. Ask an owner if you need access."
-                    : "All workspace members can use this page. Only owners can change this setting."}
+              {error && <div className="mb-3 text-sm text-red-600">{error}</div>}
+              {!canManage && (
+                <p className="mb-4 rounded-md bg-bg-secondary/60 px-3 py-2 text-sm text-mono-medium">
+                  Only an organization owner can change this setting.
                 </p>
               )}
+              <div className="mb-2 text-xs font-medium text-mono-medium">General access</div>
+              <div
+                className="overflow-hidden rounded-xl border border-black/[0.08]"
+                role="radiogroup"
+                aria-label="Who can access Accounts"
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={visibility === "org"}
+                  disabled={!canManage}
+                  onClick={() => setAccess("org")}
+                  className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition hover:bg-[#f5f5f7] disabled:cursor-not-allowed disabled:opacity-60 ${
+                    visibility === "org" ? "bg-[#f5f5f7]" : ""
+                  }`}
+                >
+                  <span
+                    className="material-symbols-rounded shrink-0 text-[20px] text-mono-medium"
+                    style={{ fontVariationSettings: "'FILL' 0, 'wght' 400" }}
+                  >
+                    groups
+                  </span>
+                  <span className="min-w-0 flex-1 font-medium text-mono-dark">Everyone in organization</span>
+                  {visibility === "org" ? (
+                    <span className="material-symbols-rounded shrink-0 text-[18px] text-mono-light">check</span>
+                  ) : null}
+                </button>
+                <div className="h-px bg-black/[0.06]" />
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={visibility === "restricted"}
+                  disabled={!canManage}
+                  onClick={() => setAccess("restricted")}
+                  className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition hover:bg-[#f5f5f7] disabled:cursor-not-allowed disabled:opacity-60 ${
+                    visibility === "restricted" ? "bg-[#f5f5f7]" : ""
+                  }`}
+                >
+                  <span
+                    className="material-symbols-rounded shrink-0 text-[20px] text-mono-medium"
+                    style={{ fontVariationSettings: "'FILL' 0, 'wght' 400" }}
+                  >
+                    lock_person
+                  </span>
+                  <span className="min-w-0 flex-1 font-medium text-mono-dark">Owners only</span>
+                  {visibility === "restricted" ? (
+                    <span className="material-symbols-rounded shrink-0 text-[18px] text-mono-light">check</span>
+                  ) : null}
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-mono-light">
+                {visibility === "org"
+                  ? "All members of your active organization can open Accounts."
+                  : "Only organization owners can open Accounts. Other members are redirected to Home."}
+              </p>
             </>
           )}
         </div>
-        <div className={footerClass}>
-          <button type="button" className={btnSecondary} onClick={onClose} disabled={saving}>
-            {canEdit && draft !== visibility ? "Cancel" : "Close"}
+
+        <div className={appleModalFooterClass}>
+          <button type="button" onClick={onClose} className={appleBtnSecondary}>
+            Close
           </button>
-          {canEdit && !loading && (
-            <button
-              type="button"
-              className={btnPrimary}
-              onClick={save}
-              disabled={saving || draft === visibility}
-            >
-              {saving ? "Saving…" : "Save"}
-            </button>
-          )}
         </div>
       </div>
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-[250] -translate-x-1/2 rounded-md bg-mono-dark px-4 py-2 text-[13px] text-white shadow-lg">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

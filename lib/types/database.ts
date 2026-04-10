@@ -105,6 +105,21 @@ export interface Database {
         };
         Update: Partial<Database["public"]["Tables"]["org_pending_invites"]["Insert"]>;
       };
+      org_member_join_notify_queue: {
+        Row: {
+          id: string;
+          org_id: string;
+          member_user_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          member_user_id: string;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["org_member_join_notify_queue"]["Insert"]>;
+      };
       email_verifications: {
         Row: {
           id: string;
@@ -292,6 +307,7 @@ export interface Database {
       data_sources: {
         Row: {
           id: string;
+          org_id: string;
           user_id: string;
           name: string;
           account_type: string;
@@ -326,6 +342,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
+          org_id: string;
           user_id: string;
           name: string;
           account_type: string;

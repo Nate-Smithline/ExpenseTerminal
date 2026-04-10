@@ -430,3 +430,107 @@ CREATE TRIGGER trg_clear_org_pending_on_membership
   AFTER INSERT ON public.org_memberships
   FOR EACH ROW
   EXECUTE FUNCTION public.clear_org_pending_invite_on_membership();
+
+-- Apply: supabase/migrations/202604111300_org_member_join_owner_notify_queue.sql
+
+CREATE TABLE IF NOT EXISTS public.org_member_join_notify_queue (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES public.orgs(id) ON DELETE CASCADE,
+  member_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT org_member_join_notify_queue_org_member UNIQUE (org_id, member_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_org_member_join_notify_queue_created
+  ON public.org_member_join_notify_queue (created_at);
+
+ALTER TABLE public.org_member_join_notify_queue ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE FUNCTION public.queue_org_member_join_owner_notify()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.role IS DISTINCT FROM 'member' THEN
+    RETURN NEW;
+  END IF;
+  INSERT INTO public.org_member_join_notify_queue (org_id, member_user_id)
+  VALUES (NEW.org_id, NEW.user_id)
+  ON CONFLICT (org_id, member_user_id) DO NOTHING;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_queue_org_member_join_notify ON public.org_memberships;
+CREATE TRIGGER trg_queue_org_member_join_notify
+  AFTER INSERT ON public.org_memberships
+  FOR EACH ROW
+  EXECUTE FUNCTION public.queue_org_member_join_owner_notify();
+
+-- Apply: supabase/migrations/202604121200_data_sources_org_id.sql
+
+ALTER TABLE public.data_sources
+  ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES public.orgs(id) ON DELETE RESTRICT;
+
+UPDATE public.data_sources ds
+SET org_id = COALESCE(
+  (SELECT p.active_org_id FROM public.profiles p WHERE p.id = ds.user_id),
+  (
+    SELECT om.org_id
+    FROM public.org_memberships om
+    WHERE om.user_id = ds.user_id
+    ORDER BY om.created_at ASC
+    LIMIT 1
+  )
+)
+WHERE org_id IS NULL;
+
+UPDATE public.data_sources ds
+SET org_id = (
+  SELECT om.org_id
+  FROM public.org_memberships om
+  WHERE om.user_id = ds.user_id
+  ORDER BY om.created_at ASC
+  LIMIT 1
+)
+WHERE org_id IS NULL;
+
+UPDATE public.transactions t
+SET data_source_id = NULL
+WHERE t.data_source_id IS NOT NULL
+  AND EXISTS (SELECT 1 FROM public.data_sources ds WHERE ds.id = t.data_source_id AND ds.org_id IS NULL);
+
+DELETE FROM public.data_sources WHERE org_id IS NULL;
+
+ALTER TABLE public.data_sources
+  ALTER COLUMN org_id SET NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_data_sources_org_id ON public.data_sources (org_id);
+CREATE INDEX IF NOT EXISTS idx_data_sources_org_user ON public.data_sources (org_id, user_id);
+
+DROP INDEX IF EXISTS public.idx_data_sources_user_fc_account;
+CREATE UNIQUE INDEX idx_data_sources_org_user_fc_account
+  ON public.data_sources (org_id, user_id, financial_connections_account_id)
+  WHERE financial_connections_account_id IS NOT NULL;
+
+DROP POLICY IF EXISTS "Users can manage own data sources" ON public.data_sources;
+CREATE POLICY "Users manage data sources in their orgs"
+  ON public.data_sources FOR ALL
+  USING (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM public.org_memberships m
+      WHERE m.org_id = data_sources.org_id
+        AND m.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM public.org_memberships m
+      WHERE m.org_id = data_sources.org_id
+        AND m.user_id = auth.uid()
+    )
+  );

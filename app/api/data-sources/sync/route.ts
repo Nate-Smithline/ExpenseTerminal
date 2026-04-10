@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { getStripeMode } from "@/lib/stripe";
 import { runSyncForDataSource } from "@/lib/data-sources/sync-runner";
+import { requireOrgIdForAccounts } from "@/lib/data-sources/require-active-org";
 
 export async function POST(req: Request) {
   const authClient = await createSupabaseRouteClient();
@@ -42,11 +43,20 @@ export async function POST(req: Request) {
   const endDate = typeof body.end_date === "string" && body.end_date.trim() ? body.end_date.trim() : undefined;
 
   const supabase = authClient;
+  const org = await requireOrgIdForAccounts(supabase as any, userId);
+  if ("error" in org) {
+    return new Response(JSON.stringify({ error: org.error }), {
+      status: org.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const { data: row, error: fetchError } = await (supabase as any)
     .from("data_sources")
     .select("id,user_id,source_type")
     .eq("id", dataSourceId)
     .eq("user_id", userId)
+    .eq("org_id", org.orgId)
     .single();
 
   if (fetchError || !row) {

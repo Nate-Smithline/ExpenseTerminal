@@ -6,6 +6,8 @@ import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limi
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { parseQueryLimit, parseQueryOffset } from "@/lib/validation/schemas";
 import { isBrandColorId } from "@/lib/brand-palette";
+import { requireOrgIdForAccounts } from "@/lib/data-sources/require-active-org";
+
 export async function GET(req: Request) {
   const authClient = await createSupabaseRouteClient();
   const auth = await requireAuth(authClient);
@@ -25,6 +27,14 @@ export async function GET(req: Request) {
   }
   const supabase = authClient;
 
+  const org = await requireOrgIdForAccounts(supabase as any, userId);
+  if ("error" in org) {
+    return new Response(JSON.stringify({ error: org.error }), {
+      status: org.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const url = new URL(req.url);
   const limit = parseQueryLimit(url.searchParams.get("limit"));
   const offset = parseQueryOffset(url.searchParams.get("offset"));
@@ -33,6 +43,7 @@ export async function GET(req: Request) {
     .from("data_sources")
     .select("*", { count: "exact" })
     .eq("user_id", userId)
+    .eq("org_id", org.orgId)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -70,6 +81,14 @@ export async function POST(req: Request) {
   }
   const supabase = authClient;
 
+  const orgPost = await requireOrgIdForAccounts(supabase as any, userId);
+  if ("error" in orgPost) {
+    return new Response(JSON.stringify({ error: orgPost.error }), {
+      status: orgPost.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   let body: {
     name?: string;
     account_type?: string;
@@ -97,6 +116,7 @@ export async function POST(req: Request) {
   const sourceType = body.source_type === "stripe" ? "stripe" : "manual";
 
   const insertRow: Record<string, unknown> = {
+    org_id: orgPost.orgId,
     user_id: userId,
     name: body.name,
     account_type: body.account_type || "other",
@@ -151,6 +171,14 @@ export async function PATCH(req: Request) {
   }
   const supabase = authClient;
 
+  const org = await requireOrgIdForAccounts(supabase as any, userId);
+  if ("error" in org) {
+    return new Response(JSON.stringify({ error: org.error }), {
+      status: org.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   let body: {
     id: string;
     name?: string;
@@ -184,6 +212,7 @@ export async function PATCH(req: Request) {
     .select("source_type")
     .eq("id", body.id)
     .eq("user_id", userId)
+    .eq("org_id", org.orgId)
     .maybeSingle();
 
   if (existingErr || !existingRow) {
@@ -261,6 +290,7 @@ export async function PATCH(req: Request) {
     .update(update)
     .eq("id", body.id)
     .eq("user_id", userId)
+    .eq("org_id", org.orgId)
     .select()
     .single();
 
@@ -294,6 +324,14 @@ export async function DELETE(req: Request) {
   }
   const supabase = authClient;
 
+  const org = await requireOrgIdForAccounts(supabase as any, userId);
+  if ("error" in org) {
+    return new Response(JSON.stringify({ error: org.error }), {
+      status: org.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   let body: { id: string; delete_transactions?: boolean };
   try {
     body = await req.json();
@@ -315,6 +353,7 @@ export async function DELETE(req: Request) {
     .select("id")
     .eq("id", body.id)
     .eq("user_id", userId)
+    .eq("org_id", org.orgId)
     .single();
 
   if (fetchError || !row) {

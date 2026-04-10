@@ -8,6 +8,7 @@ import { safeErrorMessage } from "@/lib/api/safe-error";
 import { getPlanLimitsForUser } from "@/lib/billing/get-user-plan";
 import { computeCsvAiEligibility } from "@/lib/billing/limits";
 import { getActiveOrgId } from "@/lib/active-org";
+import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
 import { runOrgRulesForIngest } from "@/lib/org-rules/executor";
 
 type IncomingRow = {
@@ -32,6 +33,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
   const supabase = authClient;
+
+  let uploadOrgId = await getActiveOrgId(supabase as any, userId);
+  if (!uploadOrgId) {
+    try {
+      uploadOrgId = await ensureActiveOrgForUser(userId);
+    } catch {
+      uploadOrgId = null;
+    }
+  }
+  if (!uploadOrgId) {
+    return NextResponse.json({ error: "No active workspace" }, { status: 400 });
+  }
 
   let body: unknown;
   try {
@@ -69,6 +82,7 @@ export async function POST(req: Request) {
       .select("id, source_type")
       .eq("id", dataSourceIdVal)
       .eq("user_id", userId)
+      .eq("org_id", uploadOrgId)
       .maybeSingle();
 
     if (dsLookupErr) {
@@ -212,9 +226,8 @@ export async function POST(req: Request) {
   const insertedIds = inserted.map((t: { id: string }) => t.id);
 
   try {
-    const orgId = await getActiveOrgId(supabase as any, userId);
-    if (orgId && insertedIds.length > 0) {
-      await runOrgRulesForIngest(supabase as any, orgId, insertedIds);
+    if (insertedIds.length > 0) {
+      await runOrgRulesForIngest(supabase as any, uploadOrgId, insertedIds);
     }
   } catch (rulesErr) {
     console.warn("[transactions/upload] Org transaction rules failed", rulesErr);
@@ -239,7 +252,8 @@ export async function POST(req: Request) {
         transaction_count: txCount ?? 0,
       })
       .eq("id", dataSourceIdVal)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .eq("org_id", uploadOrgId);
   }
 
   return NextResponse.json({

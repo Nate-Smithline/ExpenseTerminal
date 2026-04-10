@@ -8,7 +8,7 @@ import { uuidSchema } from "@/lib/validation/schemas";
 
 const ORG_NAME_MAX = 65;
 
-/** PATCH /api/orgs/[id] — update workspace (owners only). */
+/** PATCH /api/orgs/[id] — update workspace name and/or branding (owners only). */
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const authClient = await createSupabaseRouteClient();
@@ -27,25 +27,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ error: "Invalid workspace id" }, { status: 400 });
     }
 
-    let body: unknown;
+    let body: {
+      name?: unknown;
+      icon_emoji?: unknown;
+      icon_image_url?: unknown;
+    };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-    }
-    const nameRaw = (body as { name?: string })?.name;
-    if (typeof nameRaw !== "string") {
-      return NextResponse.json({ error: "name is required" }, { status: 400 });
-    }
-    const name = nameRaw.trim();
-    if (!name) {
-      return NextResponse.json({ error: "Workspace name cannot be empty" }, { status: 400 });
-    }
-    if (name.length > ORG_NAME_MAX) {
-      return NextResponse.json(
-        { error: `Workspace name must be at most ${ORG_NAME_MAX} characters` },
-        { status: 400 }
-      );
     }
 
     const { data: membership, error: memErr } = await (authClient as any)
@@ -56,21 +46,76 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       .maybeSingle();
 
     if (memErr || membership?.role !== "owner") {
-      return NextResponse.json({ error: "Only workspace owners can edit the workspace name" }, { status: 403 });
+      return NextResponse.json({ error: "Only workspace owners can update these settings" }, { status: 403 });
     }
 
-    const now = new Date().toISOString();
+    const patch: Record<string, string | null> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (body.name !== undefined) {
+      if (typeof body.name !== "string") {
+        return NextResponse.json({ error: "name must be a string" }, { status: 400 });
+      }
+      const trimmed = body.name.trim();
+      if (trimmed.length === 0) {
+        return NextResponse.json({ error: "Workspace name cannot be empty" }, { status: 400 });
+      }
+      if (trimmed.length > ORG_NAME_MAX) {
+        return NextResponse.json(
+          { error: `Workspace name must be at most ${ORG_NAME_MAX} characters` },
+          { status: 400 },
+        );
+      }
+      patch.name = trimmed;
+    }
+
+    if (body.icon_emoji !== undefined) {
+      if (body.icon_emoji === null) {
+        patch.icon_emoji = null;
+      } else if (typeof body.icon_emoji === "string") {
+        const t = body.icon_emoji.trim();
+        patch.icon_emoji = t.length === 0 ? null : t.slice(0, 16);
+      } else {
+        return NextResponse.json({ error: "icon_emoji must be a string or null" }, { status: 400 });
+      }
+    }
+
+    if (body.icon_image_url !== undefined) {
+      if (body.icon_image_url === null) {
+        patch.icon_image_url = null;
+      } else if (typeof body.icon_image_url === "string") {
+        const t = body.icon_image_url.trim();
+        if (t.length === 0) {
+          patch.icon_image_url = null;
+        } else if (t.length > 2048 || !/^https?:\/\//i.test(t)) {
+          return NextResponse.json(
+            { error: "icon_image_url must be an http(s) URL under 2048 characters" },
+            { status: 400 },
+          );
+        } else {
+          patch.icon_image_url = t;
+        }
+      } else {
+        return NextResponse.json({ error: "icon_image_url must be a string or null" }, { status: 400 });
+      }
+    }
+
+    if (Object.keys(patch).length === 1) {
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+    }
+
     const { data: org, error: upErr } = await (authClient as any)
       .from("orgs")
-      .update({ name, updated_at: now })
+      .update(patch)
       .eq("id", orgId)
-      .select("id, name")
+      .select("id, name, icon_emoji, icon_image_url")
       .maybeSingle();
 
     if (upErr) {
       return NextResponse.json(
         { error: safeErrorMessage(upErr.message, "Could not update workspace") },
-        { status: 500 }
+        { status: 500 },
       );
     }
     if (!org) {
@@ -81,7 +126,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   } catch (e: unknown) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Could not update workspace" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
