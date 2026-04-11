@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseRouteClient } from "@/lib/supabase/server";
+import { createSupabaseRouteClient, createSupabaseServiceClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { transactionUpdateBodySchema, uuidSchema } from "@/lib/validation/schemas";
@@ -10,21 +10,22 @@ import { mergeCustomFieldsPatch, type PropertyDefinitionRow } from "@/lib/custom
 
 export async function POST(req: Request) {
   const authClient = await createSupabaseRouteClient();
-  const auth = await requireAuth(authClient);
+  const [auth, body] = await Promise.all([
+    requireAuth(authClient),
+    req.json().catch(() => null as unknown),
+  ]);
   if (!auth.authorized) {
     return NextResponse.json(auth.body, { status: auth.status });
   }
   const userId = auth.userId;
+  const supabase = authClient;
+
   const { success: rlOk } = await rateLimitForRequest(req, userId, generalApiLimit);
   if (!rlOk) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
-  const supabase = authClient;
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
+  if (body == null || typeof body !== "object") {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
@@ -72,24 +73,40 @@ export async function POST(req: Request) {
   if (transaction_type !== undefined) updatePayload.transaction_type = transaction_type;
   if (source !== undefined) updatePayload.source = source;
 
+  const hasCustomFields = customFieldsPatch !== undefined && Object.keys(customFieldsPatch).length > 0;
+
+  // Single fetch of the transaction — reused for vendor backfill, custom fields merge, and auth.
+  const { data: txRow, error: txErr } = await (supabase as any)
+    .from("transactions")
+    .select("id,user_id,data_source_id,vendor,vendor_normalized,custom_fields")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (txErr || !txRow) {
+    return NextResponse.json(
+      { error: safeErrorMessage(txErr?.message, "Transaction not found") },
+      { status: 404 }
+    );
+  }
+
+  // Vendor backfill (only when no explicit vendor change)
   if (updatePayload.vendor_normalized === undefined) {
-    const { data: row } = await (supabase as any)
-      .from("transactions")
-      .select("vendor, vendor_normalized")
-      .eq("id", id)
-      .eq("user_id", userId)
-      .single();
-    if (row?.vendor != null && row?.vendor_normalized == null && String(row.vendor).trim()) {
-      updatePayload.vendor_normalized = normalizeVendor(String(row.vendor));
+    if (txRow.vendor != null && txRow.vendor_normalized == null && String(txRow.vendor).trim()) {
+      updatePayload.vendor_normalized = normalizeVendor(String(txRow.vendor));
     }
   }
 
-  if (customFieldsPatch !== undefined && Object.keys(customFieldsPatch).length > 0) {
-    const orgId = await getActiveOrgId(supabase, userId);
+  // Resolve orgId once — needed for both custom fields and auth.
+  let orgId: string | null = null;
+  if (hasCustomFields || txRow.user_id !== userId) {
+    orgId = await getActiveOrgId(supabase, userId);
+  }
+
+  if (hasCustomFields) {
     if (!orgId) {
       return NextResponse.json({ error: "Active org required to edit custom fields" }, { status: 400 });
     }
-    const keys = Object.keys(customFieldsPatch);
+    const keys = Object.keys(customFieldsPatch!);
     if (keys.length > 40) {
       return NextResponse.json({ error: "Too many custom field keys" }, { status: 400 });
     }
@@ -98,18 +115,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Invalid custom field key" }, { status: 400 });
       }
     }
-    const { data: txRow, error: txErr } = await (supabase as any)
-      .from("transactions")
-      .select("id,custom_fields")
-      .eq("id", id)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (txErr || !txRow) {
-      return NextResponse.json(
-        { error: safeErrorMessage(txErr?.message, "Transaction not found") },
-        { status: 404 }
-      );
-    }
+
     const existingRaw = txRow.custom_fields;
     const existing: Record<string, unknown> =
       existingRaw && typeof existingRaw === "object" && !Array.isArray(existingRaw)
@@ -139,7 +145,7 @@ export async function POST(req: Request) {
       ])
     );
 
-    const merged = mergeCustomFieldsPatch(existing, customFieldsPatch, map);
+    const merged = mergeCustomFieldsPatch(existing, customFieldsPatch!, map);
     if (!merged.ok) {
       return NextResponse.json({ error: merged.error }, { status: 400 });
     }
@@ -163,16 +169,42 @@ export async function POST(req: Request) {
     updatePayload.custom_fields = merged.merged;
   }
 
-  const { error } = await (supabase as any)
+  // Authorize: user owns the transaction, or is in the org that owns its data source.
+  let authorized = txRow.user_id === userId;
+  if (!authorized && txRow.data_source_id && orgId) {
+    const { data: ds } = await (supabase as any)
+      .from("data_sources")
+      .select("org_id")
+      .eq("id", txRow.data_source_id)
+      .eq("org_id", orgId)
+      .maybeSingle();
+    if (ds) authorized = true;
+  }
+
+  if (!authorized) {
+    return NextResponse.json(
+      { error: "You don't have permission to edit this transaction" },
+      { status: 403 }
+    );
+  }
+
+  const serviceClient = createSupabaseServiceClient();
+  const { data: updatedRows, error } = await (serviceClient as any)
     .from("transactions")
     .update(updatePayload)
     .eq("id", id)
-    .eq("user_id", userId);
+    .select("id");
 
   if (error) {
     return NextResponse.json(
       { error: safeErrorMessage(error.message, "Failed to update transaction") },
       { status: 500 }
+    );
+  }
+  if (!updatedRows || updatedRows.length === 0) {
+    return NextResponse.json(
+      { error: "You don't have permission to edit this transaction" },
+      { status: 403 }
     );
   }
 

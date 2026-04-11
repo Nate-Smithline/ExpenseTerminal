@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- orgs table not fully typed in routes */
 import { NextResponse } from "next/server";
-import { createSupabaseRouteClient } from "@/lib/supabase/server";
+import { createSupabaseRouteClient, createSupabaseServiceClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
@@ -8,7 +8,7 @@ import { uuidSchema } from "@/lib/validation/schemas";
 
 const ORG_NAME_MAX = 65;
 
-/** PATCH /api/orgs/[id] — update workspace name and/or branding (owners only). */
+/** PATCH /api/orgs/[id] — owners: name + branding; members: workspace name only (service update). */
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const authClient = await createSupabaseRouteClient();
@@ -45,9 +45,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (memErr || membership?.role !== "owner") {
-      return NextResponse.json({ error: "Only workspace owners can update these settings" }, { status: 403 });
+    if (memErr || !membership?.role) {
+      return NextResponse.json({ error: "Not a member of this workspace" }, { status: 403 });
     }
+
+    const isOwner = membership.role === "owner";
 
     const patch: Record<string, string | null> = {
       updated_at: new Date().toISOString(),
@@ -68,6 +70,50 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         );
       }
       patch.name = trimmed;
+    }
+
+    if (!isOwner) {
+      if (body.icon_emoji !== undefined || body.icon_image_url !== undefined) {
+        return NextResponse.json(
+          { error: "Only workspace owners can update workspace branding (icons)" },
+          { status: 403 },
+        );
+      }
+      if (body.name === undefined) {
+        return NextResponse.json({ error: "Members can only update the workspace name" }, { status: 400 });
+      }
+      if (Object.keys(patch).length === 1) {
+        return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
+      }
+
+      let svc: ReturnType<typeof createSupabaseServiceClient>;
+      try {
+        svc = createSupabaseServiceClient();
+      } catch {
+        return NextResponse.json(
+          { error: "Renaming the workspace requires server configuration (missing service key)." },
+          { status: 503 },
+        );
+      }
+
+      const { data: org, error: upErr } = await (svc as any)
+        .from("orgs")
+        .update(patch)
+        .eq("id", orgId)
+        .select("id, name, icon_emoji, icon_image_url")
+        .maybeSingle();
+
+      if (upErr) {
+        return NextResponse.json(
+          { error: safeErrorMessage(upErr.message, "Could not update workspace") },
+          { status: 500 },
+        );
+      }
+      if (!org) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
+
+      return NextResponse.json({ org });
     }
 
     if (body.icon_emoji !== undefined) {

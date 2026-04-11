@@ -5,7 +5,6 @@ import {
   ruleHasAiAction,
 } from "./evaluate";
 import type { OrgRuleTransactionRow } from "./filter-match";
-import { fetchOrgMemberUserIds } from "./members";
 import { mergeCustomFieldsPatch, type PropertyDefinitionRow } from "@/lib/custom-field-validation";
 import type { OrgRuleAction, OrgRuleConditions } from "./schemas";
 import {
@@ -22,6 +21,22 @@ import {
 
 const TX_RULE_SELECT =
   "id,user_id,date,vendor,description,amount,transaction_type,status,category,schedule_c_line,source,ai_confidence,business_purpose,quick_label,notes,deduction_percent,vendor_normalized,data_source_id,created_at,custom_fields" as const;
+
+/**
+ * All data_source IDs that belong to an org — the proper scope for org-wide
+ * transaction queries (NOT user_id membership, which leaks cross-org data).
+ */
+async function fetchOrgDataSourceIds(supabase: any, orgId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("data_sources")
+    .select("id")
+    .eq("org_id", orgId);
+  if (error) {
+    console.warn("[org-rules] fetchOrgDataSourceIds", error.message);
+    return [];
+  }
+  return (data ?? []).map((r: { id: string }) => r.id).filter(Boolean);
+}
 
 type TxRuleWork = OrgRuleTransactionRow & { id: string; user_id: string };
 
@@ -72,9 +87,9 @@ async function loadPropertyDefinitions(supabase: any, orgId: string): Promise<Ma
 async function fetchTransactionsByIds(
   supabase: any,
   ids: string[],
-  memberUserIds: string[],
+  orgDataSourceIds: string[],
 ): Promise<TxRuleWork[]> {
-  if (ids.length === 0 || memberUserIds.length === 0) return [];
+  if (ids.length === 0 || orgDataSourceIds.length === 0) return [];
   const chunk = 500;
   const out: TxRuleWork[] = [];
   for (let i = 0; i < ids.length; i += chunk) {
@@ -83,7 +98,7 @@ async function fetchTransactionsByIds(
       .from("transactions")
       .select(TX_RULE_SELECT)
       .in("id", slice)
-      .in("user_id", memberUserIds);
+      .in("data_source_id", orgDataSourceIds);
     if (error) {
       console.warn("[org-rules] fetchTransactionsByIds", error.message);
       continue;
@@ -100,12 +115,12 @@ export async function runOrgTransactionRulesEngine(opts: {
   supabase: any;
   orgId: string;
   rules: OrgTransactionRuleRow[];
-  memberUserIds: string[];
+  orgDataSourceIds: string[];
   transactions: TxRuleWork[];
   /** Per-user industry hint for AI */
   businessIndustryByUserId?: Map<string, string | null>;
 }): Promise<{ matchCount: number; updateCount: number; aiCount: number; errors: string[] }> {
-  const { supabase, orgId, rules, memberUserIds, transactions } = opts;
+  const { supabase, orgId, rules, orgDataSourceIds, transactions } = opts;
   const errors: string[] = [];
   if (transactions.length === 0 || rules.length === 0) {
     return { matchCount: 0, updateCount: 0, aiCount: 0, errors };
@@ -187,8 +202,12 @@ export async function runOrgTransactionRulesEngine(opts: {
   }
 
   const txIds = [...new Set(transactions.map((t) => t.id))];
-  const reloaded = await fetchTransactionsByIds(supabase, txIds, memberUserIds);
+  const reloaded = await fetchTransactionsByIds(supabase, txIds, orgDataSourceIds);
   const byId = new Map(reloaded.map((t) => [t.id, t]));
+
+  if (reloaded.length < txIds.length) {
+    console.warn(`[org-rules] Reload returned ${reloaded.length}/${txIds.length} transactions`);
+  }
 
   let updateCount = 0;
 
@@ -254,9 +273,16 @@ export async function runOrgTransactionRulesEngine(opts: {
 
     if (Object.keys(update).length > 0) {
       update.updated_at = new Date().toISOString();
-      const { error } = await supabase.from("transactions").update(update).eq("id", tx.id).eq("user_id", tx.user_id);
-      if (error) {
-        errors.push(`Update ${tx.id}: ${error.message}`);
+      const { data: updatedRows, error: updateErr } = await supabase
+        .from("transactions")
+        .update(update)
+        .eq("id", tx.id)
+        .eq("user_id", tx.user_id)
+        .select("id,custom_fields");
+      if (updateErr) {
+        errors.push(`Update ${tx.id}: ${updateErr.message}`);
+      } else if (!updatedRows || updatedRows.length === 0) {
+        errors.push(`Update ${tx.id}: 0 rows affected (id/user_id mismatch?)`);
       } else {
         updateCount++;
       }
@@ -300,13 +326,16 @@ export async function runOrgRulesForIngest(
   if (transactionIds.length === 0) {
     return { matchCount: 0, updateCount: 0, aiCount: 0, errors: [] };
   }
-  const memberUserIds = await fetchOrgMemberUserIds(supabase, orgId);
-  const txs = await fetchTransactionsByIds(supabase, transactionIds, memberUserIds);
+  const orgDataSourceIds = await fetchOrgDataSourceIds(supabase, orgId);
+  if (orgDataSourceIds.length === 0) {
+    return { matchCount: 0, updateCount: 0, aiCount: 0, errors: [] };
+  }
+  const txs = await fetchTransactionsByIds(supabase, transactionIds, orgDataSourceIds);
   if (txs.length === 0) {
     return { matchCount: 0, updateCount: 0, aiCount: 0, errors: [] };
   }
   const rules = await loadEnabledRulesForOrg(supabase, orgId, "ingest");
-  return runOrgTransactionRulesEngine({ supabase, orgId, rules, memberUserIds, transactions: txs });
+  return runOrgTransactionRulesEngine({ supabase, orgId, rules, orgDataSourceIds, transactions: txs });
 }
 
 const DAILY_LOOKBACK_DAYS = 14;
@@ -322,8 +351,8 @@ export async function runOrgRulesDailyForOrg(supabase: any, orgId: string): Prom
   errors: string[];
   transactionSample: number;
 }> {
-  const memberUserIds = await fetchOrgMemberUserIds(supabase, orgId);
-  if (memberUserIds.length === 0) {
+  const orgDataSourceIds = await fetchOrgDataSourceIds(supabase, orgId);
+  if (orgDataSourceIds.length === 0) {
     return { matchCount: 0, updateCount: 0, aiCount: 0, errors: [], transactionSample: 0 };
   }
   const rules = await loadEnabledRulesForOrg(supabase, orgId, "daily");
@@ -335,7 +364,7 @@ export async function runOrgRulesDailyForOrg(supabase: any, orgId: string): Prom
   const { data, error } = await supabase
     .from("transactions")
     .select(TX_RULE_SELECT)
-    .in("user_id", memberUserIds)
+    .in("data_source_id", orgDataSourceIds)
     .gte("updated_at", since)
     .order("updated_at", { ascending: false })
     .limit(DAILY_MAX_ROWS);
@@ -355,7 +384,7 @@ export async function runOrgRulesDailyForOrg(supabase: any, orgId: string): Prom
     supabase,
     orgId,
     rules,
-    memberUserIds,
+    orgDataSourceIds,
     transactions,
   });
   return { ...res, transactionSample: transactions.length };
@@ -437,9 +466,9 @@ export async function runOrgRulesOnceBackfill(
     return { matchCount: 0, updateCount: 0, aiCount: 0, errors: ["Rule is disabled"], scanned: 0 };
   }
 
-  const memberUserIds = await fetchOrgMemberUserIds(supabase, orgId);
-  if (memberUserIds.length === 0) {
-    return { matchCount: 0, updateCount: 0, aiCount: 0, errors: ["No org members"], scanned: 0 };
+  const orgDataSourceIds = await fetchOrgDataSourceIds(supabase, orgId);
+  if (orgDataSourceIds.length === 0) {
+    return { matchCount: 0, updateCount: 0, aiCount: 0, errors: ["No accounts linked to this org"], scanned: 0 };
   }
 
   let offset = 0;
@@ -453,7 +482,7 @@ export async function runOrgRulesOnceBackfill(
     const { data, error } = await supabase
       .from("transactions")
       .select(TX_RULE_SELECT)
-      .in("user_id", memberUserIds)
+      .in("data_source_id", orgDataSourceIds)
       .order("date", { ascending: false })
       .range(offset, offset + ONCE_BACKFILL_PAGE - 1);
 
@@ -469,7 +498,7 @@ export async function runOrgRulesOnceBackfill(
       supabase,
       orgId,
       rules: [row],
-      memberUserIds,
+      orgDataSourceIds,
       transactions: batch,
     });
     totalMatch += res.matchCount;

@@ -3,6 +3,7 @@ import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { getPlaidClient, decryptAccessToken } from "@/lib/plaid";
 import { requireOrgIdForAccounts } from "@/lib/data-sources/require-active-org";
+import { canMutateWorkspaceDataSource } from "@/lib/data-sources/workspace-account-list-scope";
 
 function getRequestHostname(req: Request): string {
   const xfHost = req.headers.get("x-forwarded-host");
@@ -37,14 +38,19 @@ export async function GET(req: Request) {
 
   const { data: row, error: fetchError } = await (supabase as any)
     .from("data_sources")
-    .select("id, source_type, plaid_access_token, plaid_item_id")
+    .select("id, user_id, source_type, plaid_access_token, plaid_item_id")
     .eq("id", dataSourceId)
-    .eq("user_id", userId)
     .eq("org_id", org.orgId)
-    .single();
+    .maybeSingle();
 
   if (fetchError || !row) {
     return NextResponse.json({ error: "Data source not found" }, { status: 404 });
+  }
+
+  const ownerId = row.user_id as string;
+  const allowed = await canMutateWorkspaceDataSource(supabase as any, org.orgId, userId, ownerId);
+  if (!allowed) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   if (row.source_type !== "plaid" || !row.plaid_access_token) {
     return NextResponse.json({ status: "n/a" });

@@ -1,6 +1,11 @@
 import { applyActivityColumnFilters, parseColumnFiltersJson } from "@/lib/activity-column-filters";
 import { sanitizeTransactionSearchTerm, TRANSACTION_TEXT_SEARCH_COLUMNS } from "@/lib/transaction-text-search";
 
+/** How to restrict rows before saved view filters (dashboard workspace vs legacy single-user). */
+export type PageActivityTxScope =
+  | { kind: "user"; userId: string }
+  | { kind: "workspace"; dataSourceIds: string[] };
+
 /**
  * Applies saved Activity view filters from a page (status, type, account, search, column filters).
  * Date range always comes from the caller (e.g. dashboard MTD/QTD/YTD), not from saved `date_from` / `date_to`.
@@ -8,15 +13,18 @@ import { sanitizeTransactionSearchTerm, TRANSACTION_TEXT_SEARCH_COLUMNS } from "
 export function applyPageActivityViewSavedFiltersToQuery(
   q: any,
   params: {
-    userId: string;
+    txScope: PageActivityTxScope;
     dateFrom: string;
     dateTo: string;
     filters: Record<string, unknown> | null | undefined;
     orgTypes: Map<string, string>;
   },
 ): any {
-  const { userId, dateFrom, dateTo, filters, orgTypes } = params;
-  let x = q.eq("user_id", userId).gte("date", dateFrom).lte("date", dateTo);
+  const { txScope, dateFrom, dateTo, filters, orgTypes } = params;
+  let x =
+    txScope.kind === "user"
+      ? q.eq("user_id", txScope.userId).gte("date", dateFrom).lte("date", dateTo)
+      : q.in("data_source_id", txScope.dataSourceIds).gte("date", dateFrom).lte("date", dateTo);
   const f = filters && typeof filters === "object" ? filters : {};
 
   const status = typeof f.status === "string" ? f.status : null;

@@ -16,10 +16,12 @@ import { computeDashboardSnapshotDeltas } from "@/lib/dashboard-snapshot-deltas"
 import { getActiveOrgId } from "@/lib/active-org";
 import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
 
+type DashboardSearchParams = Promise<Record<string, string | string[] | undefined>>;
+
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: DashboardSearchParams;
 }) {
   const authClient = await createSupabaseServerClient();
   const userId = await getCurrentUserId(authClient);
@@ -27,13 +29,14 @@ export default async function DashboardPage({
   if (!userId) redirect("/login");
 
   const supabase = authClient;
-  const rawPeriod = searchParams?.period;
+  const query = searchParams != null ? await searchParams : {};
+  const rawPeriod = query.period;
   const period =
     (typeof rawPeriod === "string" && (rawPeriod === "mtd" || rawPeriod === "qtd" || rawPeriod === "ytd")
       ? rawPeriod
       : "mtd") satisfies DashboardPeriod;
 
-  const rawPageId = searchParams?.page_id;
+  const rawPageId = query.page_id;
   const pageIdParam = Array.isArray(rawPageId) ? rawPageId[0] : rawPageId;
   const pageIdFromQuery =
     typeof pageIdParam === "string" && uuidSchema.safeParse(pageIdParam).success ? pageIdParam : null;

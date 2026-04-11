@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
-import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
-import { getActiveOrgId } from "@/lib/active-org";
-import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
 import { pageActivityViewSettingsPatchSchema, ACTIVITY_SORT_COLUMNS } from "@/lib/validation/schemas";
 import {
   filterActivityVisibleColumns,
@@ -13,8 +10,6 @@ import {
 import { parseColumnFiltersJson } from "@/lib/activity-column-filters";
 import { normalizeSortRulesFromSettingsRow, primarySortFromRules } from "@/lib/activity-sort-rules";
 
-// These settings must be read/write fresh (no caching), otherwise users can see stale
-// filters / column visibility when leaving and returning to a page.
 export const dynamic = "force-dynamic";
 
 const DEFAULT_VISIBLE_COLUMNS: string[] = [
@@ -27,7 +22,7 @@ const DEFAULT_VISIBLE_COLUMNS: string[] = [
 ];
 
 function defaultSettings() {
-  const year = new Date().getFullYear();
+  const today = new Date().toISOString().slice(0, 10);
   return {
     sort_column: "date",
     sort_asc: false,
@@ -39,65 +34,29 @@ function defaultSettings() {
       source: null,
       data_source_id: null,
       search: "",
-      date_from: `${year}-01-01`,
-      date_to: `${year}-12-31`,
+      date_from: "2000-01-01",
+      date_to: today,
       column_filters: [] as unknown[],
     },
   };
 }
 
-async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const existing = await getActiveOrgId(supabase, userId);
-  if (existing) return existing;
-  return await ensureActiveOrgForUser(userId);
-}
-
-async function assertPageAccess(
-  supabase: any,
-  orgId: string,
-  pageId: string
-): Promise<{ ok: true } | { ok: false; status: number; body: any }> {
-  const { data, error } = await supabase
-    .from("pages")
-    .select("id")
-    .eq("id", pageId)
-    .eq("org_id", orgId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (error) {
-    return {
-      ok: false,
-      status: 500,
-      body: { error: safeErrorMessage(error.message, "Failed to load page") },
-    };
-  }
-  if (!data) {
-    return { ok: false, status: 404, body: { error: "Page not found" } };
-  }
-  return { ok: true };
-}
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const authClient = await createSupabaseRouteClient();
-    const auth = await requireAuth(authClient);
+    // Parallelize auth + params resolution
+    const [auth, { id: pageId }] = await Promise.all([
+      requireAuth(authClient),
+      ctx.params,
+    ]);
     if (!auth.authorized) {
       return NextResponse.json(auth.body, { status: auth.status });
     }
-    const userId = auth.userId;
-    const { success: rlOk } = await rateLimitForRequest(req, userId, generalApiLimit);
-    if (!rlOk) {
-      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-    }
     const supabase = authClient;
 
-    const orgId = await resolveOrgId(supabase, userId);
-    const { id: pageId } = await ctx.params;
-
-    const access = await assertPageAccess(supabase, orgId, pageId);
-    if (!access.ok) return NextResponse.json(access.body, { status: access.status });
-
+    // RLS on page_activity_view_settings verifies org membership — no extra
+    // resolveOrgId / assertPageAccess round-trips needed.
     const { data, error } = await (supabase as any)
       .from("page_activity_view_settings")
       .select("sort_rules,sort_column,sort_asc,visible_columns,column_widths,filters")
@@ -161,27 +120,19 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const authClient = await createSupabaseRouteClient();
-    const auth = await requireAuth(authClient);
+    // Parallelize: auth + params + body parse happen concurrently.
+    const [auth, { id: pageId }, body] = await Promise.all([
+      requireAuth(authClient),
+      ctx.params,
+      req.json().catch(() => null as unknown),
+    ]);
     if (!auth.authorized) {
       return NextResponse.json(auth.body, { status: auth.status });
     }
     const userId = auth.userId;
-    const { success: rlOk } = await rateLimitForRequest(req, userId, generalApiLimit);
-    if (!rlOk) {
-      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-    }
     const supabase = authClient;
 
-    const orgId = await resolveOrgId(supabase, userId);
-    const { id: pageId } = await ctx.params;
-
-    const access = await assertPageAccess(supabase, orgId, pageId);
-    if (!access.ok) return NextResponse.json(access.body, { status: access.status });
-
-    let body: unknown;
-    try {
-      body = await req.json();
-    } catch {
+    if (body == null || typeof body !== "object") {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
     const parsed = pageActivityViewSettingsPatchSchema.safeParse(body);
@@ -193,6 +144,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const def = defaultSettings();
     const { sort_column, sort_asc, sort_rules, visible_columns, column_widths, filters } = parsed.data;
 
+    // Single query: RLS on page_activity_view_settings already verifies org membership.
     const { data: existing } = await (supabase as any)
       .from("page_activity_view_settings")
       .select("page_id,sort_rules,sort_column,sort_asc,visible_columns,column_widths,filters")

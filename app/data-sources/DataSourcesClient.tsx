@@ -350,9 +350,14 @@ function PlaidLinkButton({
 }
 
 export function DataSourcesClient({
+  currentUserId,
+  peerWorkspaceFeedActionsEnabled = false,
   initialSources,
   initialStats = {},
 }: {
+  currentUserId: string;
+  /** When true, members may pull / refresh / retry sync on others’ linked accounts in this workspace. */
+  peerWorkspaceFeedActionsEnabled?: boolean;
   initialSources: DataSource[];
   initialStats?: Record<string, DataSourceStats>;
 }) {
@@ -433,6 +438,13 @@ export function DataSourcesClient({
 
   const calendarYear = new Date().getFullYear();
 
+  const isOwnedSource = useCallback((s: DataSource) => s.user_id === currentUserId, [currentUserId]);
+
+  const canUseSharedDirectFeedActions = useCallback(
+    (s: DataSource) => isOwnedSource(s) || peerWorkspaceFeedActionsEnabled,
+    [isOwnedSource, peerWorkspaceFeedActionsEnabled],
+  );
+
   const addAccountInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -443,7 +455,9 @@ export function DataSourcesClient({
 
   const directFeedIdsRef = useRef<string>("");
   useEffect(() => {
-    const directFeedSources = sources.filter((s) => isDirectFeed(s.source_type));
+    const directFeedSources = sources.filter(
+      (s) => isDirectFeed(s.source_type) && canUseSharedDirectFeedActions(s),
+    );
     const ids = directFeedSources.map((s) => s.id);
     const key = ids.sort().join(",");
     if (ids.length === 0 || key === directFeedIdsRef.current) return;
@@ -465,7 +479,7 @@ export function DataSourcesClient({
           }
         });
     });
-  }, [sources]);
+  }, [sources, canUseSharedDirectFeedActions]);
 
   useEffect(() => {
     if (showAdd) {
@@ -598,6 +612,7 @@ export function DataSourcesClient({
 
   async function handleSaveEdit() {
     if (!editSource) return;
+    if (!canUseSharedDirectFeedActions(editSource)) return;
     const trimmedName = editName.trim();
     if (!trimmedName) return;
     setEditSaving(true);
@@ -608,7 +623,7 @@ export function DataSourcesClient({
         name: trimmedName,
         institution: editInstitution.trim() || null,
       };
-      if (editSource.source_type === "manual") {
+      if (isOwnedSource(editSource) && editSource.source_type === "manual") {
         const n = parseEditBalanceWholeAndCents(editBalanceWhole, editBalanceCents);
         if (Number.isNaN(n)) {
           setToast("Enter a valid balance (cents are 0–99) or clear both fields");
@@ -655,6 +670,8 @@ export function DataSourcesClient({
   }
 
   async function patchRollupFields(sourceId: string, patch: Record<string, unknown>) {
+    const src = sources.find((s) => s.id === sourceId);
+    if (!src || !isOwnedSource(src)) return;
     try {
       const res = await fetch("/api/data-sources", {
         method: "PATCH",
@@ -1141,6 +1158,11 @@ export function DataSourcesClient({
               <h2 id="edit-account-title" className="text-[20px] font-semibold tracking-tight text-mono-dark">
                 Edit account
               </h2>
+              {!isOwnedSource(editSource) && (
+                <p className="mt-2 text-xs leading-snug text-mono-medium">
+                  You can update the display name and institution for this workspace account.
+                </p>
+              )}
             </div>
             <form
               onSubmit={(e) => {
@@ -1170,7 +1192,7 @@ export function DataSourcesClient({
                     className={`${appleInputClass} disabled:cursor-not-allowed disabled:bg-[#f5f5f7] disabled:text-mono-light`}
                   />
                 </div>
-                {editSource.source_type === "manual" && (
+                {isOwnedSource(editSource) && editSource.source_type === "manual" && (
                   <div className="space-y-3">
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-mono-dark">Balance</label>
@@ -1240,14 +1262,16 @@ export function DataSourcesClient({
                 )}
               </div>
               <div className="flex w-full flex-wrap items-center gap-2 border-t border-black/[0.06] bg-[#fafafa]/80 px-5 py-4">
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirmSource(editSource)}
-                  disabled={editSaving}
-                  className="mr-auto shrink-0 rounded-full bg-red-50 px-4 py-2.5 text-[15px] font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-40"
-                >
-                  Delete
-                </button>
+                {isOwnedSource(editSource) && (
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmSource(editSource)}
+                    disabled={editSaving}
+                    className="mr-auto shrink-0 rounded-full bg-red-50 px-4 py-2.5 text-[15px] font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-40"
+                  >
+                    Delete
+                  </button>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -1298,7 +1322,12 @@ export function DataSourcesClient({
                   />
                 </div>
               </div>
-              <p className="text-xs text-mono-medium">Leave dates empty for default range. Duplicates are skipped.</p>
+              <p className="text-xs text-mono-medium leading-relaxed">
+                Leave dates empty to only fetch <span className="font-medium">new</span> activity since the last pull (Plaid
+                won’t rescan older history). Set <span className="font-medium">From date</span> to reload history back to
+                that day — Plaid allows at most about <span className="font-medium">730 days</span>. Duplicates are
+                skipped. “To date” applies to Stripe-linked accounts; Plaid uses the From lookback.
+              </p>
             </div>
             <div className={appleModalFooterClass}>
               <button
@@ -1440,7 +1469,10 @@ export function DataSourcesClient({
       {/* Post-connect modal: pull transactions for newly connected accounts */}
       {showPostConnectDateModal && (() => {
         const unsyncedSources = sources.filter(
-          (s) => isDirectFeed(s.source_type) && s.last_successful_sync_at == null
+          (s) =>
+            isOwnedSource(s) &&
+            isDirectFeed(s.source_type) &&
+            s.last_successful_sync_at == null,
         );
         if (unsyncedSources.length === 0) {
           return null;
@@ -1709,82 +1741,86 @@ export function DataSourcesClient({
                       )}
                     </div>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/[0.06] pt-3">
-                    <span className="text-[12px] font-medium text-[#6e6e73]">Rollups</span>
-                    <select
-                      aria-label={`Balance class for ${source.name}`}
-                      className={`${appleInputClass} max-w-[180px] py-2 text-[13px]`}
-                      value={(source.balance_class ?? (source.account_type === "credit" ? "liability" : "asset")) as any}
-                      onChange={(e) => {
-                        void patchRollupFields(source.id, { balance_class: e.target.value });
-                      }}
-                    >
-                      {ROLLUP_CLASS_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      aria-label={`Balance preference for ${source.name}`}
-                      className={`${appleInputClass} max-w-[180px] py-2 text-[13px]`}
-                      value={(source.balance_value_preference ?? (source.source_type === "manual" ? "manual" : "current")) as any}
-                      onChange={(e) => {
-                        void patchRollupFields(source.id, { balance_value_preference: e.target.value });
-                      }}
-                    >
-                      {BALANCE_PREF_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                    <label className="inline-flex items-center gap-2 text-[12px] font-medium text-[#6e6e73]">
-                      <input
-                        type="checkbox"
-                        checked={source.include_in_net_worth !== false}
-                        onChange={(e) => {
-                          void patchRollupFields(source.id, { include_in_net_worth: e.target.checked });
-                        }}
-                      />
-                      Include in net worth
-                    </label>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/[0.06] pt-3">
-                    <span className="text-[12px] font-medium text-[#6e6e73]">Sidebar color</span>
-                    <select
-                      aria-label={`Brand color for ${source.name}`}
-                      className={`${appleInputClass} max-w-[220px] py-2 text-[13px]`}
-                      value={normalizeBrandColorId(source.brand_color_id)}
-                      onChange={async (e) => {
-                        const brand_color_id = e.target.value;
-                        try {
-                          const res = await fetch("/api/data-sources", {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ id: source.id, brand_color_id }),
-                          });
-                          const data = await res.json().catch(() => ({}));
-                          if (res.ok && data?.data) {
-                            setSources((prev) => prev.map((x) => (x.id === source.id ? { ...x, ...data.data } : x)));
-                            window.dispatchEvent(new CustomEvent("accounts-changed"));
-                          } else {
-                            setToast((data as { error?: string }).error ?? "Could not update color");
-                            setTimeout(() => setToast(null), 4000);
-                          }
-                        } catch {
-                          setToast("Could not update color");
-                          setTimeout(() => setToast(null), 4000);
-                        }
-                      }}
-                    >
-                      {BRAND_COLOR_OPTIONS.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {isOwnedSource(source) && (
+                    <>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/[0.06] pt-3">
+                        <span className="text-[12px] font-medium text-[#6e6e73]">Rollups</span>
+                        <select
+                          aria-label={`Balance class for ${source.name}`}
+                          className={`${appleInputClass} max-w-[180px] py-2 text-[13px]`}
+                          value={(source.balance_class ?? (source.account_type === "credit" ? "liability" : "asset")) as any}
+                          onChange={(e) => {
+                            void patchRollupFields(source.id, { balance_class: e.target.value });
+                          }}
+                        >
+                          {ROLLUP_CLASS_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          aria-label={`Balance preference for ${source.name}`}
+                          className={`${appleInputClass} max-w-[180px] py-2 text-[13px]`}
+                          value={(source.balance_value_preference ?? (source.source_type === "manual" ? "manual" : "current")) as any}
+                          onChange={(e) => {
+                            void patchRollupFields(source.id, { balance_value_preference: e.target.value });
+                          }}
+                        >
+                          {BALANCE_PREF_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                        <label className="inline-flex items-center gap-2 text-[12px] font-medium text-[#6e6e73]">
+                          <input
+                            type="checkbox"
+                            checked={source.include_in_net_worth !== false}
+                            onChange={(e) => {
+                              void patchRollupFields(source.id, { include_in_net_worth: e.target.checked });
+                            }}
+                          />
+                          Include in net worth
+                        </label>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-black/[0.06] pt-3">
+                        <span className="text-[12px] font-medium text-[#6e6e73]">Sidebar color</span>
+                        <select
+                          aria-label={`Brand color for ${source.name}`}
+                          className={`${appleInputClass} max-w-[220px] py-2 text-[13px]`}
+                          value={normalizeBrandColorId(source.brand_color_id)}
+                          onChange={async (e) => {
+                            const brand_color_id = e.target.value;
+                            try {
+                              const res = await fetch("/api/data-sources", {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ id: source.id, brand_color_id }),
+                              });
+                              const data = await res.json().catch(() => ({}));
+                              if (res.ok && data?.data) {
+                                setSources((prev) => prev.map((x) => (x.id === source.id ? { ...x, ...data.data } : x)));
+                                window.dispatchEvent(new CustomEvent("accounts-changed"));
+                              } else {
+                                setToast((data as { error?: string }).error ?? "Could not update color");
+                                setTimeout(() => setToast(null), 4000);
+                              }
+                            } catch {
+                              setToast("Could not update color");
+                              setTimeout(() => setToast(null), 4000);
+                            }
+                          }}
+                        >
+                          {BRAND_COLOR_OPTIONS.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
                   {showEarliestYearLine && s.earliestTransactionDateInTaxYear && (
                     <p
                       className="mt-3 max-w-md text-[13px] leading-snug text-[#6e6e73]"
@@ -1794,7 +1830,7 @@ export function DataSourcesClient({
                       <span className="font-medium text-[#1d1d1f]">
                         {formatEarliestCompact(s.earliestTransactionDateInTaxYear)}
                       </span>
-                      {isDirectFeed(source.source_type) && (
+                      {isDirectFeed(source.source_type) && isOwnedSource(source) && (
                         <>
                           {" · "}
                           <button
@@ -1819,47 +1855,65 @@ export function DataSourcesClient({
                       )}
                     </div>
                   )}
-                  {isDirectFeed(source.source_type) && (connectionStatuses[source.id] === "disconnected" || connectionStatuses[source.id] === "inactive" || connectionStatuses[source.id] === "login_required" || connectionStatuses[source.id] === "error" || !(source.financial_connections_account_id || source.plaid_item_id)) && (
-                    <div className="mt-4 rounded-xl bg-[#f5f5f7] p-4">
-                      <p className="text-[15px] font-semibold text-[#1d1d1f]" style={{ fontFamily: "var(--font-sans)" }}>
-                        {!(source.financial_connections_account_id || source.plaid_item_id)
-                          ? "This account isn't linked to a bank."
-                          : "This connection is no longer active"}
-                      </p>
-                      <p className="text-[13px] text-[#6e6e73] mt-1" style={{ fontFamily: "var(--font-sans)" }}>
-                        Reconnect your bank to restore syncing.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => { setShowAdd(true); setAddStep("2b"); }}
-                        className="mt-3 rounded-full bg-[#1d1d1f] px-4 py-2 text-[13px] font-medium text-white hover:bg-black/85 transition"
-                        style={{ fontFamily: "var(--font-sans)" }}
-                      >
-                        Repair connection
-                      </button>
-                    </div>
-                  )}
-                  {hasSyncFailure && !(isDirectFeed(source.source_type) && (connectionStatuses[source.id] === "disconnected" || connectionStatuses[source.id] === "inactive" || connectionStatuses[source.id] === "login_required" || connectionStatuses[source.id] === "error" || !(source.financial_connections_account_id || source.plaid_item_id))) && (
-                    <div className="mt-4 rounded-xl bg-[#f5f5f7] p-4">
-                      <p className="text-[15px] font-semibold text-[#1d1d1f]" style={{ fontFamily: "var(--font-sans)" }}>
-                        We&apos;re having trouble syncing this account
-                      </p>
-                      <p className="text-[13px] text-[#6e6e73] mt-1" style={{ fontFamily: "var(--font-sans)" }}>
-                        {source.last_successful_sync_at
-                          ? `Last synced ${formatMonthDayOrdinal(source.last_successful_sync_at)}`
-                          : "Last synced never"}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => handleRetrySync(source.id)}
-                        disabled={syncingId === source.id}
-                        className="mt-3 rounded-full bg-[#1d1d1f] px-4 py-2 text-[13px] font-medium text-white hover:bg-black/85 disabled:opacity-50 transition"
-                        style={{ fontFamily: "var(--font-sans)" }}
-                      >
-                        {syncingId === source.id ? "Syncing…" : "Retry sync"}
-                      </button>
-                    </div>
-                  )}
+                  {isOwnedSource(source) &&
+                    isDirectFeed(source.source_type) &&
+                    (connectionStatuses[source.id] === "disconnected" ||
+                      connectionStatuses[source.id] === "inactive" ||
+                      connectionStatuses[source.id] === "login_required" ||
+                      connectionStatuses[source.id] === "error" ||
+                      !(source.financial_connections_account_id || source.plaid_item_id)) && (
+                      <div className="mt-4 rounded-xl bg-[#f5f5f7] p-4">
+                        <p className="text-[15px] font-semibold text-[#1d1d1f]" style={{ fontFamily: "var(--font-sans)" }}>
+                          {!(source.financial_connections_account_id || source.plaid_item_id)
+                            ? "This account isn't linked to a bank."
+                            : "This connection is no longer active"}
+                        </p>
+                        <p className="text-[13px] text-[#6e6e73] mt-1" style={{ fontFamily: "var(--font-sans)" }}>
+                          Reconnect your bank to restore syncing.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAdd(true);
+                            setAddStep("2b");
+                          }}
+                          className="mt-3 rounded-full bg-[#1d1d1f] px-4 py-2 text-[13px] font-medium text-white hover:bg-black/85 transition"
+                          style={{ fontFamily: "var(--font-sans)" }}
+                        >
+                          Repair connection
+                        </button>
+                      </div>
+                    )}
+                  {canUseSharedDirectFeedActions(source) &&
+                    hasSyncFailure &&
+                    !(
+                      isDirectFeed(source.source_type) &&
+                      (connectionStatuses[source.id] === "disconnected" ||
+                        connectionStatuses[source.id] === "inactive" ||
+                        connectionStatuses[source.id] === "login_required" ||
+                        connectionStatuses[source.id] === "error" ||
+                        !(source.financial_connections_account_id || source.plaid_item_id))
+                    ) && (
+                      <div className="mt-4 rounded-xl bg-[#f5f5f7] p-4">
+                        <p className="text-[15px] font-semibold text-[#1d1d1f]" style={{ fontFamily: "var(--font-sans)" }}>
+                          We&apos;re having trouble syncing this account
+                        </p>
+                        <p className="text-[13px] text-[#6e6e73] mt-1" style={{ fontFamily: "var(--font-sans)" }}>
+                          {source.last_successful_sync_at
+                            ? `Last synced ${formatMonthDayOrdinal(source.last_successful_sync_at)}`
+                            : "Last synced never"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleRetrySync(source.id)}
+                          disabled={syncingId === source.id}
+                          className="mt-3 rounded-full bg-[#1d1d1f] px-4 py-2 text-[13px] font-medium text-white hover:bg-black/85 disabled:opacity-50 transition"
+                          style={{ fontFamily: "var(--font-sans)" }}
+                        >
+                          {syncingId === source.id ? "Syncing…" : "Retry sync"}
+                        </button>
+                      </div>
+                    )}
                   {s.transactionCount > 0 && !hasSyncFailure && (
                     <div className="mt-2">
                       <p className="text-xs text-mono-light">
@@ -1889,23 +1943,30 @@ export function DataSourcesClient({
                       </span>
                       View transactions
                     </button>
-                    {isDirectFeed(source.source_type) && connectionStatuses[source.id] !== "disconnected" && connectionStatuses[source.id] !== "inactive" && connectionStatuses[source.id] !== "login_required" && connectionStatuses[source.id] !== "error" && (source.financial_connections_account_id || source.plaid_item_id) && (
-                      <button
-                        type="button"
-                        onClick={() => setPullModalSource(source)}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-[#0071e3] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[#0077ed] transition"
-                        style={{ fontFamily: "var(--font-sans)" }}
-                      >
-                        <span
-                          className="material-symbols-rounded leading-none"
-                          style={{ fontSize: 15 }}
+                    {canUseSharedDirectFeedActions(source) &&
+                      isDirectFeed(source.source_type) &&
+                      connectionStatuses[source.id] !== "disconnected" &&
+                      connectionStatuses[source.id] !== "inactive" &&
+                      connectionStatuses[source.id] !== "login_required" &&
+                      connectionStatuses[source.id] !== "error" &&
+                      (source.financial_connections_account_id || source.plaid_item_id) && (
+                        <button
+                          type="button"
+                          onClick={() => setPullModalSource(source)}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-[#0071e3] px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[#0077ed] transition"
+                          style={{ fontFamily: "var(--font-sans)" }}
                         >
-                          sync
-                        </span>
-                        Pull Transactions
-                      </button>
-                    )}
-                    {source.source_type === "plaid" &&
+                          <span
+                            className="material-symbols-rounded leading-none"
+                            style={{ fontSize: 15 }}
+                          >
+                            sync
+                          </span>
+                          Pull Transactions
+                        </button>
+                      )}
+                    {canUseSharedDirectFeedActions(source) &&
+                      source.source_type === "plaid" &&
                       connectionStatuses[source.id] !== "disconnected" &&
                       connectionStatuses[source.id] !== "inactive" &&
                       connectionStatuses[source.id] !== "login_required" &&
@@ -1927,38 +1988,42 @@ export function DataSourcesClient({
                           {balanceRefreshingId === source.id ? "Refreshing…" : "Refresh balance"}
                         </button>
                       )}
-                    <button
-                      type="button"
-                      onClick={() => setUploadSourceId(source.id)}
-                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition ${
-                        isDirectFeed(source.source_type)
-                          ? "border border-black/[0.08] bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]"
-                          : "bg-[#0071e3] text-white hover:bg-[#0077ed]"
-                      }`}
-                      style={{ fontFamily: "var(--font-sans)" }}
-                    >
-                      <span
-                        className="material-symbols-rounded leading-none"
-                        style={{ fontSize: 15 }}
+                    {isOwnedSource(source) && (
+                      <button
+                        type="button"
+                        onClick={() => setUploadSourceId(source.id)}
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition ${
+                          isDirectFeed(source.source_type)
+                            ? "border border-black/[0.08] bg-[#f5f5f7] text-[#1d1d1f] hover:bg-[#e8e8ed]"
+                            : "bg-[#0071e3] text-white hover:bg-[#0077ed]"
+                        }`}
+                        style={{ fontFamily: "var(--font-sans)" }}
                       >
-                        upload_file
-                      </span>
-                      Upload CSV
-                    </button>
-                    <button
-                      onClick={() => openEdit(source)}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] bg-white px-3 py-1.5 text-[13px] font-medium text-[#1d1d1f] hover:bg-[#f5f5f7] transition"
-                      aria-label="Edit account"
-                      style={{ fontFamily: "var(--font-sans)" }}
-                    >
-                      <span
-                        className="material-symbols-rounded leading-none"
-                        style={{ fontSize: 15 }}
+                        <span
+                          className="material-symbols-rounded leading-none"
+                          style={{ fontSize: 15 }}
+                        >
+                          upload_file
+                        </span>
+                        Upload CSV
+                      </button>
+                    )}
+                    {canUseSharedDirectFeedActions(source) && (
+                      <button
+                        onClick={() => openEdit(source)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.08] bg-white px-3 py-1.5 text-[13px] font-medium text-[#1d1d1f] hover:bg-[#f5f5f7] transition"
+                        aria-label="Edit account"
+                        style={{ fontFamily: "var(--font-sans)" }}
                       >
-                        edit
-                      </span>
-                      Edit
-                    </button>
+                        <span
+                          className="material-symbols-rounded leading-none"
+                          style={{ fontSize: 15 }}
+                        >
+                          edit
+                        </span>
+                        Edit
+                      </button>
+                    )}
                   </div>
                 </div>
               </li>

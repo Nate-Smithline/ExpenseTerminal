@@ -864,7 +864,19 @@ export function OrgRulesPageClient({
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
-      setToast(`Done: ${data.updateCount ?? 0} updated, ${data.aiCount ?? 0} AI`);
+      const parts = [`${data.matchCount ?? 0} matched`, `${data.updateCount ?? 0} updated`];
+      if (data.aiCount) parts.push(`${data.aiCount} AI`);
+      if (data.scanned) parts.push(`${data.scanned} scanned`);
+      const errs = Array.isArray(data.errors) ? data.errors : [];
+      if (errs.length > 0) {
+        parts.push(`${errs.length} error(s)`);
+        console.warn("[org-rules] backfill errors:", errs);
+      }
+      let msg = `Done: ${parts.join(", ")}`;
+      if (errs.length > 0 && data.updateCount === 0) {
+        msg += ` — ${errs[0]}`;
+      }
+      setToast(msg);
       await reload();
     } else {
       setToast(data.error ?? "Run failed");

@@ -1,38 +1,22 @@
 import { NextResponse } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
-import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
-import { getActiveOrgId } from "@/lib/active-org";
-import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
-
-async function resolveOrgId(supabase: any, userId: string): Promise<string> {
-  const existing = await getActiveOrgId(supabase, userId);
-  if (existing) return existing;
-  return await ensureActiveOrgForUser(userId);
-}
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const authClient = await createSupabaseRouteClient();
-    const auth = await requireAuth(authClient);
+    const [auth, { id }, body] = await Promise.all([
+      requireAuth(authClient),
+      ctx.params,
+      req.json().catch(() => null as unknown),
+    ]);
     if (!auth.authorized) {
       return NextResponse.json(auth.body, { status: auth.status });
     }
-    const userId = auth.userId;
-    const { success: rlOk } = await rateLimitForRequest(req, userId, generalApiLimit);
-    if (!rlOk) {
-      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-    }
     const supabase = authClient;
 
-    const orgId = await resolveOrgId(supabase, userId);
-    const { id } = await ctx.params;
-
-    let body: any;
-    try {
-      body = await req.json();
-    } catch {
+    if (body == null || typeof body !== "object") {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
@@ -63,11 +47,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       else return NextResponse.json({ error: "visibility must be 'org' or 'restricted'" }, { status: 400 });
     }
 
+    // RLS pages_update already enforces org membership — no resolveOrgId needed.
+    // Filter by deleted_at IS NULL so soft-deleted pages are not resurrected.
     const { data, error } = await (supabase as any)
       .from("pages")
       .update(update)
       .eq("id", id)
-      .eq("org_id", orgId)
       .is("deleted_at", null)
       .select(
         "id,title,icon_type,icon_value,icon_color,created_at,updated_at,full_width,visibility,org_id,created_by,deleted_at"
@@ -96,25 +81,19 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const authClient = await createSupabaseRouteClient();
-    const auth = await requireAuth(authClient);
+    const [auth, { id }] = await Promise.all([
+      requireAuth(authClient),
+      ctx.params,
+    ]);
     if (!auth.authorized) {
       return NextResponse.json(auth.body, { status: auth.status });
     }
-    const userId = auth.userId;
-    const { success: rlOk } = await rateLimitForRequest(req, userId, generalApiLimit);
-    if (!rlOk) {
-      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-    }
     const supabase = authClient;
-
-    const orgId = await resolveOrgId(supabase, userId);
-    const { id } = await ctx.params;
 
     const { data: updated, error } = await (supabase as any)
       .from("pages")
       .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
       .eq("id", id)
-      .eq("org_id", orgId)
       .is("deleted_at", null)
       .select("id")
       .maybeSingle();
@@ -137,4 +116,3 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }
     );
   }
 }
-

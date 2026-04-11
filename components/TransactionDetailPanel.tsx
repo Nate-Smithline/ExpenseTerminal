@@ -140,14 +140,18 @@ export function TransactionDetailPanel({
   const [editStatus, setEditStatus] = useState<"pending" | "completed" | "auto_sorted" | "personal">(
     (transaction.status as "pending" | "completed" | "auto_sorted" | "personal") ?? "pending"
   );
-  const [saving, setSaving] = useState(false);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [syncPending, setSyncPending] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saved" | "error">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editSource, setEditSource] = useState<"csv_upload" | "manual">(
     (transaction.source === "manual" ? "manual" : "csv_upload") as "csv_upload" | "manual",
   );
   const [editCustomFields, setEditCustomFields] = useState<Record<string, unknown>>({});
   const baselineCustomFieldsRef = useRef<Record<string, unknown>>({});
+  const customFieldsFingerprint = (() => {
+    const cf = (transaction as { custom_fields?: unknown }).custom_fields;
+    return cf ? JSON.stringify(cf) : "{}";
+  })();
   const [panelWidth, setPanelWidth] = useState(PANEL_MAX_WIDTH);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isEscapedDocked, setIsEscapedDocked] = useState(false);
@@ -203,25 +207,25 @@ export function TransactionDetailPanel({
     return update;
   }
 
-  async function handleSaveEdits(forcedUpdate?: TransactionDetailUpdate) {
+  function handleSaveEdits(forcedUpdate?: TransactionDetailUpdate) {
     if (!editable || !onSave) return;
-    setSaving(true);
-    setSaveState("saving");
+    const update = forcedUpdate ?? getPendingUpdate();
+    if (Object.keys(update).length === 0) return;
     setSaveError(null);
-    try {
-      const update = forcedUpdate ?? getPendingUpdate();
-      if (Object.keys(update).length === 0) return;
-      await onSave(transaction.id, update);
-      if (update.custom_fields) {
-        baselineCustomFieldsRef.current = { ...editCustomFields };
-      }
-      setSaveState("saved");
-    } catch (e) {
-      setSaveState("error");
-      setSaveError(e instanceof Error ? e.message : "Failed to save");
-    } finally {
-      setSaving(false);
+    if (update.custom_fields) {
+      baselineCustomFieldsRef.current = { ...editCustomFields };
     }
+    setSaveState("saved");
+    setSyncPending(true);
+    void onSave(transaction.id, update)
+      .then(() => {
+        setSyncPending(false);
+      })
+      .catch((e) => {
+        setSyncPending(false);
+        setSaveState("error");
+        setSaveError(e instanceof Error ? e.message : "Failed to save");
+      });
   }
 
   useEffect(() => {
@@ -238,20 +242,8 @@ export function TransactionDetailPanel({
     setEditSource((transaction.source === "manual" ? "manual" : "csv_upload") as "csv_upload" | "manual");
     setSaveError(null);
     setSaveState("idle");
-  }, [
-    transaction.id,
-    transaction.category,
-    transaction.schedule_c_line,
-    transaction.deduction_percent,
-    transaction.business_purpose,
-    transaction.notes,
-    transaction.vendor,
-    transaction.date,
-    transaction.amount,
-    transaction.transaction_type,
-    transaction.status,
-    transaction.source,
-  ]);
+    setSyncPending(false);
+  }, [transaction.id]);
 
   useEffect(() => {
     const cf = (transaction as { custom_fields?: unknown }).custom_fields;
@@ -259,7 +251,7 @@ export function TransactionDetailPanel({
       cf && typeof cf === "object" && !Array.isArray(cf) ? { ...(cf as Record<string, unknown>) } : {};
     baselineCustomFieldsRef.current = parsed;
     setEditCustomFields(parsed);
-  }, [transaction.id]);
+  }, [transaction.id, customFieldsFingerprint]);
 
   useEffect(() => {
     if (!editable || !onSave || isCollapsed) return;
@@ -716,8 +708,8 @@ export function TransactionDetailPanel({
             )}
             {!saveError && (
               <p className="text-xs text-mono-medium">
-                {saveState === "saving" || saving
-                  ? "Saving changes..."
+                {syncPending
+                  ? "Syncing to server…"
                   : saveState === "saved"
                   ? "All changes auto-saved"
                   : ""}

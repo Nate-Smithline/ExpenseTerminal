@@ -233,25 +233,19 @@ export function OrgPreferencesClient({
               value={orgName}
               onChange={(e) => setOrgName(e.target.value)}
               maxLength={65}
-              disabled={!isOwner}
-              className="w-full border border-bg-tertiary/60 rounded-lg px-4 py-3 text-sm text-mono-dark bg-white focus:border-black outline-none disabled:opacity-60"
+              className="w-full border border-bg-tertiary/60 rounded-lg px-4 py-3 text-sm text-mono-dark bg-white focus:border-black outline-none"
             />
           </div>
 
           {nameError && <p className="text-sm text-red-600">{nameError}</p>}
-          {isOwner && (
-            <button
-              type="button"
-              onClick={saveWorkspaceName}
-              disabled={savingName}
-              className="rounded-none bg-black px-4 py-2.5 text-sm font-medium font-sans text-white hover:bg-black/85 disabled:opacity-50"
-            >
-              {savingName ? "Saving…" : "Save changes"}
-            </button>
-          )}
-          {!isOwner && (
-            <p className="text-xs text-mono-medium">Only workspace owners can edit the workspace name.</p>
-          )}
+          <button
+            type="button"
+            onClick={saveWorkspaceName}
+            disabled={savingName}
+            className="rounded-none bg-black px-4 py-2.5 text-sm font-medium font-sans text-white hover:bg-black/85 disabled:opacity-50"
+          >
+            {savingName ? "Saving…" : "Save changes"}
+          </button>
         </div>
       </section>
 
@@ -260,7 +254,7 @@ export function OrgPreferencesClient({
           <div>
             <h2 className="text-lg font-normal font-sans text-mono-dark">People</h2>
             <p className="text-sm text-mono-medium mt-1 font-sans max-w-xl">
-              Members can use the workspace. Owners can change workspace settings and invite people.
+              Anyone in the workspace can change its display name. Owners can invite people and manage branding.
             </p>
           </div>
           {isOwner && (

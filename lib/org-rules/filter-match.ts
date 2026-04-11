@@ -9,10 +9,60 @@ import {
   opNeedsValue,
   opsForKind,
   orgPropertyFilterKind,
-  sanitizeLikeFragment,
   standardColumnFilterKind,
 } from "@/lib/activity-column-filters";
 import type { ActivityFilterableStandardColumn } from "@/lib/validation/schemas";
+
+/**
+ * In-memory rule matching only (not SQL LIKE). Trim + length cap; keep `%`, `_`, etc. literal.
+ * SQL-oriented sanitizers strip `%` / `_` — wrong for String#includes semantics.
+ */
+function ruleSearchNeedle(raw: string | undefined, maxLen = 500): string {
+  return (raw ?? "").trim().slice(0, maxLen);
+}
+
+/**
+ * Fold for bank/merchant text: compatibility decomposition + strip combining marks + lower case.
+ * Helps when institutions use fullwidth Latin, odd spaces, or mixed Unicode.
+ */
+function foldLooseText(s: string): string {
+  try {
+    return s
+      .normalize("NFKC")
+      .replace(/\p{M}/gu, "")
+      .toLowerCase();
+  } catch {
+    return s.toLowerCase();
+  }
+}
+
+/** Keep only a-z and 0-9 for a fallback “contains” when punctuation/whitespace breaks substring search. */
+function lettersDigitsOnly(s: string): string {
+  return s.replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Primary: folded substring match. Fallback: match on letters/digits only (handles
+ * “PATREON * … ST-1234 …” vs needle “PATREON”).
+ */
+function looseContains(hay: string, needle: string): boolean {
+  if (!needle.trim()) return false;
+  const h = foldLooseText(hay);
+  const n = foldLooseText(needle);
+  if (n.length === 0) return false;
+  if (h.includes(n)) return true;
+  const hA = lettersDigitsOnly(h);
+  const nA = lettersDigitsOnly(n);
+  return nA.length >= 2 && hA.includes(nA);
+}
+
+/** Vendor matchers: merchant text often lands in description or normalized slug, not `vendor` alone. */
+function vendorRuleSearchHaystack(tx: OrgRuleTransactionRow): string {
+  return [tx.vendor, tx.description, tx.vendor_normalized]
+    .filter((x) => x != null && String(x).trim() !== "")
+    .map((x) => String(x))
+    .join(" ");
+}
 
 export type OrgRuleTransactionRow = {
   date: string;
@@ -68,21 +118,26 @@ function num(txVal: unknown): number | null {
 
 function textMatchesNonNull(hay: string, op: string, value: string | undefined): boolean {
   const v = (value ?? "").trim();
-  const safe = sanitizeLikeFragment(v);
-  const h = hay.toLowerCase();
+  const needle = ruleSearchNeedle(v);
   switch (op) {
     case "contains":
-      return safe.length > 0 && h.includes(safe.toLowerCase());
+      return looseContains(hay, needle);
     case "is":
       return hay === v;
     case "is_not":
       return hay !== v;
     case "does_not_contain":
-      return safe.length === 0 || !h.includes(safe.toLowerCase());
-    case "starts_with":
-      return safe.length > 0 && h.startsWith(safe.toLowerCase());
-    case "ends_with":
-      return safe.length > 0 && h.endsWith(safe.toLowerCase());
+      return needle.length === 0 || !looseContains(hay, needle);
+    case "starts_with": {
+      const h = foldLooseText(hay);
+      const n = foldLooseText(needle);
+      return n.length > 0 && h.startsWith(n);
+    }
+    case "ends_with": {
+      const h = foldLooseText(hay);
+      const n = foldLooseText(needle);
+      return n.length > 0 && h.endsWith(n);
+    }
     case "is_empty":
       return hay === "";
     case "is_not_empty":
@@ -274,21 +329,27 @@ function customTextVal(cf: Record<string, unknown>, propId: string): string {
 function customTextPathMatches(cf: Record<string, unknown>, propId: string, op: string, value?: string, value2?: string): boolean {
   const s = customTextVal(cf, propId);
   const v = (value ?? "").trim();
-  const safe = sanitizeLikeFragment(v);
+  const needle = ruleSearchNeedle(v);
   switch (op) {
     case "contains":
-      return safe.length > 0 && s.toLowerCase().includes(safe.toLowerCase());
+      return looseContains(s, needle);
     case "is":
       if (isValidYmd(v)) return s.slice(0, 10) === v;
       return s === v;
     case "is_not":
       return s !== v;
     case "does_not_contain":
-      return safe.length === 0 || !s.toLowerCase().includes(safe.toLowerCase());
-    case "starts_with":
-      return safe.length > 0 && s.toLowerCase().startsWith(safe.toLowerCase());
-    case "ends_with":
-      return safe.length > 0 && s.toLowerCase().endsWith(safe.toLowerCase());
+      return needle.length === 0 || !looseContains(s, needle);
+    case "starts_with": {
+      const h = foldLooseText(s);
+      const n = foldLooseText(needle);
+      return n.length > 0 && h.startsWith(n);
+    }
+    case "ends_with": {
+      const h = foldLooseText(s);
+      const n = foldLooseText(needle);
+      return n.length > 0 && h.endsWith(n);
+    }
     case "before":
       return isValidYmd(v) && s.slice(0, 10).localeCompare(v) < 0;
     case "after":
@@ -390,7 +451,12 @@ export function matchesOrgRuleColumnFilter(
     const col = f.column as ActivityFilterableStandardColumn;
     if (col === "date") return dateColMatches(tx.date, f.op, f.value, f.value2);
     if (col === "created_at") return createdAtMatches(tx.created_at, f.op, f.value, f.value2);
-    if (col === "vendor") return textMatchesNonNull(tx.vendor ?? "", f.op, f.value);
+    if (col === "vendor") {
+      if (["contains", "does_not_contain", "starts_with", "ends_with"].includes(f.op)) {
+        return textMatchesNonNull(vendorRuleSearchHaystack(tx), f.op, f.value);
+      }
+      return textMatchesNonNull(tx.vendor ?? "", f.op, f.value);
+    }
     if (col === "amount") return numberColMatches(tx.amount, f.op, f.value);
     if (col === "deduction_percent") return deductionMatches(tx.deduction_percent, f.op, f.value);
     if (col === "ai_confidence") return numberColMatches(tx.ai_confidence, f.op, f.value);

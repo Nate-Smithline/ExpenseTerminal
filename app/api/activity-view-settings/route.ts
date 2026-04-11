@@ -21,7 +21,7 @@ const DEFAULT_VISIBLE_COLUMNS: string[] = [
 ];
 
 function defaultSettings() {
-  const year = new Date().getFullYear();
+  const today = new Date().toISOString().slice(0, 10);
   return {
     sort_column: "date",
     sort_asc: false,
@@ -33,8 +33,8 @@ function defaultSettings() {
       source: null,
       data_source_id: null,
       search: "",
-      date_from: `${year}-01-01`,
-      date_to: `${year}-12-31`,
+      date_from: "2000-01-01",
+      date_to: today,
       column_filters: [] as unknown[],
     },
   };

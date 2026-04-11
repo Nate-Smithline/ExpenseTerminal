@@ -149,8 +149,8 @@ SELECT
     'source', NULL,
     'data_source_id', NULL,
     'search', '',
-    'date_from', to_char(date_trunc('year', NOW() AT TIME ZONE 'UTC'), 'YYYY') || '-01-01',
-    'date_to', to_char(date_trunc('year', NOW() AT TIME ZONE 'UTC'), 'YYYY') || '-12-31',
+    'date_from', '2000-01-01',
+    'date_to', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD'),
     'column_filters', '[]'::jsonb
   ),
   NOW(),

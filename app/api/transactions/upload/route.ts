@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseRouteClient } from "@/lib/supabase/server";
+import { createSupabaseRouteClient, createSupabaseServiceClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { transactionUploadBodySchema } from "@/lib/validation/schemas";
@@ -227,7 +227,9 @@ export async function POST(req: Request) {
 
   try {
     if (insertedIds.length > 0) {
-      await runOrgRulesForIngest(supabase as any, uploadOrgId, insertedIds);
+      let rulesDb: any = supabase;
+      try { rulesDb = createSupabaseServiceClient(); } catch { /* use auth client as fallback */ }
+      await runOrgRulesForIngest(rulesDb, uploadOrgId, insertedIds);
     }
   } catch (rulesErr) {
     console.warn("[transactions/upload] Org transaction rules failed", rulesErr);

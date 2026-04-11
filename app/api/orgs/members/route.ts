@@ -6,7 +6,8 @@ import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limi
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { getActiveOrgId } from "@/lib/active-org";
 import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
-import { enrichOrgMemberRows } from "@/lib/orgs/enrich-org-members";
+import { enrichOrgMemberRows, type OrgMemberRow } from "@/lib/orgs/enrich-org-members";
+import { loadOrgRosterForOrgId, rawOrgMembersFromRoster } from "@/lib/orgs/load-org-roster";
 
 async function resolveOrgId(supabase: any, userId: string): Promise<string> {
   const existing = await getActiveOrgId(supabase, userId);
@@ -30,51 +31,34 @@ export async function GET(req: Request) {
 
     const orgId = await resolveOrgId(supabase, userId);
 
-    const { data: rows, error } = await (supabase as any)
+    const { data: viewerRow, error: viewerErr } = await (supabase as any)
       .from("org_memberships")
-      .select("user_id, role")
-      .eq("org_id", orgId);
+      .select("user_id")
+      .eq("org_id", orgId)
+      .eq("user_id", userId)
+      .maybeSingle();
 
-    if (error) {
+    if (viewerErr || !viewerRow) {
+      return NextResponse.json({ error: "Not a member of this workspace" }, { status: 403 });
+    }
+
+    let rawMembers: OrgMemberRow[];
+    try {
+      const roster = await loadOrgRosterForOrgId(orgId);
+      rawMembers = rawOrgMembersFromRoster(roster.memberships, roster.profiles);
+    } catch (e: unknown) {
       return NextResponse.json(
-        { error: safeErrorMessage(error.message, "Failed to load members") },
+        {
+          error: safeErrorMessage(
+            e instanceof Error ? e.message : String(e),
+            "Failed to load members"
+          ),
+        },
         { status: 500 }
       );
     }
 
-    const userIds = [...new Set((rows ?? []).map((r: { user_id: string }) => r.user_id))];
-
-    let profiles: any[] = [];
-    if (userIds.length > 0) {
-      const { data: p, error: pErr } = await (supabase as any)
-        .from("profiles")
-        .select("id, email, display_name, avatar_url")
-        .in("id", userIds);
-
-      if (pErr) {
-        return NextResponse.json(
-          { error: safeErrorMessage(pErr.message, "Failed to load profiles") },
-          { status: 500 }
-        );
-      }
-      profiles = p ?? [];
-    }
-
-    const profileById = new Map((profiles ?? []).map((p: any) => [p.id, p]));
-    const members = (rows ?? []).map((r: { user_id: string; role: string }) => {
-      const p = profileById.get(r.user_id) as
-        | { email?: string | null; display_name?: string | null; avatar_url?: string | null }
-        | undefined;
-      return {
-        id: r.user_id,
-        role: r.role,
-        email: p?.email ?? null,
-        display_name: p?.display_name ?? null,
-        avatar_url: p?.avatar_url ?? null,
-      };
-    });
-
-    const enriched = await enrichOrgMemberRows(members);
+    const enriched = await enrichOrgMemberRows(rawMembers);
 
     const memberEmailsLower = new Set(
       enriched

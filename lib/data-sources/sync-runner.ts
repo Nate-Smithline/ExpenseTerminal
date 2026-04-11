@@ -5,6 +5,7 @@ import { getPlaidClient, decryptAccessToken } from "@/lib/plaid";
 import { persistPlaidBalancesForPlaidItem } from "@/lib/plaid-balance-persist";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { runOrgRulesForIngest } from "@/lib/org-rules/executor";
+import { createSupabaseServiceClient } from "@/lib/supabase/server";
 
 /**
  * Stripe Financial Connections `transactions.list` accepts `limit` between 1 and 100 (inclusive).
@@ -65,6 +66,18 @@ export type StripeSyncDiagnostics = {
 
 const PLAID_TRANSACTIONS_SYNC_COUNT = 500;
 
+/** Parse YYYY-MM-DD for Plaid history lookback (UTC date). */
+function parsePlaidStartDateYmd(s: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s.trim());
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  if (mo < 0 || mo > 11 || d < 1 || d > 31) return null;
+  const dt = new Date(Date.UTC(y, mo, d, 12, 0, 0));
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
 function isPlaidInvalidCursorError(e: unknown): boolean {
   const err = e as { response?: { data?: { error_code?: string } } };
   const code = err?.response?.data?.error_code;
@@ -116,7 +129,7 @@ export type SyncOptions = {
   stripeMode?: StripeMode;
   /** Override start date for this sync (Stripe FC transacted_at.gte). */
   startDate?: string | null;
-  /** End date for this sync (Stripe FC transacted_at.lte). */
+  /** End date for this sync (Stripe FC transacted_at.lte). On Plaid, use with startDate in the UI; history depth is capped by Plaid (730 days). */
   endDate?: string | null;
   /** Request hostname — used to resolve Plaid environment (localhost → PLAID_ENV, prod → production). */
   hostname?: string;
@@ -520,10 +533,33 @@ export async function runSyncForDataSource(
       const storedCursor: string | undefined = (row.plaid_cursor as string) || undefined;
       const plaidAccountId = (row.plaid_account_id as string | null) ?? null;
 
+      const startDateYm =
+        typeof options?.startDate === "string" && options.startDate.trim() ? options.startDate.trim() : "";
+      const startParsed = startDateYm ? parsePlaidStartDateYmd(startDateYm) : null;
+
+      let plaidDaysRequested = 730;
+      let effectiveCursorStart: string | undefined = storedCursor;
+
+      if (startParsed) {
+        // Pull modal "From" date: replay initial history so Plaid returns a deeper window (not only
+        // incremental deltas after the saved cursor). Capped at Plaid’s max (730 days).
+        effectiveCursorStart = undefined;
+        const MS = 86400000;
+        const now = new Date();
+        const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+        const startUtc = Date.UTC(
+          startParsed.getUTCFullYear(),
+          startParsed.getUTCMonth(),
+          startParsed.getUTCDate(),
+        );
+        const rawDays = Math.ceil((todayUtc - startUtc) / MS) + 1;
+        plaidDaysRequested = Math.min(730, Math.max(1, rawDays));
+      }
+
       const buildSyncOptions = (requestCursor: string | undefined) => {
         const opt: { account_id?: string; days_requested?: number } = {};
         if (plaidAccountId) opt.account_id = plaidAccountId;
-        if (!requestCursor) opt.days_requested = 730;
+        if (!requestCursor) opt.days_requested = plaidDaysRequested;
         return Object.keys(opt).length > 0 ? opt : undefined;
       };
 
@@ -650,7 +686,7 @@ export async function runSyncForDataSource(
         };
       };
 
-      if (!storedCursor) {
+      if (!effectiveCursorStart) {
         try {
           await plaid.transactionsRefresh({ access_token: accessToken });
         } catch (rErr) {
@@ -671,7 +707,7 @@ export async function runSyncForDataSource(
       let firstInsertError: string | null = null;
       const addedPlaidExternalIds = new Set<string>();
 
-      let cursorStart: string | undefined = storedCursor;
+      let cursorStart: string | undefined = effectiveCursorStart;
       let didResetCursor = false;
 
       for (;;) {
@@ -718,7 +754,9 @@ export async function runSyncForDataSource(
           const newIds = (ruleTxRows ?? []).map((r: { id: string }) => r.id).filter(Boolean);
           const orgIdForRules = (row.org_id as string) ?? null;
           if (orgIdForRules && newIds.length > 0) {
-            await runOrgRulesForIngest(supabase as any, orgIdForRules, newIds);
+            let rulesDb: any = supabase;
+            try { rulesDb = createSupabaseServiceClient(); } catch { /* use caller client as fallback */ }
+            await runOrgRulesForIngest(rulesDb, orgIdForRules, newIds);
           }
         } catch (rulesErr) {
           console.warn("[sync-runner/plaid] Org transaction rules failed", rulesErr);

@@ -76,10 +76,30 @@ export async function GET(req: Request) {
   const transactionColumns =
     "id,user_id,date,vendor,description,amount,category,schedule_c_line,ai_confidence,ai_reasoning,ai_suggestions,status,business_purpose,quick_label,notes,vendor_normalized,auto_sort_rule_id,deduction_percent,is_meal,is_travel,tax_year,source,transaction_type,data_source_id,created_at,updated_at,custom_fields";
 
+  // Scope to active org's data sources so multi-org users only see transactions
+  // from accounts linked to their current workspace.
+  let activeOrgId = await getActiveOrgId(supabase as any, userId);
+  if (!activeOrgId) {
+    try { activeOrgId = await ensureActiveOrgForUser(userId); } catch { activeOrgId = null; }
+  }
+  let orgDataSourceIds: string[] | null = null;
+  if (activeOrgId) {
+    const { data: dsRows } = await (supabase as any)
+      .from("data_sources")
+      .select("id")
+      .eq("org_id", activeOrgId);
+    orgDataSourceIds = (dsRows ?? []).map((r: { id: string }) => r.id).filter(Boolean);
+  }
+
   let query = (supabase as any)
     .from("transactions")
-    .select(countOnly ? "*" : transactionColumns, countOnly ? { count: "exact", head: true } : { count: "exact" })
-    .eq("user_id", userId);
+    .select(countOnly ? "*" : transactionColumns, countOnly ? { count: "exact", head: true } : { count: "exact" });
+
+  if (orgDataSourceIds != null && orgDataSourceIds.length > 0) {
+    query = query.in("data_source_id", orgDataSourceIds);
+  } else if (orgDataSourceIds != null) {
+    query = query.eq("user_id", userId);
+  }
 
   if (taxYear != null) query = query.eq("tax_year", taxYear);
   if (dateFrom) query = query.gte("date", dateFrom);
@@ -113,23 +133,13 @@ export async function GET(req: Request) {
   if (columnFilters.length > 0) {
     const needsOrgDefs = columnFilters.some((f) => !STANDARD_FILTERABLE_COLS.has(f.column));
     const orgTypes = new Map<string, string>();
-    if (needsOrgDefs) {
-      let orgId = await getActiveOrgId(supabase as any, userId);
-      if (!orgId) {
-        try {
-          orgId = await ensureActiveOrgForUser(userId);
-        } catch {
-          orgId = null;
-        }
-      }
-      if (orgId) {
-        const { data: defs } = await (supabase as any)
-          .from("transaction_property_definitions")
-          .select("id,type")
-          .eq("org_id", orgId);
-        for (const row of defs ?? []) {
-          if (row?.id && typeof row.type === "string") orgTypes.set(row.id, row.type);
-        }
+    if (needsOrgDefs && activeOrgId) {
+      const { data: defs } = await (supabase as any)
+        .from("transaction_property_definitions")
+        .select("id,type")
+        .eq("org_id", activeOrgId);
+      for (const row of defs ?? []) {
+        if (row?.id && typeof row.type === "string") orgTypes.set(row.id, row.type);
       }
     }
     query = applyActivityColumnFilters(query, columnFilters, orgTypes);
@@ -140,15 +150,7 @@ export async function GET(req: Request) {
     const hasUuidSortColumn = rules.some((r) => uuidSchema.safeParse(r.column).success);
     let accountSortIds = new Set<string>();
     if (hasUuidSortColumn) {
-      let orgIdForSort = await getActiveOrgId(supabase as any, userId);
-      if (!orgIdForSort) {
-        try {
-          orgIdForSort = await ensureActiveOrgForUser(userId);
-        } catch {
-          orgIdForSort = null;
-        }
-      }
-      accountSortIds = await fetchAccountPropertyIdsForOrg(supabase as any, orgIdForSort);
+      accountSortIds = await fetchAccountPropertyIdsForOrg(supabase as any, activeOrgId);
     }
     const resolvedRules = mapActivitySortRulesToSqlColumns(rules, accountSortIds);
     for (const r of resolvedRules) {

@@ -202,12 +202,27 @@ async function csvExportResponse(supabase: any, userId: string, opt: ExportOptio
     : new Set<string>();
   const resolvedSortRules = mapActivitySortRulesToSqlColumns(exportSortRules, accountSortIds);
 
+  // Scope to active org's data sources
+  let orgDataSourceIds: string[] | null = null;
+  if (orgId) {
+    const { data: dsRows } = await (supabase as any)
+      .from("data_sources")
+      .select("id")
+      .eq("org_id", orgId);
+    orgDataSourceIds = (dsRows ?? []).map((r: { id: string }) => r.id).filter(Boolean);
+  }
+
   const buildPageQuery = (from: number, to: number) => {
     let q = (supabase as any)
       .from("transactions")
       .select(cols)
-      .eq("user_id", userId)
       .range(from, to);
+
+    if (orgDataSourceIds != null && orgDataSourceIds.length > 0) {
+      q = q.in("data_source_id", orgDataSourceIds);
+    } else {
+      q = q.eq("user_id", userId);
+    }
 
     for (const r of resolvedSortRules) {
       q = q.order(r.column, { ascending: r.asc });

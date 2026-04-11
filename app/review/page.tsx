@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
 import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
 import { getProfileOnboarding } from "@/lib/profile";
+import { getActiveOrgId } from "@/lib/active-org";
 import type { Database } from "@/lib/types/database";
 import { ReviewPageClient } from "./ReviewPageClient";
 
@@ -20,35 +21,49 @@ export default async function ReviewPage() {
   const taxYear = getEffectiveTaxYear(cookieStore, profile);
   const db = supabase;
 
-  const { data: transactions } = await (db as any)
+  // Scope to active org's data sources
+  const activeOrgId = await getActiveOrgId(db as any, userId);
+  let orgDataSourceIds: string[] | null = null;
+  if (activeOrgId) {
+    const { data: dsRows } = await (db as any)
+      .from("data_sources")
+      .select("id")
+      .eq("org_id", activeOrgId);
+    orgDataSourceIds = (dsRows ?? []).map((r: { id: string }) => r.id).filter(Boolean);
+  }
+
+  function scopeToOrg(q: any): any {
+    if (orgDataSourceIds != null && orgDataSourceIds.length > 0) {
+      return q.in("data_source_id", orgDataSourceIds);
+    }
+    return q.eq("user_id", userId);
+  }
+
+  const { data: transactions } = await scopeToOrg((db as any)
     .from("transactions")
-    .select("*")
-    .eq("user_id", userId)
+    .select("*"))
     .eq("tax_year", taxYear)
     .eq("status", "pending")
     .or("transaction_type.eq.income,and(transaction_type.eq.expense,ai_confidence.not.is.null)")
     .order("date", { ascending: false })
     .limit(20);
 
-  const { count: pendingCount } = await (db as any)
+  const { count: pendingCount } = await scopeToOrg((db as any)
     .from("transactions")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", userId)
+    .select("*", { count: "exact", head: true }))
     .eq("tax_year", taxYear)
     .eq("status", "pending")
     .or("transaction_type.eq.income,and(transaction_type.eq.expense,ai_confidence.not.is.null)");
 
-  const { count: totalPendingCount } = await (db as any)
+  const { count: totalPendingCount } = await scopeToOrg((db as any)
     .from("transactions")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", userId)
+    .select("*", { count: "exact", head: true }))
     .eq("status", "pending")
     .or("transaction_type.eq.income,and(transaction_type.eq.expense,ai_confidence.not.is.null)");
 
-  const { count: unanalyzedCount } = await (db as any)
+  const { count: unanalyzedCount } = await scopeToOrg((db as any)
     .from("transactions")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", userId)
+    .select("*", { count: "exact", head: true }))
     .eq("tax_year", taxYear)
     .eq("status", "pending")
     .eq("transaction_type", "expense")

@@ -1,9 +1,10 @@
-import { createSupabaseRouteClient } from "@/lib/supabase/server";
+import { createSupabaseRouteClient, createSupabaseServiceClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { getStripeMode } from "@/lib/stripe";
 import { runSyncForDataSource } from "@/lib/data-sources/sync-runner";
 import { requireOrgIdForAccounts } from "@/lib/data-sources/require-active-org";
+import { canMutateWorkspaceDataSource } from "@/lib/data-sources/workspace-account-list-scope";
 
 export async function POST(req: Request) {
   const authClient = await createSupabaseRouteClient();
@@ -55,9 +56,8 @@ export async function POST(req: Request) {
     .from("data_sources")
     .select("id,user_id,source_type")
     .eq("id", dataSourceId)
-    .eq("user_id", userId)
     .eq("org_id", org.orgId)
-    .single();
+    .maybeSingle();
 
   if (fetchError || !row) {
     return new Response(JSON.stringify({ error: "Data source not found" }), {
@@ -66,14 +66,38 @@ export async function POST(req: Request) {
     });
   }
 
+  const ownerId = row.user_id as string;
+  const allowed = await canMutateWorkspaceDataSource(supabase as any, org.orgId, userId, ownerId);
+  if (!allowed) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const url = new URL(req.url);
   const xfHost = req.headers.get("x-forwarded-host");
   const host = req.headers.get("host");
   const hostname = (xfHost ?? host ?? "").split(",")[0]?.trim()?.split(":")[0] || url.hostname;
-  const syncOptions = row.source_type === "stripe"
-    ? { stripeMode: getStripeMode(hostname), startDate, endDate, hostname }
-    : { hostname };
-  const result = await runSyncForDataSource(supabase, userId, dataSourceId, row.source_type, syncOptions);
+  const syncOptions =
+    row.source_type === "stripe"
+      ? { stripeMode: getStripeMode(hostname), startDate, endDate, hostname }
+      : { hostname, startDate, endDate };
+
+  const runAsMemberOnPeerAccount = ownerId !== userId;
+  let dbForSync = supabase as any;
+  if (runAsMemberOnPeerAccount) {
+    try {
+      dbForSync = createSupabaseServiceClient();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Shared account sync is not configured (missing service key)." }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
+
+  const result = await runSyncForDataSource(dbForSync, ownerId, dataSourceId, row.source_type, syncOptions);
 
   if (result.success) {
     return new Response(

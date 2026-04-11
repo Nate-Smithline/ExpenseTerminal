@@ -3,7 +3,14 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
 import { getActiveOrgId } from "@/lib/active-org";
 import { ensureActiveOrgForUser } from "@/lib/ensure-active-org";
+import type { Database } from "@/lib/types/database";
 import { DataSourcesClient } from "./DataSourcesClient";
+
+type DataSourceRow = Database["public"]["Tables"]["data_sources"]["Row"];
+import {
+  sanitizeDataSourceForViewer,
+  shouldListAllWorkspaceAccounts,
+} from "@/lib/data-sources/workspace-account-list-scope";
 
 export type DataSourceStats = {
   transactionCount: number;
@@ -48,40 +55,53 @@ export default async function DataSourcesPage() {
     }
   }
 
-  const { data: sources } = orgId
-    ? await (supabase as any)
-        .from("data_sources")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: false })
-    : { data: [] as unknown[] };
+  let rawSources: unknown[] = [];
+  let listWide = false;
+  if (orgId) {
+    listWide = await shouldListAllWorkspaceAccounts(supabase as any, orgId, userId);
+    let q = (supabase as any)
+      .from("data_sources")
+      .select("*")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false });
+    if (!listWide) {
+      q = q.eq("user_id", userId);
+    }
+    const { data } = await q;
+    rawSources = data ?? [];
+  }
 
-  const calendarYear = new Date().getFullYear();
+  const sources = (rawSources as Record<string, unknown>[]).map((row) =>
+    sanitizeDataSourceForViewer(row, userId),
+  ) as DataSourceRow[];
 
-  const sourceIds = (sources ?? []).map((s: { id: string }) => s.id);
+  const sourceIds = sources.map((s) => s.id);
   const statsBySource: Record<string, DataSourceStats> = {};
 
   if (sourceIds.length > 0) {
-    const { data: txRows } = await (supabase as any)
+    let txAgg = (supabase as any)
       .from("transactions")
       .select("data_source_id,amount,transaction_type")
-      .eq("user_id", userId)
       .in("data_source_id", sourceIds);
+    if (!listWide) {
+      txAgg = txAgg.eq("user_id", userId);
+    }
+    const { data: txRows } = await txAgg;
 
-    /** Earliest transaction date per source for the current calendar year (`tax_year` on rows). */
+    /** Earliest transaction date per source (across all years). */
     const earliestBySource: Record<string, string> = {};
     await Promise.all(
       sourceIds.map(async (id: string) => {
-        const { data } = await (supabase as any)
+        let q = (supabase as any)
           .from("transactions")
           .select("date")
-          .eq("user_id", userId)
           .eq("data_source_id", id)
-          .eq("tax_year", calendarYear)
           .order("date", { ascending: true })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+        if (!listWide) {
+          q = q.eq("user_id", userId);
+        }
+        const { data } = await q.maybeSingle();
         const d = data?.date as string | undefined;
         if (d) earliestBySource[id] = d;
       }),
@@ -112,7 +132,9 @@ export default async function DataSourcesPage() {
 
   return (
     <DataSourcesClient
-      initialSources={sources ?? []}
+      currentUserId={userId}
+      peerWorkspaceFeedActionsEnabled={listWide}
+      initialSources={sources}
       initialStats={statsBySource}
     />
   );

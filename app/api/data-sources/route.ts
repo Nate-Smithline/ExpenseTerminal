@@ -1,12 +1,15 @@
-import {
-  createSupabaseRouteClient,
-} from "@/lib/supabase/server";
+import { createSupabaseRouteClient, createSupabaseServiceClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { parseQueryLimit, parseQueryOffset } from "@/lib/validation/schemas";
 import { isBrandColorId } from "@/lib/brand-palette";
 import { requireOrgIdForAccounts } from "@/lib/data-sources/require-active-org";
+import {
+  canMutateWorkspaceDataSource,
+  sanitizeDataSourceForViewer,
+  shouldListAllWorkspaceAccounts,
+} from "@/lib/data-sources/workspace-account-list-scope";
 
 export async function GET(req: Request) {
   const authClient = await createSupabaseRouteClient();
@@ -39,13 +42,16 @@ export async function GET(req: Request) {
   const limit = parseQueryLimit(url.searchParams.get("limit"));
   const offset = parseQueryOffset(url.searchParams.get("offset"));
 
-  const { data, error, count } = await (supabase as any)
+  const listWide = await shouldListAllWorkspaceAccounts(supabase as any, org.orgId, userId);
+  let q = (supabase as any)
     .from("data_sources")
     .select("*", { count: "exact" })
-    .eq("user_id", userId)
     .eq("org_id", org.orgId)
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
+    .order("created_at", { ascending: false });
+  if (!listWide) {
+    q = q.eq("user_id", userId);
+  }
+  const { data, error, count } = await q.range(offset, offset + limit - 1);
 
   if (error) {
     return new Response(JSON.stringify({ error: safeErrorMessage(error.message, "Failed to load accounts") }), {
@@ -54,7 +60,10 @@ export async function GET(req: Request) {
     });
   }
 
-  return new Response(JSON.stringify({ data: data ?? [], count: count ?? (data?.length ?? 0) }), {
+  const rows = (data ?? []).map((row: Record<string, unknown>) =>
+    sanitizeDataSourceForViewer(row, userId),
+  );
+  return new Response(JSON.stringify({ data: rows, count: count ?? rows.length }), {
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "private, max-age=300",
@@ -209,9 +218,8 @@ export async function PATCH(req: Request) {
 
   const { data: existingRow, error: existingErr } = await (supabase as any)
     .from("data_sources")
-    .select("source_type")
+    .select("source_type,user_id")
     .eq("id", body.id)
-    .eq("user_id", userId)
     .eq("org_id", org.orgId)
     .maybeSingle();
 
@@ -221,6 +229,17 @@ export async function PATCH(req: Request) {
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  const ownerId = existingRow.user_id as string;
+  const allowed = await canMutateWorkspaceDataSource(supabase as any, org.orgId, userId, ownerId);
+  if (!allowed) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const isPeerAccount = ownerId !== userId;
 
   const update: Record<string, unknown> = {};
   if (body.name !== undefined) update.name = body.name;
@@ -284,15 +303,38 @@ export async function PATCH(req: Request) {
     });
   }
 
+  if (isPeerAccount) {
+    const peerAllowed = new Set(["name", "institution"]);
+    const disallowed = Object.keys(update).filter((k) => !peerAllowed.has(k));
+    if (disallowed.length > 0) {
+      return new Response(
+        JSON.stringify({
+          error: "You can only change name and institution on a teammate’s account.",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
+
   // Return full row so client keeps source_type (e.g. stripe) and other fields when editing name/institution.
-  const { data, error } = await (supabase as any)
-    .from("data_sources")
-    .update(update)
-    .eq("id", body.id)
-    .eq("user_id", userId)
-    .eq("org_id", org.orgId)
-    .select()
-    .single();
+  let db = supabase as any;
+  if (isPeerAccount) {
+    try {
+      db = createSupabaseServiceClient();
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Renaming shared accounts requires server configuration (missing service key)." }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
+
+  let q = db.from("data_sources").update(update).eq("id", body.id).eq("org_id", org.orgId);
+  if (!isPeerAccount) {
+    q = q.eq("user_id", userId);
+  }
+
+  const { data, error } = await q.select().single();
 
   if (error) {
     return new Response(JSON.stringify({ error: safeErrorMessage(error.message, "Failed to update account") }), {

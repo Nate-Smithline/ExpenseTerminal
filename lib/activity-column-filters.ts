@@ -356,6 +356,43 @@ function applyTextFilterNonNullable(q: any, col: string, op: string, value: stri
   }
 }
 
+/** Same haystack as org rules / in-memory vendor matching (lib/org-rules/filter-match vendorRuleSearchHaystack). */
+const VENDOR_HAYSTACK_SQL_COLS = ["vendor", "description", "vendor_normalized"] as const;
+
+/**
+ * Vendor "contains" / etc. must search merchant text that often lives in `description` or
+ * `vendor_normalized`, not `vendor` alone — parity with applyActivityColumnFilters consumers
+ * and org rule evaluation.
+ */
+function applyVendorHaystackTextFilter(q: any, op: string, value: string | undefined): any {
+  const v = (value ?? "").trim();
+  const safe = sanitizeLikeFragment(v);
+  switch (op) {
+    case "contains": {
+      if (!safe) return q;
+      return q.or(VENDOR_HAYSTACK_SQL_COLS.map((col) => `${col}.ilike.%${safe}%`).join(","));
+    }
+    case "does_not_contain": {
+      if (!safe) return q;
+      let x = q;
+      for (const col of VENDOR_HAYSTACK_SQL_COLS) {
+        x = x.not(col, "ilike", `%${safe}%`);
+      }
+      return x;
+    }
+    case "starts_with": {
+      if (!safe) return q;
+      return q.or(VENDOR_HAYSTACK_SQL_COLS.map((col) => `${col}.ilike.${safe}%`).join(","));
+    }
+    case "ends_with": {
+      if (!safe) return q;
+      return q.or(VENDOR_HAYSTACK_SQL_COLS.map((col) => `${col}.ilike.%${safe}`).join(","));
+    }
+    default:
+      return applyTextFilterNonNullable(q, "vendor", op, value);
+  }
+}
+
 function applyDateSqlColumn(q: any, col: string, op: string, value?: string, value2?: string): any {
   const a = (value ?? "").trim();
   const b = (value2 ?? "").trim();
@@ -631,7 +668,7 @@ export function applyActivityColumnFilters(
         continue;
       }
       if (col === "vendor") {
-        q = applyTextFilterNonNullable(q, "vendor", f.op, f.value);
+        q = applyVendorHaystackTextFilter(q, f.op, f.value);
         continue;
       }
       if (col === "amount") {

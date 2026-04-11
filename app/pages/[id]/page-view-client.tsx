@@ -12,6 +12,7 @@ import { PageIconPicker, type PageIconValue } from "@/components/PageIconPicker"
 import { pageIconTextClass } from "@/lib/page-icon-colors";
 import { useIntersectionLoadMore } from "@/lib/use-intersection-load-more";
 import { parseColumnFiltersJson, serializeColumnFiltersForQuery } from "@/lib/activity-column-filters";
+import { mergeTransactionDetailPatch } from "@/lib/merge-transaction-detail-patch";
 import { serializeSortRulesForQuery } from "@/lib/activity-sort-rules";
 import { createSupabaseClient } from "@/lib/supabase/client";
 import type { ActivitySortRule } from "@/lib/validation/schemas";
@@ -186,6 +187,12 @@ export function PageViewClient({ page }: { page: ServerPage }) {
   useEffect(() => {
     transactionsRef.current = transactions;
   }, [transactions]);
+  const sidebarTransactionRef = useRef(sidebarTransaction);
+  useEffect(() => {
+    sidebarTransactionRef.current = sidebarTransaction;
+  }, [sidebarTransaction]);
+  const optimisticBackupRef = useRef<Map<string, Transaction>>(new Map());
+  const saveChainRef = useRef<Map<string, Promise<void>>>(new Map());
   const patchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savePayloadRef = useRef<ActivityViewState | null>(null);
   const lastPersistRef = useRef(0);
@@ -643,8 +650,39 @@ export function PageViewClient({ page }: { page: ServerPage }) {
     }
   }, [page.id, page.full_width, page.favorited]);
 
-  const handleSave = useCallback(
-    async (id: string, data: TransactionDetailUpdate & { status?: string }) => {
+  const applyOptimisticPatch = useCallback(
+    (id: string, data: TransactionDetailUpdate & { status?: string }): Transaction | null => {
+      const fromList = transactionsRef.current.find((t) => t.id === id);
+      const fromSidebar =
+        sidebarTransactionRef.current?.id === id ? sidebarTransactionRef.current : null;
+      const base = fromList ?? fromSidebar;
+      if (!base) return null;
+      if (!optimisticBackupRef.current.has(id)) {
+        optimisticBackupRef.current.set(id, base);
+      }
+      const merged = mergeTransactionDetailPatch(base, data);
+      setTransactions((prev) => {
+        const idx = prev.findIndex((t) => t.id === id);
+        if (idx === -1) return prev;
+        const copy = [...prev];
+        copy[idx] = merged;
+        return copy;
+      });
+      setSidebarTransaction((prev) => (prev?.id === id ? merged : prev));
+      return merged;
+    },
+    []
+  );
+
+  const revertOptimisticPatch = useCallback((id: string) => {
+    const backup = optimisticBackupRef.current.get(id);
+    if (!backup) return;
+    setTransactions((prev) => prev.map((t) => (t.id === id ? backup : t)));
+    setSidebarTransaction((prev) => (prev?.id === id ? backup : prev));
+  }, []);
+
+  const runPersistedSave = useCallback(
+    async (id: string, data: TransactionDetailUpdate & { status?: string }, mergedRow: Transaction | null) => {
       const res = await fetch("/api/transactions/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -654,38 +692,76 @@ export function PageViewClient({ page }: { page: ServerPage }) {
         const body = await res.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? "Failed to save");
       }
-      await loadTransactions();
+      if (mergedRow) optimisticBackupRef.current.set(id, mergedRow);
     },
-    [loadTransactions]
+    []
+  );
+
+  const handleSave = useCallback(
+    async (id: string, data: TransactionDetailUpdate & { status?: string }) => {
+      const merged = applyOptimisticPatch(id, data);
+      const prev = saveChainRef.current.get(id) ?? Promise.resolve();
+      const run = prev.then(() => runPersistedSave(id, data, merged));
+      saveChainRef.current.set(id, run);
+      try {
+        await run;
+      } catch (e) {
+        revertOptimisticPatch(id);
+        const message = e instanceof Error ? e.message : "Failed to save";
+        setToast(message);
+        setTimeout(() => setToast(null), 5000);
+        throw e;
+      } finally {
+        if (saveChainRef.current.get(id) === run) {
+          saveChainRef.current.delete(id);
+        }
+      }
+    },
+    [applyOptimisticPatch, revertOptimisticPatch, runPersistedSave]
   );
 
   const patchCheckboxCustomField = useCallback(
     async (transactionId: string, propertyId: string, value: boolean) => {
-      const res = await fetch("/api/transactions/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: transactionId, custom_fields: { [propertyId]: value } }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setToast((body as { error?: string }).error ?? "Could not update field");
-        setTimeout(() => setToast(null), 4000);
-        return;
+      const patch: TransactionDetailUpdate & { status?: string } = {
+        custom_fields: { [propertyId]: value } as Json,
+      };
+      const merged = applyOptimisticPatch(transactionId, patch);
+
+      // Evict the row immediately if a column filter now excludes it.
+      const cf = viewState.filters.column_filters ?? [];
+      const matchingFilter = cf.find((f) => f.column === propertyId);
+      const shouldEvict =
+        !!matchingFilter &&
+        ((matchingFilter.op === "is_unchecked" && value === true) ||
+         (matchingFilter.op === "is_checked" && value === false));
+      if (shouldEvict) {
+        setTransactions((prev) => prev.filter((t) => t.id !== transactionId));
+        setTotalCount((c) => Math.max(0, c - 1));
       }
-      setSidebarTransaction((prev) => {
-        if (!prev || prev.id !== transactionId) return prev;
-        const prevCf =
-          prev.custom_fields && typeof prev.custom_fields === "object" && !Array.isArray(prev.custom_fields)
-            ? { ...(prev.custom_fields as Record<string, Json>) }
-            : {};
-        return {
-          ...prev,
-          custom_fields: { ...prevCf, [propertyId]: value } as Transaction["custom_fields"],
-        };
-      });
-      await loadTransactions();
+
+      const prev = saveChainRef.current.get(transactionId) ?? Promise.resolve();
+      const run = prev.then(() => runPersistedSave(transactionId, patch, merged));
+      saveChainRef.current.set(transactionId, run);
+      try {
+        await run;
+      } catch {
+        if (shouldEvict) {
+          const backup = optimisticBackupRef.current.get(transactionId);
+          if (backup) {
+            setTransactions((prev) => [...prev, backup]);
+            setTotalCount((c) => c + 1);
+          }
+        }
+        revertOptimisticPatch(transactionId);
+        setToast("Could not update field");
+        setTimeout(() => setToast(null), 4000);
+      } finally {
+        if (saveChainRef.current.get(transactionId) === run) {
+          saveChainRef.current.delete(transactionId);
+        }
+      }
     },
-    [loadTransactions]
+    [applyOptimisticPatch, revertOptimisticPatch, runPersistedSave, viewState.filters.column_filters]
   );
 
   /** Both modes are centered; full width uses a wider cap, not main-column bleed. */
@@ -838,26 +914,7 @@ export function PageViewClient({ page }: { page: ServerPage }) {
           editable
           dataSourceNameById={dataSourceNameById}
           dataSourceBrandColorIdById={dataSourceBrandColorIdById}
-          onSave={async (id, update) => {
-            await handleSave(id, update);
-            setSidebarTransaction((prev) => {
-              if (!prev || prev.id !== id) return prev;
-              const { custom_fields: cfPatch, ...rest } = update;
-              let next = { ...prev, ...rest } as Transaction;
-              if (cfPatch && typeof cfPatch === "object" && !Array.isArray(cfPatch)) {
-                const prevCf =
-                  prev.custom_fields && typeof prev.custom_fields === "object" && !Array.isArray(prev.custom_fields)
-                    ? { ...(prev.custom_fields as Record<string, Json>) }
-                    : {};
-                next = {
-                  ...next,
-                  custom_fields: { ...prevCf, ...(cfPatch as Record<string, Json>) } as Transaction["custom_fields"],
-                };
-              }
-              const amount: string = typeof next.amount === "number" ? String(next.amount) : (next.amount ?? "");
-              return { ...next, amount };
-            });
-          }}
+          onSave={handleSave}
           taxRate={0.24}
           transactionProperties={transactionProperties}
           orgMembers={orgMembers}

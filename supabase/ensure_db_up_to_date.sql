@@ -119,15 +119,72 @@ CREATE INDEX IF NOT EXISTS idx_auto_sort_rules_user ON public.auto_sort_rules(us
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.data_sources ENABLE ROW LEVEL SECURITY;
 
+-- Transactions: members can read/update org-linked txns when accounts are shared; insert/delete own rows only.
 DROP POLICY IF EXISTS "Users can manage own transactions" ON public.transactions;
-CREATE POLICY "Users can manage own transactions"
-  ON public.transactions FOR ALL
+DROP POLICY IF EXISTS "transactions_select_own" ON public.transactions;
+DROP POLICY IF EXISTS "transactions_select_org_data_sources" ON public.transactions;
+DROP POLICY IF EXISTS "transactions_insert_own" ON public.transactions;
+DROP POLICY IF EXISTS "transactions_update_own" ON public.transactions;
+DROP POLICY IF EXISTS "transactions_update_org_data_sources" ON public.transactions;
+DROP POLICY IF EXISTS "transactions_delete_own" ON public.transactions;
+
+CREATE POLICY "transactions_select_own"
+  ON public.transactions FOR SELECT
   USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Users can manage own data sources" ON public.data_sources;
-CREATE POLICY "Users can manage own data sources"
-  ON public.data_sources FOR ALL
+CREATE POLICY "transactions_select_org_data_sources"
+  ON public.transactions FOR SELECT
+  USING (
+    data_source_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM public.data_sources ds
+      JOIN public.org_memberships m ON m.org_id = ds.org_id AND m.user_id = auth.uid()
+      JOIN public.orgs o ON o.id = ds.org_id
+      WHERE ds.id = transactions.data_source_id
+        AND (m.role = 'owner' OR o.accounts_page_visibility = 'org')
+    )
+  );
+
+CREATE POLICY "transactions_insert_own"
+  ON public.transactions FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "transactions_update_own"
+  ON public.transactions FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "transactions_update_org_data_sources"
+  ON public.transactions FOR UPDATE
+  USING (
+    data_source_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM public.data_sources ds
+      JOIN public.org_memberships m ON m.org_id = ds.org_id AND m.user_id = auth.uid()
+      JOIN public.orgs o ON o.id = ds.org_id
+      WHERE ds.id = transactions.data_source_id
+        AND (m.role = 'owner' OR o.accounts_page_visibility = 'org')
+    )
+  )
+  WITH CHECK (
+    data_source_id IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+      FROM public.data_sources ds
+      JOIN public.org_memberships m ON m.org_id = ds.org_id AND m.user_id = auth.uid()
+      JOIN public.orgs o ON o.id = ds.org_id
+      WHERE ds.id = transactions.data_source_id
+        AND (m.role = 'owner' OR o.accounts_page_visibility = 'org')
+    )
+  );
+
+CREATE POLICY "transactions_delete_own"
+  ON public.transactions FOR DELETE
   USING (auth.uid() = user_id);
+
+-- data_sources RLS: defined in org-scoped section at end of this file.
 
 -- -----------------------------------------------------------------------------
 -- 7. Tax Filing: overrides and disclaimer acknowledgments
@@ -516,8 +573,46 @@ CREATE UNIQUE INDEX idx_data_sources_org_user_fc_account
   WHERE financial_connections_account_id IS NOT NULL;
 
 DROP POLICY IF EXISTS "Users can manage own data sources" ON public.data_sources;
-CREATE POLICY "Users manage data sources in their orgs"
-  ON public.data_sources FOR ALL
+DROP POLICY IF EXISTS "Users manage data sources in their orgs" ON public.data_sources;
+DROP POLICY IF EXISTS "data_sources_select_org_rules" ON public.data_sources;
+DROP POLICY IF EXISTS "data_sources_insert_own" ON public.data_sources;
+DROP POLICY IF EXISTS "data_sources_update_own" ON public.data_sources;
+DROP POLICY IF EXISTS "data_sources_delete_own" ON public.data_sources;
+
+CREATE POLICY "data_sources_select_org_rules"
+  ON public.data_sources FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.org_memberships m
+      WHERE m.org_id = data_sources.org_id
+        AND m.user_id = auth.uid()
+    )
+    AND (
+      auth.uid() = user_id
+      OR EXISTS (
+        SELECT 1
+        FROM public.org_memberships me
+        JOIN public.orgs o ON o.id = data_sources.org_id
+        WHERE me.user_id = auth.uid()
+          AND me.org_id = data_sources.org_id
+          AND (me.role = 'owner' OR o.accounts_page_visibility = 'org')
+      )
+    )
+  );
+
+CREATE POLICY "data_sources_insert_own"
+  ON public.data_sources FOR INSERT
+  WITH CHECK (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM public.org_memberships m
+      WHERE m.org_id = data_sources.org_id
+        AND m.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "data_sources_update_own"
+  ON public.data_sources FOR UPDATE
   USING (
     auth.uid() = user_id
     AND EXISTS (
@@ -532,5 +627,83 @@ CREATE POLICY "Users manage data sources in their orgs"
       SELECT 1 FROM public.org_memberships m
       WHERE m.org_id = data_sources.org_id
         AND m.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "data_sources_delete_own"
+  ON public.data_sources FOR DELETE
+  USING (
+    auth.uid() = user_id
+    AND EXISTS (
+      SELECT 1 FROM public.org_memberships m
+      WHERE m.org_id = data_sources.org_id
+        AND m.user_id = auth.uid()
+    )
+  );
+
+-- -----------------------------------------------------------------------------
+-- Org roster: all members can read peer rows (Preferences People, /api/orgs/members)
+-- Apply: supabase/migrations/202604171200_org_members_roster_select.sql
+-- -----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Org members can view org roster" ON public.org_memberships;
+CREATE POLICY "Org members can view org roster"
+  ON public.org_memberships FOR SELECT
+  USING (
+    org_id IN (
+      SELECT m.org_id FROM public.org_memberships m
+      WHERE m.user_id = auth.uid()
+    )
+  );
+
+-- -----------------------------------------------------------------------------
+-- Fix page_activity_view_settings RLS (broken ref to dropped function)
+-- Apply: supabase/migrations/202604181200_fix_page_view_settings_rls.sql
+-- -----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "page_activity_view_settings_select" ON public.page_activity_view_settings;
+DROP POLICY IF EXISTS "page_activity_view_settings_insert" ON public.page_activity_view_settings;
+DROP POLICY IF EXISTS "page_activity_view_settings_update" ON public.page_activity_view_settings;
+
+CREATE POLICY "page_activity_view_settings_select"
+  ON public.page_activity_view_settings FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.pages p
+      JOIN public.org_memberships m ON m.org_id = p.org_id AND m.user_id = auth.uid()
+      WHERE p.id = page_activity_view_settings.page_id
+        AND p.deleted_at IS NULL
+    )
+  );
+
+CREATE POLICY "page_activity_view_settings_insert"
+  ON public.page_activity_view_settings FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM public.pages p
+      JOIN public.org_memberships m ON m.org_id = p.org_id AND m.user_id = auth.uid()
+      WHERE p.id = page_activity_view_settings.page_id
+        AND p.deleted_at IS NULL
+    )
+  );
+
+CREATE POLICY "page_activity_view_settings_update"
+  ON public.page_activity_view_settings FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.pages p
+      JOIN public.org_memberships m ON m.org_id = p.org_id AND m.user_id = auth.uid()
+      WHERE p.id = page_activity_view_settings.page_id
+        AND p.deleted_at IS NULL
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM public.pages p
+      JOIN public.org_memberships m ON m.org_id = p.org_id AND m.user_id = auth.uid()
+      WHERE p.id = page_activity_view_settings.page_id
+        AND p.deleted_at IS NULL
     )
   );

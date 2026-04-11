@@ -502,6 +502,15 @@ CREATE POLICY "Users can view own memberships"
   ON public.org_memberships FOR SELECT
   USING (user_id = auth.uid());
 
+CREATE POLICY "Org members can view org roster"
+  ON public.org_memberships FOR SELECT
+  USING (
+    org_id IN (
+      SELECT m.org_id FROM public.org_memberships m
+      WHERE m.user_id = auth.uid()
+    )
+  );
+
 CREATE POLICY "Org owners can manage memberships"
   ON public.org_memberships FOR ALL
   USING (EXISTS (
