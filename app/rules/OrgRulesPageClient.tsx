@@ -863,6 +863,7 @@ export function OrgRulesPageClient({
       body: JSON.stringify({ scope: "once_backfill", ruleId }),
     });
     const data = await res.json().catch(() => ({}));
+    console.log("[org-rules] backfill response:", JSON.stringify(data, null, 2));
     if (res.ok) {
       const parts = [`${data.matchCount ?? 0} matched`, `${data.updateCount ?? 0} updated`];
       if (data.aiCount) parts.push(`${data.aiCount} AI`);
@@ -873,7 +874,7 @@ export function OrgRulesPageClient({
         console.warn("[org-rules] backfill errors:", errs);
       }
       let msg = `Done: ${parts.join(", ")}`;
-      if (errs.length > 0 && data.updateCount === 0) {
+      if (errs.length > 0) {
         msg += ` — ${errs[0]}`;
       }
       setToast(msg);

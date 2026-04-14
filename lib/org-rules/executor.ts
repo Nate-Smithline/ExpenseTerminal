@@ -90,7 +90,7 @@ async function fetchTransactionsByIds(
   orgDataSourceIds: string[],
 ): Promise<TxRuleWork[]> {
   if (ids.length === 0 || orgDataSourceIds.length === 0) return [];
-  const chunk = 500;
+  const chunk = 100;
   const out: TxRuleWork[] = [];
   for (let i = 0; i < ids.length; i += chunk) {
     const slice = ids.slice(i, i + chunk);
@@ -119,7 +119,7 @@ export async function runOrgTransactionRulesEngine(opts: {
   transactions: TxRuleWork[];
   /** Per-user industry hint for AI */
   businessIndustryByUserId?: Map<string, string | null>;
-}): Promise<{ matchCount: number; updateCount: number; aiCount: number; errors: string[] }> {
+}): Promise<{ matchCount: number; updateCount: number; aiCount: number; errors: string[]; _debug?: Record<string, unknown> }> {
   const { supabase, orgId, rules, orgDataSourceIds, transactions } = opts;
   const errors: string[] = [];
   if (transactions.length === 0 || rules.length === 0) {
@@ -153,6 +153,20 @@ export async function runOrgTransactionRulesEngine(opts: {
     orgTypes.set(def.id, def.type);
   }
 
+  console.log(`[org-rules] Engine start: ${transactions.length} txs, ${parsedRules.length} rules, ${propertyDefs.size} property defs`);
+  for (const pr of parsedRules) {
+    const dActions = ruleDeterministicActions(pr.actions);
+    console.log(`[org-rules]   Rule ${pr.row.id} "${pr.row.name}": ${pr.conditions.conditions.length} conditions, ${pr.actions.length} actions (${dActions.length} deterministic)`);
+    for (const a of dActions) {
+      if (a.type === "set_custom_property") {
+        const def = propertyDefs.get(a.propertyDefinitionId);
+        console.log(`[org-rules]     → set_custom_property propDef=${a.propertyDefinitionId} value=${JSON.stringify(a.value)} defFound=${!!def} defType=${def?.type ?? "N/A"}`);
+      } else if (a.type === "set_standard_field") {
+        console.log(`[org-rules]     → set_standard_field field=${a.field} value=${JSON.stringify(a.value)}`);
+      }
+    }
+  }
+
   const aiNeeded = new Set<string>();
   let matchCount = 0;
 
@@ -165,6 +179,8 @@ export async function runOrgTransactionRulesEngine(opts: {
       }
     }
   }
+
+  console.log(`[org-rules] First pass: ${matchCount} matches, ${aiNeeded.size} need AI`);
 
   let aiCount = 0;
   if (aiNeeded.size > 0) {
@@ -201,27 +217,38 @@ export async function runOrgTransactionRulesEngine(opts: {
     }
   }
 
-  const txIds = [...new Set(transactions.map((t) => t.id))];
-  const reloaded = await fetchTransactionsByIds(supabase, txIds, orgDataSourceIds);
-  const byId = new Map(reloaded.map((t) => [t.id, t]));
-
-  if (reloaded.length < txIds.length) {
-    console.warn(`[org-rules] Reload returned ${reloaded.length}/${txIds.length} transactions`);
-  }
+  // Use the original batch directly — avoids a large `.in("id", …)` reload that
+  // can exceed PostgREST URL-length limits when the batch is >~300 rows.
+  // AI-categorised transactions already had their changes written by the AI step above;
+  // the deterministic pass only needs the original field values (vendor, amount, etc.).
+  const byId = new Map(transactions.map((t) => [t.id, t]));
+  const txIds = Array.from(byId.keys());
 
   let updateCount = 0;
+  let secondPassMatchCount = 0;
+  let skippedNotInReload = 0;
 
   for (const txId of txIds) {
     const tx = byId.get(txId);
-    if (!tx) continue;
+    if (!tx) {
+      skippedNotInReload++;
+      continue;
+    }
 
     const update: Record<string, unknown> = {};
     let customFields: Record<string, unknown> | null = null;
 
+    let secondPassMatched = false;
     for (const pr of parsedRules) {
       if (!evaluateOrgRuleConditions(tx, pr.conditions, orgTypes)) continue;
+      secondPassMatched = true;
       const dActions = ruleDeterministicActions(pr.actions);
+      if (dActions.length === 0) {
+        console.warn(`[org-rules] Rule "${pr.row.name}" matched tx ${tx.id} but has 0 deterministic actions (all actions: ${JSON.stringify(pr.actions.map((a) => a.type))})`);
+      }
       for (const action of dActions) {
+        console.log(`[org-rules] Processing action type="${action.type}" for tx ${tx.id.slice(0, 8)}…`);
+
         if (action.type === "set_standard_field") {
           const r = coerceOrgRuleStandardFieldPatch(action.field as OrgRuleStandardWritableField, action.value);
           if (!r.ok) {
@@ -271,7 +298,13 @@ export async function runOrgTransactionRulesEngine(opts: {
       update.custom_fields = customFields;
     }
 
-    if (Object.keys(update).length > 0) {
+    if (secondPassMatched) {
+      secondPassMatchCount++;
+    }
+
+    const updateKeys = Object.keys(update);
+    if (updateKeys.length > 0) {
+      console.log(`[org-rules] Updating tx ${tx.id}: keys=${JSON.stringify(updateKeys)} custom_fields=${customFields != null ? JSON.stringify(customFields) : "null"}`);
       update.updated_at = new Date().toISOString();
       const { data: updatedRows, error: updateErr } = await supabase
         .from("transactions")
@@ -280,16 +313,63 @@ export async function runOrgTransactionRulesEngine(opts: {
         .eq("user_id", tx.user_id)
         .select("id,custom_fields");
       if (updateErr) {
+        console.error(`[org-rules] Update FAILED tx ${tx.id}: ${updateErr.message}`);
         errors.push(`Update ${tx.id}: ${updateErr.message}`);
       } else if (!updatedRows || updatedRows.length === 0) {
+        console.error(`[org-rules] Update 0 ROWS tx ${tx.id} user_id=${tx.user_id}`);
         errors.push(`Update ${tx.id}: 0 rows affected (id/user_id mismatch?)`);
       } else {
+        console.log(`[org-rules] Update OK tx ${tx.id}: custom_fields=${JSON.stringify(updatedRows[0]?.custom_fields)}`);
         updateCount++;
       }
+    } else {
+      console.log(`[org-rules] Tx ${tx.id} matched but no update keys (conditions matched but all actions produced no changes)`);
     }
   }
 
-  return { matchCount, updateCount, aiCount, errors };
+  const totalDeterministicActions = parsedRules.reduce(
+    (sum, pr) => sum + ruleDeterministicActions(pr.actions).length,
+    0,
+  );
+  if (matchCount > 0 && updateCount === 0 && errors.length === 0) {
+    if (totalDeterministicActions === 0) {
+      errors.push("Rule has no field/property actions — only AI categorize. Add a 'Set property' or 'Set field' action.");
+    } else {
+      errors.push(
+        `1st-pass: ${matchCount} matched | 2nd-pass: ${secondPassMatchCount} matched, ${skippedNotInReload} missing | actions: ${totalDeterministicActions} deterministic, types: ${JSON.stringify(parsedRules.flatMap((pr) => pr.actions.map((a) => a.type)))}`,
+      );
+    }
+  }
+
+  console.log(`[org-rules] Engine done: 1st=${matchCount} 2nd=${secondPassMatchCount} updated=${updateCount} errors=${errors.length} deterministicActions=${totalDeterministicActions}`);
+
+  const _debug = {
+    transactionCount: transactions.length,
+    parsedRuleCount: parsedRules.length,
+    propertyDefCount: propertyDefs.size,
+    propertyDefs: [...propertyDefs.entries()].map(([id, d]) => ({
+      id,
+      type: d.type,
+      configKeys: d.config && typeof d.config === "object" ? Object.keys(d.config as Record<string, unknown>) : [],
+    })),
+    rules: parsedRules.map((pr) => ({
+      id: pr.row.id,
+      name: pr.row.name,
+      conditions: pr.conditions,
+      actions: pr.actions,
+    })),
+    sampleTx: transactions.length > 0
+      ? {
+          id: transactions[0].id,
+          vendor: transactions[0].vendor,
+          description: transactions[0].description,
+          custom_fields: transactions[0].custom_fields,
+          data_source_id: transactions[0].data_source_id,
+        }
+      : null,
+  };
+
+  return { matchCount, updateCount, aiCount, errors, _debug };
 }
 
 async function loadEnabledRulesForOrg(
@@ -434,7 +514,7 @@ export async function runOrgRulesOnceBackfill(
   supabase: any,
   orgId: string,
   ruleId: string,
-): Promise<{ matchCount: number; updateCount: number; aiCount: number; errors: string[]; scanned: number }> {
+): Promise<{ matchCount: number; updateCount: number; aiCount: number; errors: string[]; scanned: number; _debug?: Record<string, unknown> | null }> {
   const { data: ruleRow, error: ruleErr } = await supabase
     .from("org_transaction_rules")
     .select("id,org_id,name,enabled,position,conditions_json,actions_json,trigger_mode,once_completed_at,created_at")
@@ -477,6 +557,11 @@ export async function runOrgRulesOnceBackfill(
   let totalAi = 0;
   const allErrors: string[] = [];
   let scanned = 0;
+  let firstDebug: Record<string, unknown> | null = null;
+
+  console.log(`[org-rules] Backfill rule=${ruleId} org=${orgId} dataSources=${orgDataSourceIds.length}`);
+  console.log(`[org-rules] Rule raw actions_json: ${JSON.stringify(row.actions_json)}`);
+  console.log(`[org-rules] Rule raw conditions_json: ${JSON.stringify(row.conditions_json)}`);
 
   for (;;) {
     const { data, error } = await supabase
@@ -505,6 +590,9 @@ export async function runOrgRulesOnceBackfill(
     totalUpdate += res.updateCount;
     totalAi += res.aiCount;
     allErrors.push(...res.errors);
+    if (!firstDebug && (res as any)._debug) {
+      firstDebug = (res as any)._debug;
+    }
 
     if (batch.length < ONCE_BACKFILL_PAGE) break;
     offset += ONCE_BACKFILL_PAGE;
@@ -516,6 +604,7 @@ export async function runOrgRulesOnceBackfill(
     aiCount: totalAi,
     errors: allErrors,
     scanned,
+    _debug: firstDebug,
   };
 }
 
