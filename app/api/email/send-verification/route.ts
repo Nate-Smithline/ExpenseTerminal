@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { createVerificationToken } from "@/lib/verification-tokens";
+import { createEmailOtp } from "@/lib/verification-tokens";
 import { getResendClient, getFromAddress, RESEND_TIMEOUT_MS } from "@/lib/email/resend";
 import {
   verificationEmailHtml,
@@ -112,7 +112,7 @@ export async function POST(req: Request) {
       // Non-fatal; email verification can still proceed.
     }
 
-    const { token, tokenHash, expiresAt } = createVerificationToken();
+    const { token, tokenHash, expiresAt } = createEmailOtp();
 
     await (supabase as any)
       .from("email_verifications")

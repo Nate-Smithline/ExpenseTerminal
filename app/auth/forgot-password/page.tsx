@@ -137,9 +137,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthLayout>
-      <h1 className="text-center text-lg md:text-2xl font-display text-mono-dark mb-6">
-        Reset your password
-      </h1>
+      <h1 className="text-center text-xl md:text-[22px] mb-6">Reset your password</h1>
 
       {!emailSent ? (
         <form onSubmit={handleSendCode} className="space-y-3.5 w-full min-w-0">
@@ -152,28 +150,20 @@ export default function ForgotPasswordPage() {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="auth-input h-12"
+            className="auth-input"
           />
 
-          {error && (
-            <p className="text-sm p-3 bg-[#FEE2E2] text-[#DC2626]">
-              {error}
-            </p>
-          )}
+          {error && <p className="auth-banner-error">{error}</p>}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-2 bg-black text-white text-sm font-medium h-12 px-4 rounded-none transition-opacity duration-150 hover:opacity-70 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
+          <button type="submit" disabled={loading} className="auth-btn-primary mt-2">
             {loading ? "Sending..." : "Send Reset Code"}
           </button>
         </form>
       ) : (
         <>
-          <div className="mb-4 bg-[#F5F0E8] p-4 space-y-1">
-            <p className="text-sm text-black">
-              If an account exists for <span className="font-medium">{email}</span>, we&apos;ve sent a reset code.
+          <div className="auth-banner-info mb-4 space-y-1">
+            <p className="text-sm text-brand-black">
+              If an account exists for <span className="font-semibold">{email}</span>, we&apos;ve sent a reset code.
             </p>
           </div>
 
@@ -184,7 +174,7 @@ export default function ForgotPasswordPage() {
               placeholder="Reset code from your email"
               value={resetCode}
               onChange={(e) => setResetCode(e.target.value)}
-              className="auth-input h-12"
+              className="auth-input"
             />
             <input
               type="password"
@@ -195,7 +185,7 @@ export default function ForgotPasswordPage() {
               placeholder="New password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="auth-input h-12"
+              className="auth-input"
             />
             <input
               type="password"
@@ -206,20 +196,12 @@ export default function ForgotPasswordPage() {
               placeholder="Confirm new password"
               value={confirmNewPassword}
               onChange={(e) => setConfirmNewPassword(e.target.value)}
-              className="auth-input h-12"
+              className="auth-input"
             />
 
-            {error && (
-              <p className="text-sm p-3 bg-[#FEE2E2] text-[#DC2626]">
-                {error}
-              </p>
-            )}
+            {error && <p className="auth-banner-error">{error}</p>}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-2 bg-black text-white text-sm font-medium h-12 px-4 rounded-none transition-opacity duration-150 hover:opacity-70 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
+            <button type="submit" disabled={loading} className="auth-btn-primary mt-2">
               {loading ? "Updating..." : "Reset password"}
             </button>
           </form>
@@ -228,15 +210,15 @@ export default function ForgotPasswordPage() {
             type="button"
             onClick={handleResendCode}
             disabled={loading}
-            className="mt-4 w-full text-sm text-mono-medium underline underline-offset-4 hover:text-accent-navy transition-colors"
+            className="auth-text-link mt-4 w-full text-center underline underline-offset-4"
           >
             Resend reset code
           </button>
         </>
       )}
 
-      <p className="mt-6 text-sm text-mono-medium text-center">
-        <Link href="/login" className="inline-flex items-center gap-2 text-accent-navy font-medium">
+      <p className="mt-6 text-sm text-brand-dark-gray text-center">
+        <Link href="/login" className="auth-text-link inline-flex items-center gap-2 justify-center">
           <span className="kbd-hint hidden md:inline-flex">Esc</span>
           <span>Back to sign in</span>
         </Link>

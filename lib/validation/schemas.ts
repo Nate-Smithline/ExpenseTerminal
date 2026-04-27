@@ -15,7 +15,8 @@ export const offsetSchema = z.coerce
   .number()
   .int()
   .min(0, "Offset must be non-negative")
-  .max(10000, "Offset must be at most 10000")
+  // Bulk inbox / activity paging can exceed 10k rows; cap at a sane upper bound.
+  .max(1_000_000, "Offset is too large")
   .default(0);
 
 export const taxYearSchema = z.coerce
@@ -135,6 +136,51 @@ export const deductionDeleteSchema = z.object({
   type: z.string().min(1, "Type is required").max(200),
   tax_year: taxYearSchema,
 });
+
+/** POST /api/deductions/compute — server derives amounts from inputs (plans.md engine). */
+export const deductionComputeSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("home_office"),
+    tax_year: taxYearSchema,
+    workspace_sq_ft: z.number().positive(),
+    total_home_sq_ft: z.number().positive(),
+    monthly_rent: z.number().nonnegative(),
+    monthly_utilities: z.number().nonnegative().optional(),
+  }),
+  z.object({
+    type: z.literal("mileage"),
+    tax_year: taxYearSchema,
+    miles: z.number().nonnegative(),
+  }),
+  z.object({
+    type: z.literal("phone"),
+    tax_year: taxYearSchema,
+    monthly_bill_amount: z.number().nonnegative(),
+    business_use_percent: z.number().min(0).max(100),
+  }),
+  z.object({
+    type: z.literal("internet"),
+    tax_year: taxYearSchema,
+    monthly_bill_amount: z.number().nonnegative(),
+    business_use_percent: z.number().min(0).max(100),
+  }),
+  z.object({
+    type: z.literal("health_insurance"),
+    tax_year: taxYearSchema,
+    annual_amount: z.number().nonnegative(),
+  }),
+  z.object({
+    type: z.literal("retirement"),
+    tax_year: taxYearSchema,
+    annual_amount: z.number().nonnegative(),
+  }),
+  z.object({
+    type: z.literal("other"),
+    tax_year: taxYearSchema,
+    annual_amount: z.number().nonnegative(),
+    label: z.string().max(200).optional(),
+  }),
+]);
 
 /** Allowed sort columns for activity table */
 export const ACTIVITY_SORT_COLUMNS = [

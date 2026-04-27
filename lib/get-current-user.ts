@@ -1,6 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
+ * Returns the current user's id from the session if present,
+ * regardless of email confirmation (for signup onboarding resume).
+ */
+export async function getSessionUserId(
+  supabase: SupabaseClient
+): Promise<string | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
+
+/**
  * Returns the current user's id from the session,
  * but only when their email has been confirmed.
  */

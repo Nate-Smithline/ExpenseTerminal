@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { ACTIVITY_SORT_COLUMNS } from "@/lib/validation/schemas";
 import { safeErrorMessage } from "@/lib/api/safe-error";
+import { requireWorkspaceIdForApi } from "@/lib/workspaces/server";
 
 /**
  * GET: Export activity transactions as CSV or PDF.
@@ -22,6 +23,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdForApi(supabase as any, userId, req);
+  if ("error" in wsRes) {
+    return NextResponse.json({ error: wsRes.error }, { status: wsRes.status });
+  }
+  const workspaceId = wsRes.workspaceId;
 
   const { searchParams } = new URL(req.url);
   const format = searchParams.get("format");
@@ -43,7 +49,7 @@ export async function GET(req: Request) {
   let query = (supabase as any)
     .from("transactions")
     .select(cols)
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .order(sortBy, { ascending: sortAsc })
     .limit(5000);
 

@@ -2,6 +2,10 @@
 -- Ensure database is up to date for Expense Terminal (sync, data sources, transactions)
 -- Run this in Supabase SQL Editor or via psql. Safe to run multiple times (idempotent).
 --
+-- If PostgREST reports: Could not find the 'workspace_id' column of 'data_sources'
+-- in the schema cache — run section 8 below, then in Supabase Dashboard reload the
+-- API schema (Settings → API → Reload schema) if the error persists.
+--
 -- Critical for sync: section 3 adds the UNIQUE constraint on (data_source_id,
 -- data_feed_external_id) so Supabase upsert() can resolve conflicts. Without it,
 -- sync completes but 0 transactions are inserted.
@@ -157,3 +161,191 @@ CREATE POLICY "Users can manage own disclaimer acks"
   USING (auth.uid() = user_id);
 CREATE INDEX IF NOT EXISTS idx_disclaimer_acks_user
   ON public.disclaimer_acknowledgments(user_id, tax_year);
+
+-- -----------------------------------------------------------------------------
+-- 8. Workspaces: tables, workspace_id columns, backfill (app + PostgREST require this)
+--     Idempotent subset of supabase/migrations/20260420065156_workspaces_mvp.sql
+--     RLS is NOT changed here: section 6 user_id policies remain until you apply
+--     the full workspaces migration for membership-based policies.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.workspaces (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  business_type TEXT,
+  tax_filing_status TEXT,
+  fiscal_year_start INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.workspace_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member',
+  joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (workspace_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON public.workspace_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_members_workspace ON public.workspace_members(workspace_id);
+
+ALTER TABLE public.data_sources
+  ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id);
+
+ALTER TABLE public.transactions
+  ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id);
+
+ALTER TABLE public.deductions
+  ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id);
+
+ALTER TABLE public.vendor_patterns
+  ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id);
+
+CREATE INDEX IF NOT EXISTS idx_data_sources_workspace ON public.data_sources(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_workspace_date ON public.transactions(workspace_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_deductions_workspace_year ON public.deductions(workspace_id, tax_year);
+CREATE INDEX IF NOT EXISTS idx_vendor_patterns_workspace ON public.vendor_patterns(workspace_id);
+
+-- Default workspace per user who already has data, then attach rows.
+WITH users_with_data AS (
+  SELECT DISTINCT user_id FROM public.transactions
+  UNION
+  SELECT DISTINCT user_id FROM public.data_sources
+  UNION
+  SELECT DISTINCT user_id FROM public.deductions
+  UNION
+  SELECT DISTINCT user_id FROM public.vendor_patterns
+), user_names AS (
+  SELECT p.id AS user_id,
+         NULLIF(TRIM(COALESCE(p.display_name, CONCAT_WS(' ', p.first_name, p.last_name))), '') AS display_name,
+         NULLIF(TRIM(COALESCE(p.email, '')), '') AS email
+  FROM public.profiles p
+), to_create AS (
+  SELECT
+    u.user_id,
+    gen_random_uuid() AS workspace_id,
+    COALESCE(un.display_name, un.email, 'My workspace') AS workspace_name
+  FROM users_with_data u
+  LEFT JOIN user_names un ON un.user_id = u.user_id
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.workspace_members wm
+    WHERE wm.user_id = u.user_id
+  )
+), created AS (
+  INSERT INTO public.workspaces (id, name)
+  SELECT workspace_id, workspace_name FROM to_create
+  RETURNING id
+)
+INSERT INTO public.workspace_members (workspace_id, user_id, role)
+SELECT tc.workspace_id, tc.user_id, 'owner'
+FROM to_create tc
+JOIN created c ON c.id = tc.workspace_id;
+
+UPDATE public.transactions t
+SET workspace_id = wm.workspace_id
+FROM public.workspace_members wm
+WHERE t.workspace_id IS NULL
+  AND wm.user_id = t.user_id;
+
+UPDATE public.data_sources s
+SET workspace_id = wm.workspace_id
+FROM public.workspace_members wm
+WHERE s.workspace_id IS NULL
+  AND wm.user_id = s.user_id;
+
+UPDATE public.deductions d
+SET workspace_id = wm.workspace_id
+FROM public.workspace_members wm
+WHERE d.workspace_id IS NULL
+  AND wm.user_id = d.user_id;
+
+UPDATE public.vendor_patterns v
+SET workspace_id = wm.workspace_id
+FROM public.workspace_members wm
+WHERE v.workspace_id IS NULL
+  AND wm.user_id = v.user_id;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.transactions WHERE workspace_id IS NULL) THEN
+    RAISE NOTICE 'transactions.workspace_id still NULL for some rows; leaving nullable';
+  ELSE
+    ALTER TABLE public.transactions ALTER COLUMN workspace_id SET NOT NULL;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.data_sources WHERE workspace_id IS NULL) THEN
+    RAISE NOTICE 'data_sources.workspace_id still NULL for some rows; leaving nullable';
+  ELSE
+    ALTER TABLE public.data_sources ALTER COLUMN workspace_id SET NOT NULL;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.deductions WHERE workspace_id IS NULL) THEN
+    RAISE NOTICE 'deductions.workspace_id still NULL for some rows; leaving nullable';
+  ELSE
+    ALTER TABLE public.deductions ALTER COLUMN workspace_id SET NOT NULL;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.vendor_patterns WHERE workspace_id IS NULL) THEN
+    RAISE NOTICE 'vendor_patterns.workspace_id still NULL for some rows; leaving nullable';
+  ELSE
+    ALTER TABLE public.vendor_patterns ALTER COLUMN workspace_id SET NOT NULL;
+  END IF;
+END $$;
+
+-- -----------------------------------------------------------------------------
+-- 9. data_sources.org_id — not used by this app; drop policies first, then column
+--     (same as supabase/migrations/20260422120000_data_sources_drop_org_id.sql)
+-- -----------------------------------------------------------------------------
+DROP POLICY IF EXISTS data_sources_select_org_rules ON public.data_sources;
+DROP POLICY IF EXISTS data_sources_insert_own ON public.data_sources;
+DROP POLICY IF EXISTS data_sources_update_own ON public.data_sources;
+DROP POLICY IF EXISTS data_sources_delete_own ON public.data_sources;
+DROP POLICY IF EXISTS transactions_select_org_data_sources ON public.transactions;
+
+ALTER TABLE public.data_sources DROP COLUMN IF EXISTS org_id;
+
+DROP POLICY IF EXISTS "Data sources: members can manage" ON public.data_sources;
+CREATE POLICY "Data sources: members can manage"
+  ON public.data_sources FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = data_sources.workspace_id
+        AND wm.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = data_sources.workspace_id
+        AND wm.user_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "Transactions: members can manage" ON public.transactions;
+CREATE POLICY "Transactions: members can manage"
+  ON public.transactions FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = transactions.workspace_id
+        AND wm.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = transactions.workspace_id
+        AND wm.user_id = auth.uid()
+    )
+  );
+
+-- -----------------------------------------------------------------------------
+-- 10. transactions columns required by /api/transactions GET select list
+--     (avoids PostgREST "column does not exist" / schema errors)
+-- -----------------------------------------------------------------------------
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS display_name TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS deduction_likelihood TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS enrichment_status TEXT NOT NULL DEFAULT 'pending';

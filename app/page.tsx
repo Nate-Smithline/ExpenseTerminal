@@ -6,9 +6,9 @@ import { LandingPage } from "./LandingPage";
 import { FaqJsonLd } from "@/components/SeoJsonLd";
 
 export const metadata: Metadata = {
-  title: "ExpenseTerminal — AI-powered expense tracking for self‑employed tax deductions",
+  title: "ExpenseTerminal — Tax deductions and quarterly estimates for self‑employed workers",
   description:
-    "Inbox-first expense tracking and tax deduction software that helps self-employed professionals and small businesses categorize transactions, track write-offs, and export audit-ready reports.",
+    "Connect your bank, review write-offs in plain English, and see estimated quarterly payments — built for freelancers, creators, and side hustles.",
   alternates: {
     canonical: "https://expenseterminal.com/",
   },
@@ -29,7 +29,7 @@ export default async function Home() {
           {
             question: "What is ExpenseTerminal?",
             answer:
-              "ExpenseTerminal is an AI-powered expense tracking and tax deduction platform for self-employed professionals and small businesses. It helps you categorize transactions, organize receipts, and prepare audit-ready reports so you can keep more of what you earn at tax time.",
+              "ExpenseTerminal helps self-employed workers connect bank accounts, review AI-suggested business categories, track write-offs, and see estimated quarterly tax amounts — with exports you can share with a tax preparer.",
           },
           {
             question: "Who is ExpenseTerminal for?",
@@ -39,7 +39,7 @@ export default async function Home() {
           {
             question: "How does ExpenseTerminal help with tax deductions?",
             answer:
-              "ExpenseTerminal connects to your financial data or CSV uploads, uses AI to map transactions to IRS-friendly categories, and tracks key deduction areas like mileage, home office, and health insurance. It then generates audit-friendly reports that mirror what tax preparers expect.",
+              "It syncs transactions, suggests categories in plain language, and supports calculated deductions like mileage and home office. You get totals by category and estimated quarterly payment hints based on your data and settings (not personalized tax advice).",
           },
         ]}
       />

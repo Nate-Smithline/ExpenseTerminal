@@ -9,62 +9,58 @@ import { PricingPlansGrid } from "@/components/PricingPlansGrid";
 const STEPS = [
   {
     number: "I",
-    title: "Sign Up",
-    description: "Create your account to start tracking deductions in minutes.",
+    title: "Sign up",
+    description: "Create your account and choose your tax year in under a minute.",
   },
   {
     number: "II",
-    title: "Connect Your Data",
-    description: "Link your bank or upload CSVs — we keep everything organized and secure.",
+    title: "Connect your bank",
+    description: "Link accounts securely — we pull transactions so you are not typing every charge by hand.",
   },
   {
     number: "III",
-    title: "AI Categorization",
-    description: "AI maps each transaction to the right category automatically.",
+    title: "Review in the Inbox",
+    description: "Confirm or adjust AI suggestions in plain English — no spreadsheet slog.",
   },
   {
     number: "IV",
-    title: "Burn Through Transactions",
-    description: "Skim audit readiness and deduction savings so reviews take minutes, not hours.",
-  },
-  {
-    number: "V",
-    title: "File with Confidence",
-    description: "Export tax-ready reports and file knowing you captured more deductions.",
+    title: "See savings & exports",
+    description: "Track write-offs, estimated payments, and export summaries you can share with a preparer.",
   },
 ];
 
-const FEATURES = [
+const PILLARS = [
   {
     icon: "account_balance",
-    title: "Bank Syncing",
-    description: "Connect your accounts to pull transactions in automatically and keep everything in one place.",
+    title: "Bank sync & review",
+    description:
+      "Connect accounts and work through an Inbox-first flow so business vs. personal calls stay fast and clear.",
   },
   {
-    icon: "auto_awesome",
-    title: "AI-Powered Categorization",
-    description: "AI analyzes each transaction and suggests the right Schedule C line item.",
+    icon: "home_work",
+    title: "Calculated deductions",
+    description:
+      "Home office, mileage, health insurance, and more — structured inputs with transparent math, not guesswork.",
   },
   {
-    icon: "inbox",
-    title: "Inbox-First Workflow",
-    description: "Review transactions one at a time with keyboard shortcuts for rapid categorization.",
-  },
-  {
-    icon: "receipt_long",
-    title: "Tax Savings Ready",
-    description: "Stay organized for tax time with reports that mirror what your accountant expects.",
-  },
-  {
-    icon: "savings",
-    title: "Deduction Calculators",
-    description: "Built-in tools for QBI, mileage, home office, health insurance, retirement, and more.",
+    icon: "description",
+    title: "Tax-year clarity",
+    description:
+      "See totals by category, estimated quarterly payments, and exports that speak your accountant’s language.",
   },
   {
     icon: "lock",
-    title: "Private & Secure",
-    description: "Your financial data is encrypted in transit and at rest, and we never sell or share your information.",
+    title: "Private by design",
+    description:
+      "Encryption in transit and at rest. We do not sell your financial data.",
   },
+];
+
+const PERSONAS = [
+  { label: "Freelancers", href: "/signup" },
+  { label: "Gig & app work", href: "/signup" },
+  { label: "Creators", href: "/signup" },
+  { label: "E‑commerce", href: "/signup" },
 ];
 
 function MadeInAmericaSection() {
@@ -170,7 +166,7 @@ function MadeInAmericaSection() {
                 ExpenseTerminal is proudly based out of <strong>New Jersey</strong>, founded by small business owners who understand the challenges of running a business.
               </p>
               <p>
-                We're focused on supporting <strong>American businesses</strong> and helping them maximize their deductions while staying compliant with IRS regulations.
+                We&apos;re focused on supporting <strong>American businesses</strong> and helping them maximize their deductions while staying compliant with IRS regulations.
               </p>
               <p>
                 Our platform is built with the needs of American entrepreneurs in mind, providing tools that make tax preparation simpler and more accessible for small businesses across the country.
@@ -199,45 +195,58 @@ export function LandingPage() {
       >
         <div className="absolute inset-0 bg-black/45" />
         <div className="relative px-4 md:px-16 py-24 md:py-40 max-w-5xl mx-auto text-center">
-          <h1 className="font-display text-4xl md:text-6xl text-white leading-tight tracking-tight mb-6">
-            AI-powered expense tracking for self‑employed tax deductions
-          </h1>
-          <p className="text-lg md:text-xl text-white/70 max-w-2xl mx-auto mb-10 leading-relaxed">
-            ExpenseTerminal helps self-employed professionals and small businesses categorize transactions, track
-            write-offs, and prepare audit-ready reports so you keep more of what you earn at tax time.
+          <p className="text-xs uppercase tracking-[0.2em] text-white/75 mb-4">
+            Built for independent workers
           </p>
+          <h1 className="font-display text-4xl md:text-6xl text-white leading-tight tracking-tight mb-6">
+            Find the write-offs you are missing — without the busywork
+          </h1>
+          <p className="text-lg md:text-xl text-white/80 max-w-2xl mx-auto mb-6 leading-relaxed">
+            Connect your bank, review smart suggestions in plain English, and see deductions and estimated payments in
+            one calm workspace.
+          </p>
+          <p className="text-sm text-white/60 mb-10">Secure Plaid connections · Encrypted data · You stay in control</p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <Link
-              href="/request-demo"
-              className="inline-flex items-center justify-center bg-[#2563EB] px-8 py-3.5 text-sm font-medium text-white rounded-none transition-all hover:bg-[#1D4ED8] hover:shadow-lg hover:scale-[1.02]"
+              href="/signup"
+              className="inline-flex items-center justify-center bg-[#2563EB] px-8 py-3.5 text-sm font-medium text-white rounded-2xl transition-all hover:bg-[#1D4ED8] hover:shadow-lg hover:scale-[1.02]"
             >
-              Request Demo
+              Start free
+            </Link>
+            <Link
+              href="/lets-talk"
+              className="inline-flex items-center justify-center border border-white/50 bg-white/10 backdrop-blur-md px-8 py-3.5 text-sm font-medium text-white rounded-2xl transition-all hover:bg-white/20"
+            >
+              Let’s Talk
             </Link>
             <Link
               href="/login"
-              className="inline-flex items-center justify-center border border-white/40 bg-white/5 backdrop-blur-md px-8 py-3.5 text-sm font-medium text-white rounded-none transition-all hover:bg-white/15"
+              className="inline-flex items-center justify-center text-sm font-medium text-white/90 underline-offset-4 hover:underline"
             >
-              Login
+              Log in
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Features grid */}
+      {/* Pillars — Maven-style sections, Apple-like spacing */}
       <section className="px-8 md:px-16 py-24 md:py-32" style={{ background: "#E8EEF5" }}>
         <div className="max-w-5xl mx-auto">
           <div className="mb-14 text-center md:text-left">
             <h2 className="font-display text-3xl md:text-4xl text-[#0D1F35] mb-3">
-              The right features to make<br />your deductions simple
+              Everything for side-hustle taxes, in one place
             </h2>
-            <p className="text-mono-medium text-base md:text-lg max-w-xl mx-auto md:mx-0">
-              The essential tools for capturing deductions, organizing records, and staying ready when it&rsquo;s time to file.
+            <p className="text-mono-medium text-base md:text-lg max-w-2xl mx-auto md:mx-0 leading-relaxed">
+              Sync transactions, layer in calculated deductions, and walk into tax season with numbers you can explain.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {FEATURES.map((feature) => (
-              <div key={feature.title} className="border-t border-[#E8EEF5] pt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            {PILLARS.map((feature) => (
+              <div
+                key={feature.title}
+                className="rounded-2xl bg-white/90 p-6 shadow-sm border border-white/80"
+              >
                 <div className="flex items-center gap-3 mb-3">
                   <span className="material-symbols-rounded text-[24px] text-[#5B82B4]">
                     {feature.icon}
@@ -248,37 +257,70 @@ export function LandingPage() {
               </div>
             ))}
           </div>
+
+          <div className="mt-14 flex flex-wrap justify-center md:justify-start gap-3">
+            {PERSONAS.map((p) => (
+              <Link
+                key={p.label}
+                href={p.href}
+                className="inline-flex items-center rounded-full border border-[#0D1F35]/15 bg-white px-4 py-2 text-sm font-medium text-mono-dark hover:border-sovereign-blue/40 hover:shadow-sm transition-all"
+              >
+                {p.label}
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* About / Overview for answer engines */}
+      {/* Value proposition — plain language, reassurance */}
       <section className="px-8 md:px-16 py-24 md:py-32" style={{ background: "#FFFFFF" }}>
         <div className="max-w-2xl mx-auto text-center">
           <h2 className="font-display text-3xl md:text-4xl text-mono-dark mb-6">
-            Enabling Organizations with<br />Intelligence &amp; Advice
+            Taxes for self-employed work,<br />without the spreadsheet spiral
           </h2>
           <p className="text-mono-medium text-base md:text-lg leading-relaxed mb-10">
-            Most self-employed professionals, freelancers, and small business owners overpay on taxes and lose track
-            of expenses — because the process is confusing, tedious, and time-consuming.
-            <br />
-            <br />
-            ExpenseTerminal uses AI-powered categorization, smart labeling, and deduction tracking to help you maximize
-            write-offs, stay on top of your finances, and finally feel in control of your money.
+            When you are juggling clients, platforms, and cards, it is easy to miss write-offs. ExpenseTerminal pulls
+            transactions in, suggests categories in plain English, and keeps estimated payments in view so you are not
+            guessing at tax time.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
             <Link
               href="/signup"
-              className="inline-flex items-center justify-center bg-[#2563EB] px-6 py-3 text-sm font-medium text-white rounded-none transition-all hover:bg-[#1D4ED8] hover:shadow-md"
+              className="inline-flex items-center justify-center bg-[#2563EB] px-6 py-3 text-sm font-medium text-white rounded-2xl transition-all hover:bg-[#1D4ED8] hover:shadow-md"
             >
-              Start Tracking for Free
+              Start free
             </Link>
             <Link
               href="/pricing"
-              className="inline-flex items-center justify-center border border-[#0D1F35]/20 bg-white text-sm font-medium text-mono-dark px-6 py-3 rounded-none hover:bg-white/80 transition-all"
+              className="inline-flex items-center justify-center border border-[#0D1F35]/20 bg-white text-sm font-medium text-mono-dark px-6 py-3 rounded-2xl hover:bg-[#fafafa] transition-all"
             >
               View pricing
             </Link>
           </div>
+        </div>
+      </section>
+
+      {/* Plans — integrates PricingPlansGrid (was previously imported but unused) */}
+      <section className="px-8 md:px-16 py-20 md:py-24 bg-[#F5F0E8]/50">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center md:text-left mb-10">
+            <h2 className="font-display text-2xl md:text-3xl text-mono-dark mb-2">Simple pricing</h2>
+            <p className="text-sm text-mono-medium max-w-xl">
+              Start on the trial, upgrade when you need more. No surprise jargon on the invoice.
+            </p>
+          </div>
+          <PricingPlansGrid />
+          <p className="text-center md:text-left mt-8 text-xs text-mono-light">
+            Questions?{" "}
+            <Link href="/request-demo" className="text-sovereign-blue font-medium hover:underline">
+              Talk to us
+            </Link>{" "}
+            or see{" "}
+            <Link href="/pricing" className="text-sovereign-blue font-medium hover:underline">
+              full pricing
+            </Link>
+            .
+          </p>
         </div>
       </section>
 
@@ -297,7 +339,7 @@ export function LandingPage() {
               <div className="flex gap-3">
                 <Link
                   href="/signup"
-                  className="inline-flex items-center justify-center bg-[#2563EB] px-6 py-3 text-sm font-medium text-white rounded-none transition-all hover:bg-[#1D4ED8] hover:shadow-lg hover:scale-[1.02]"
+                  className="inline-flex items-center justify-center bg-[#2563EB] px-6 py-3 text-sm font-medium text-white rounded-2xl transition-all hover:bg-[#1D4ED8] hover:shadow-lg hover:scale-[1.02]"
                 >
                   Get Started
                 </Link>
@@ -327,6 +369,39 @@ export function LandingPage() {
 
       {/* Made in America */}
       <MadeInAmericaSection />
+
+      {/* Testimonials — Maven-style trust section */}
+      <section className="px-8 md:px-16 py-20 bg-white">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="font-display text-2xl md:text-3xl text-mono-dark mb-8">
+            Real people, calmer tax seasons
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                quote:
+                  "Connecting my accounts and seeing estimated payments made it feel… manageable. I finally knew what to set aside.",
+                name: "Freelance designer",
+              },
+              {
+                quote:
+                  "The plain-English categories saved me from second-guessing every transaction. Review took minutes, not hours.",
+                name: "Gig driver",
+              },
+              {
+                quote:
+                  "Home office math was transparent. Seeing both methods built trust—no more guessing what my preparer will ask for.",
+                name: "Creator",
+              },
+            ].map((t) => (
+              <div key={t.name} className="rounded-2xl border border-[#eee] bg-[#fafafa] p-5">
+                <p className="text-sm text-mono-dark leading-relaxed">“{t.quote}”</p>
+                <p className="text-xs text-mono-light mt-4">{t.name}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* Footer — cool stock background with black text */}
       <footer className="px-8 md:px-16 py-12 bg-[#F0F1F7]">

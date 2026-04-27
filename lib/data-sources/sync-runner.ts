@@ -3,6 +3,7 @@ import type { StripeMode } from "@/lib/stripe";
 import { getStripeClient } from "@/lib/stripe";
 import { getPlaidClient, decryptAccessToken } from "@/lib/plaid";
 import { normalizeVendor } from "@/lib/vendor-matching";
+import { plaidTransactionToJson } from "@/lib/enrichment/plaid-transaction-json";
 
 /**
  * Stripe Financial Connections `transactions.list` accepts `limit` between 1 and 100 (inclusive).
@@ -475,7 +476,7 @@ export async function runSyncForDataSource(
     try {
       const { data: row, error: fetchError } = await (supabase as any)
         .from("data_sources")
-        .select("id, plaid_access_token, plaid_item_id, plaid_cursor")
+        .select("id, workspace_id, account_type, plaid_access_token, plaid_item_id, plaid_cursor")
         .eq("id", dataSourceId)
         .eq("user_id", userId)
         .single();
@@ -499,6 +500,8 @@ export async function runSyncForDataSource(
       const plaid = getPlaidClient(options?.hostname);
       const accessToken = decryptAccessToken(row.plaid_access_token as string);
       let cursor: string | undefined = (row.plaid_cursor as string) || undefined;
+      const workspaceId = (row.workspace_id as string) ?? null;
+      const sourceAccountType = (row.account_type as string) ?? "other";
 
       let addedCount = 0;
       let modifiedCount = 0;
@@ -536,22 +539,33 @@ export async function runSyncForDataSource(
           if (!earliestDate || dateStr < earliestDate) earliestDate = dateStr;
           if (!latestDate || dateStr > latestDate) latestDate = dateStr;
 
+          const displayName = (tx.merchant_name ?? tx.name ?? vendor).slice(0, 255);
+          const routedToInbox = sourceAccountType === "mixed";
+          const status =
+            sourceAccountType === "personal"
+              ? "personal"
+              : "pending";
           const { error: insErr } = await (supabase as any)
             .from("transactions")
             .upsert(
               {
                 user_id: userId,
+                workspace_id: workspaceId,
                 date: dateStr,
                 vendor,
                 vendor_normalized: vendorNormalized,
                 description: tx.name ?? null,
                 amount,
-                status: "pending",
+                status,
                 tax_year: year,
                 source: "data_feed",
                 transaction_type: amount > 0 ? "income" : "expense",
                 data_source_id: dataSourceId,
                 data_feed_external_id: tx.transaction_id,
+                plaid_raw_json: plaidTransactionToJson(tx),
+                display_name: displayName,
+                enrichment_status: "pending",
+                routed_to_inbox: routedToInbox,
                 updated_at: new Date().toISOString(),
               },
               {
@@ -572,6 +586,7 @@ export async function runSyncForDataSource(
           const amount = Number((-tx.amount).toFixed(2));
           const vendor = (tx.merchant_name ?? tx.name ?? "Unknown").slice(0, 255);
           const vendorNormalized = vendor.trim() ? normalizeVendor(vendor) : null;
+          const displayName = (tx.merchant_name ?? tx.name ?? vendor).slice(0, 255);
           const { error: updErr } = await (supabase as any)
             .from("transactions")
             .update({
@@ -581,6 +596,8 @@ export async function runSyncForDataSource(
               description: tx.name ?? null,
               amount,
               transaction_type: amount > 0 ? "income" : "expense",
+              plaid_raw_json: plaidTransactionToJson(tx),
+              display_name: displayName,
               updated_at: new Date().toISOString(),
             })
             .eq("data_source_id", dataSourceId)

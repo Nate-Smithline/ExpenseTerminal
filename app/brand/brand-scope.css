@@ -1,0 +1,6 @@
+/* Root globals set h1–h3 to var(--font-display) (Marcellus). Brand route must stay Satoshi-only. */
+.brand-satoshi-only h1,
+.brand-satoshi-only h2,
+.brand-satoshi-only h3 {
+  font-family: inherit;
+}

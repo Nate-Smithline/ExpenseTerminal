@@ -5,6 +5,7 @@ import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { deductionPostSchema, deductionDeleteSchema, parseQueryLimit, parseQueryOffset } from "@/lib/validation/schemas";
+import { requireWorkspaceIdForApi } from "@/lib/workspaces/server";
 
 export async function POST(req: Request) {
   const authClient = await createSupabaseRouteClient();
@@ -18,6 +19,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdForApi(supabase as any, userId, req);
+  if ("error" in wsRes) {
+    return NextResponse.json({ error: wsRes.error }, { status: wsRes.status });
+  }
+  const workspaceId = wsRes.workspaceId;
 
   let body: unknown;
   try {
@@ -32,11 +38,12 @@ export async function POST(req: Request) {
   }
   const { type, tax_year, amount, tax_savings, metadata } = parsed.data;
 
-  const cols = "id,user_id,type,tax_year,amount,tax_savings,metadata,created_at";
+  const cols = "id,user_id,workspace_id,type,tax_year,amount,tax_savings,metadata,created_at";
   const { data, error } = await (supabase as any)
     .from("deductions")
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       type,
       tax_year,
       amount,
@@ -70,17 +77,22 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdForApi(supabase as any, userId, req);
+  if ("error" in wsRes) {
+    return NextResponse.json({ error: wsRes.error }, { status: wsRes.status });
+  }
+  const workspaceId = wsRes.workspaceId;
 
   const { searchParams } = new URL(req.url);
   const taxYear = searchParams.get("tax_year");
   const limit = parseQueryLimit(searchParams.get("limit"));
   const offset = parseQueryOffset(searchParams.get("offset"));
 
-  const cols = "id,user_id,type,tax_year,amount,tax_savings,metadata,created_at";
+  const cols = "id,user_id,workspace_id,type,tax_year,amount,tax_savings,metadata,created_at";
   let query = (supabase as any)
     .from("deductions")
     .select(cols, { count: "exact" })
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -112,6 +124,11 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdForApi(supabase as any, userId, req);
+  if ("error" in wsRes) {
+    return NextResponse.json({ error: wsRes.error }, { status: wsRes.status });
+  }
+  const workspaceId = wsRes.workspaceId;
 
   let body: unknown;
   try {
@@ -129,7 +146,7 @@ export async function DELETE(req: Request) {
   const { data: deleted, error } = await (supabase as any)
     .from("deductions")
     .delete()
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("type", type)
     .eq("tax_year", tax_year)
     .select("id");

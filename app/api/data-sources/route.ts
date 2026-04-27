@@ -5,6 +5,7 @@ import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { parseQueryLimit, parseQueryOffset } from "@/lib/validation/schemas";
+import { requireWorkspaceIdForApi } from "@/lib/workspaces/server";
 export async function GET(req: Request) {
   const authClient = await createSupabaseRouteClient();
   const auth = await requireAuth(authClient);
@@ -23,6 +24,14 @@ export async function GET(req: Request) {
     });
   }
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdForApi(supabase as any, userId, req);
+  if ("error" in wsRes) {
+    return new Response(JSON.stringify({ error: wsRes.error }), {
+      status: wsRes.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const workspaceId = wsRes.workspaceId;
 
   const url = new URL(req.url);
   const limit = parseQueryLimit(url.searchParams.get("limit"));
@@ -31,7 +40,7 @@ export async function GET(req: Request) {
   const { data, error, count } = await (supabase as any)
     .from("data_sources")
     .select("*", { count: "exact" })
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -68,6 +77,14 @@ export async function POST(req: Request) {
     });
   }
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdForApi(supabase as any, userId, req);
+  if ("error" in wsRes) {
+    return new Response(JSON.stringify({ error: wsRes.error }), {
+      status: wsRes.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const workspaceId = wsRes.workspaceId;
 
   let body: { name?: string; account_type?: string; institution?: string; source_type?: string };
   try {
@@ -89,11 +106,12 @@ export async function POST(req: Request) {
   const sourceType = body.source_type === "stripe" ? "stripe" : "manual";
 
   // Only insert columns that exist in minimal schema (omit source_type, connected_at, etc. if missing from schema cache).
-  const insertCols = "id,user_id,name,account_type,institution,created_at";
+  const insertCols = "id,user_id,workspace_id,name,account_type,institution,created_at";
   const { data, error } = await (supabase as any)
     .from("data_sources")
     .insert({
       user_id: userId,
+      workspace_id: workspaceId,
       name: body.name,
       account_type: body.account_type || "other",
       institution: body.institution || null,
@@ -132,6 +150,14 @@ export async function PATCH(req: Request) {
     });
   }
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdForApi(supabase as any, userId, req);
+  if ("error" in wsRes) {
+    return new Response(JSON.stringify({ error: wsRes.error }), {
+      status: wsRes.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const workspaceId = wsRes.workspaceId;
 
   let body: { id: string; name?: string; account_type?: string; institution?: string; stripe_sync_start_date?: string | null };
   try {
@@ -166,7 +192,7 @@ export async function PATCH(req: Request) {
     .from("data_sources")
     .update(update)
     .eq("id", body.id)
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .select()
     .single();
 
@@ -199,6 +225,14 @@ export async function DELETE(req: Request) {
     });
   }
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdForApi(supabase as any, userId, req);
+  if ("error" in wsRes) {
+    return new Response(JSON.stringify({ error: wsRes.error }), {
+      status: wsRes.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const workspaceId = wsRes.workspaceId;
 
   let body: { id: string; delete_transactions?: boolean };
   try {
@@ -220,7 +254,7 @@ export async function DELETE(req: Request) {
     .from("data_sources")
     .select("id")
     .eq("id", body.id)
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (fetchError || !row) {
@@ -235,7 +269,7 @@ export async function DELETE(req: Request) {
       .from("transactions")
       .delete()
       .eq("data_source_id", body.id)
-      .eq("user_id", userId);
+      .eq("workspace_id", workspaceId);
     if (delTxError) {
       return new Response(JSON.stringify({ error: safeErrorMessage(delTxError.message, "Failed to delete transactions") }), {
         status: 500,
@@ -247,7 +281,7 @@ export async function DELETE(req: Request) {
       .from("transactions")
       .update({ data_source_id: null })
       .eq("data_source_id", body.id)
-      .eq("user_id", userId);
+      .eq("workspace_id", workspaceId);
     if (unlinkError) {
       return new Response(JSON.stringify({ error: safeErrorMessage(unlinkError.message, "Failed to unlink transactions") }), {
         status: 500,
@@ -260,7 +294,7 @@ export async function DELETE(req: Request) {
     .from("data_sources")
     .delete()
     .eq("id", body.id)
-    .eq("user_id", userId);
+    .eq("workspace_id", workspaceId);
 
   if (delError) {
     return new Response(JSON.stringify({ error: safeErrorMessage(delError.message, "Failed to delete account") }), {

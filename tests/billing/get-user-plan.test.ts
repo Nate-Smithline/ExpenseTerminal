@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { getUserPlan } from "@/lib/billing/get-user-plan";
 
 function createMockSupabase(rows: { plan: string; status: string } | null) {
@@ -6,7 +6,11 @@ function createMockSupabase(rows: { plan: string; status: string } | null) {
     from: () => ({
       select: () => ({
         eq: () => ({
-          maybeSingle: () => Promise.resolve({ data: rows, error: null }),
+          order: () => ({
+            limit: () => ({
+              maybeSingle: () => Promise.resolve({ data: rows, error: null }),
+            }),
+          }),
         }),
       }),
     }),
@@ -44,7 +48,7 @@ describe("getUserPlan", () => {
     expect(plan).toBe("starter");
   });
 
-  it("returns free when status is past_due but we treat past_due as active for plan", async () => {
+  it("returns starter when status is past_due", async () => {
     const supabase = createMockSupabase({ plan: "starter", status: "past_due" });
     const plan = await getUserPlan(supabase as any, "user-1");
     expect(plan).toBe("starter");

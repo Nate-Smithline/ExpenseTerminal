@@ -9,11 +9,81 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      workspaces: {
+        Row: {
+          id: string;
+          name: string;
+          business_type: string | null;
+          tax_filing_status: string | null;
+          fiscal_year_start: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          business_type?: string | null;
+          tax_filing_status?: string | null;
+          fiscal_year_start?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["workspaces"]["Insert"]>;
+      };
+      workspace_members: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          user_id: string;
+          role: string;
+          joined_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          user_id: string;
+          role?: string;
+          joined_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["workspace_members"]["Insert"]>;
+      };
+      merchant_memory: {
+        Row: {
+          id: string;
+          workspace_id: string;
+          raw_name_pattern: string;
+          display_name: string;
+          default_category: string | null;
+          default_deduction_type: string | null;
+          default_likelihood: string | null;
+          source: string;
+          confirmed_count: number;
+          corrected_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          workspace_id: string;
+          raw_name_pattern: string;
+          display_name: string;
+          default_category?: string | null;
+          default_deduction_type?: string | null;
+          default_likelihood?: string | null;
+          source: string;
+          confirmed_count?: number;
+          corrected_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["merchant_memory"]["Insert"]>;
+      };
       profiles: {
         Row: {
           id: string;
           email: string | null;
           display_name: string | null;
+          name_prefix: string | null;
           first_name: string | null;
           last_name: string | null;
           avatar_url: string | null;
@@ -24,6 +94,7 @@ export interface Database {
           onboarding_progress: Json | null;
           terms_accepted_at: string | null;
           password_changed_at: string | null;
+          last_quarterly_tax_reminder_sent_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -31,6 +102,7 @@ export interface Database {
           id: string;
           email?: string | null;
           display_name?: string | null;
+          name_prefix?: string | null;
           first_name?: string | null;
           last_name?: string | null;
           avatar_url?: string | null;
@@ -41,6 +113,7 @@ export interface Database {
           onboarding_progress?: Json | null;
           terms_accepted_at?: string | null;
           password_changed_at?: string | null;
+          last_quarterly_tax_reminder_sent_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -88,6 +161,7 @@ export interface Database {
         Row: {
           id: string;
           user_id: string;
+          workspace_id: string | null;
           date: string;
           vendor: string;
           description: string | null;
@@ -112,12 +186,22 @@ export interface Database {
           eligible_for_ai: boolean;
           data_source_id: string | null;
           data_feed_external_id: string | null;
+          plaid_raw_json: Json | null;
+          display_name: string | null;
+          rename_confidence: number | null;
+          rename_source: string | null;
+          deduction_suggestions: Json | null;
+          deduction_likelihood: string | null;
+          routed_to_inbox: boolean;
+          inbox_resolved_at: string | null;
+          enrichment_status: string;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           user_id: string;
+          workspace_id?: string | null;
           date: string;
           vendor: string;
           description?: string | null;
@@ -142,6 +226,15 @@ export interface Database {
           eligible_for_ai?: boolean;
           data_source_id?: string | null;
           data_feed_external_id?: string | null;
+          plaid_raw_json?: Json | null;
+          display_name?: string | null;
+          rename_confidence?: number | null;
+          rename_source?: string | null;
+          deduction_suggestions?: Json | null;
+          deduction_likelihood?: string | null;
+          routed_to_inbox?: boolean;
+          inbox_resolved_at?: string | null;
+          enrichment_status?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -180,6 +273,7 @@ export interface Database {
         Row: {
           id: string;
           user_id: string;
+          workspace_id: string | null;
           vendor_normalized: string;
           category: string | null;
           schedule_c_line: string | null;
@@ -193,6 +287,7 @@ export interface Database {
         Insert: {
           id?: string;
           user_id: string;
+          workspace_id?: string | null;
           vendor_normalized: string;
           category?: string | null;
           schedule_c_line?: string | null;
@@ -209,6 +304,7 @@ export interface Database {
         Row: {
           id: string;
           user_id: string;
+          workspace_id: string | null;
           type: string;
           tax_year: number;
           amount: string;
@@ -219,6 +315,7 @@ export interface Database {
         Insert: {
           id?: string;
           user_id: string;
+          workspace_id?: string | null;
           type: string;
           tax_year: number;
           amount: string;
@@ -232,6 +329,7 @@ export interface Database {
         Row: {
           id: string;
           user_id: string;
+          workspace_id: string | null;
           name: string;
           account_type: string;
           institution: string | null;
@@ -254,6 +352,7 @@ export interface Database {
         Insert: {
           id?: string;
           user_id: string;
+          workspace_id?: string | null;
           name: string;
           account_type: string;
           institution?: string | null;

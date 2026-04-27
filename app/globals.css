@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme inline {
-  /* Color palette — warm, contemplative, Apple-inspired clarity */
+  /* Design tokens — Apple-inspired clarity (see roadmap: radius, shadow, type scale) */
   --color-bg-primary: #ffffff;
   --color-bg-secondary: #f9f7f5;
   --color-bg-tertiary: #e8e2dc;
@@ -9,24 +9,51 @@
   --color-frost: #E8EEF5;
   --color-warm-stock: #F5F0E8;
 
+  /* Brand palette (see /brand) */
+  --color-pure-black: #000000;
+  --color-pure-white: #FFFFFF;
+  --color-sovereign-blue: #5B82B4;
+  --color-deep-navy: #0D1F35;
+  --color-steel: #8A9BB0;
+  --color-cta-blue: #2563EB;
+  --color-cta-hover: #1D4ED8;
+  --color-signal-gold: #C9A84C;
+  --color-success: #16A34A;
+  --color-success-subtle: #DCFCE7;
+  --color-danger: #DC2626;
+  --color-danger-subtle: #FEE2E2;
+  --color-warning: #D97706;
+  --color-warning-subtle: #FEF3C7;
+
   --color-accent-sage: #3f5147;
   --color-accent-navy: #435763;
   --color-accent-warm: #635a43;
   --color-accent-red: #c0392b;
   --color-accent-terracotta: #b87c5e;
   --color-accent-terracotta-dark: #9a6b4a;
-  --color-sovereign-blue: #5B82B4;
 
   --color-mono-light: #a3a3a3;
   --color-mono-medium: #636363;
   --color-mono-dark: #2a2a2a;
 
-  --color-success: #3f5147;
-  --color-warning: #635a43;
-  --color-danger: #c44;
+  /* localhost /brand — canonical product palette */
+  --color-brand-red: rgb(255, 56, 60);
+  --color-brand-orange: rgb(255, 141, 40);
+  --color-brand-yellow: rgb(255, 204, 0);
+  --color-brand-green: rgb(52, 199, 89);
+  --color-brand-cyan: rgb(0, 192, 232);
+  --color-brand-blue: rgb(0, 136, 255);
+  --color-brand-indigo: rgb(97, 85, 245);
+  --color-brand-purple: rgb(203, 48, 224);
+  --color-brand-pink: rgb(172, 127, 94);
+  --color-brand-black: rgb(0, 0, 0);
+  --color-brand-white: rgb(255, 255, 255);
+  --color-brand-light-grey: rgb(242, 242, 247);
+  --color-brand-medium-grey: rgb(209, 209, 214);
+  --color-brand-dark-gray: rgb(142, 142, 147);
 
-  /* Typography — Satoshi (sans, set by layout variable), Marcellus (display) */
-  --font-sans: "Satoshi", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Typography — system sans, Marcellus (display) */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-display: "Marcellus", Georgia, "Times New Roman", serif;
 
   --text-xs: 0.75rem;
@@ -67,16 +94,16 @@ button, [role="button"], a.btn-primary, a.btn-secondary, a.btn-pill, a.btn-warm 
 }
 
 .btn-primary {
-  @apply inline-flex items-center justify-center rounded-full bg-accent-sage px-6 py-3 text-sm font-medium text-white transition-all duration-200 shadow-sm;
+  @apply inline-flex items-center justify-center rounded-[var(--radius-lg)] bg-cta-blue px-6 py-3 text-sm font-medium text-white transition-all duration-200 shadow-sm;
 }
 .btn-primary:hover {
   @apply shadow-md;
-  background: #2d3a32;
+  background: var(--color-cta-hover);
   transform: translateY(-0.5px);
 }
 
 .btn-secondary {
-  @apply inline-flex items-center justify-center rounded-full border border-bg-tertiary/60 bg-white px-6 py-3 text-sm font-medium text-mono-dark transition-all duration-200;
+  @apply inline-flex items-center justify-center rounded-[var(--radius-lg)] border border-bg-tertiary/60 bg-white px-6 py-3 text-sm font-medium text-mono-dark transition-all duration-200;
 }
 .btn-secondary:hover {
   @apply bg-bg-secondary border-bg-tertiary shadow-sm;
@@ -84,7 +111,7 @@ button, [role="button"], a.btn-primary, a.btn-secondary, a.btn-pill, a.btn-warm 
 }
 
 .btn-pill {
-  @apply inline-flex items-center justify-center rounded-full border border-bg-tertiary/60 bg-white px-4 py-1.5 text-xs font-medium text-mono-medium transition-all duration-200;
+  @apply inline-flex items-center justify-center rounded-[var(--radius-lg)] border border-bg-tertiary/60 bg-white px-4 py-1.5 text-xs font-medium text-mono-medium transition-all duration-200;
 }
 .btn-pill:hover {
   @apply border-accent-warm bg-bg-secondary text-mono-dark;
@@ -95,12 +122,12 @@ button, [role="button"], a.btn-primary, a.btn-secondary, a.btn-pill, a.btn-warm 
 
 .btn-warm {
   @apply inline-flex items-center justify-center px-6 py-3 text-sm font-medium text-white transition-all duration-200 shadow-sm;
-  border-radius: 10px;
-  background: var(--color-accent-terracotta);
+  border-radius: var(--radius-lg);
+  background: var(--color-deep-navy);
 }
 .btn-warm:hover {
   @apply shadow-md;
-  background: #a06a4e;
+  background: var(--color-pure-black);
   transform: translateY(-0.5px);
 }
 .btn-warm:disabled {
@@ -110,7 +137,7 @@ button, [role="button"], a.btn-primary, a.btn-secondary, a.btn-pill, a.btn-warm 
 }
 
 .card {
-  @apply rounded-[var(--radius-xl)] bg-white shadow-sm border border-bg-tertiary/20 transition-all duration-200;
+  @apply rounded-[var(--radius-lg)] bg-white shadow-sm border border-bg-tertiary/20 transition-all duration-200;
 }
 .card:hover {
   @apply shadow-md;
@@ -121,14 +148,156 @@ button, [role="button"], a.btn-primary, a.btn-secondary, a.btn-pill, a.btn-warm 
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- Auth input style (Practicing the Way) ---- */
+/* ---- Auth — localhost /brand kit (inputs, type, buttons inside .auth-shell) ---- */
 
+.auth-shell h1,
+.auth-shell h2,
+.auth-shell h3 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--color-brand-black);
+  line-height: 1.2;
+}
+
+/* Shared class name; brand styling applies only under .auth-shell */
 .auth-input {
   @apply w-full border border-bg-tertiary/60 bg-white px-4 text-sm text-mono-dark placeholder-mono-light transition-all duration-200;
-  border-radius: 0;
+  border-radius: var(--radius-lg);
 }
 .auth-input:focus {
   @apply border-black outline-none;
+}
+
+.auth-shell .auth-input {
+  width: 100%;
+  min-height: 2.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--color-brand-medium-grey);
+  background: var(--color-brand-light-grey);
+  padding-left: 1rem;
+  padding-right: 1rem;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--color-brand-black);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.auth-shell .auth-input::placeholder {
+  color: rgba(0, 0, 0, 0.35);
+}
+.auth-shell .auth-input:focus {
+  outline: none;
+  border-color: var(--color-brand-medium-grey);
+  box-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, 0.04),
+    0 0 0 2px rgba(0, 136, 255, 0.35);
+}
+
+.auth-btn-primary {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  border-radius: 9999px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-brand-white);
+  background: var(--color-brand-blue);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: opacity 0.15s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+.auth-btn-primary:hover:not(:disabled) {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  opacity: 0.92;
+}
+.auth-btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.auth-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-banner-error {
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--color-brand-white);
+  border-left: 3px solid rgba(255, 56, 60, 0.26);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--color-brand-red);
+}
+
+.auth-banner-info {
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--color-brand-white);
+  border-left: 3px solid rgba(0, 136, 255, 0.28);
+  padding: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--color-brand-black);
+}
+
+.auth-text-link {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-brand-blue);
+  transition: opacity 0.15s ease;
+}
+.auth-text-link:hover {
+  opacity: 0.7;
+}
+
+.auth-shell .btn-primary {
+  border-radius: 9999px;
+  min-height: 2.75rem;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--color-brand-blue) !important;
+  transform: none;
+}
+.auth-shell .btn-primary:hover:not(:disabled) {
+  background: var(--color-brand-blue) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  opacity: 0.92;
+  transform: scale(0.98);
+}
+
+.auth-shell .btn-secondary {
+  border-radius: 9999px;
+  min-height: 2.75rem;
+  font-size: 15px;
+  font-weight: 600;
+  border-color: var(--color-brand-medium-grey) !important;
+  background: var(--color-brand-white) !important;
+  color: var(--color-brand-black) !important;
+  transform: none;
+}
+.auth-shell .btn-secondary:hover:not(:disabled) {
+  transform: scale(0.98);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.auth-shell .btn-warm {
+  border-radius: 9999px;
+  min-height: 2.75rem;
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--color-brand-blue) !important;
+  transform: none;
+}
+.auth-shell .btn-warm:hover:not(:disabled) {
+  background: var(--color-brand-blue) !important;
+  opacity: 0.92;
+  transform: scale(0.98);
 }
 
 /* ---- Custom range slider ---- */
@@ -149,7 +318,7 @@ input[type="range"]::-webkit-slider-thumb {
   height: 18px;
   width: 18px;
   border-radius: 50%;
-  background: var(--color-accent-sage);
+  background: var(--color-cta-blue);
   border: 2px solid white;
   box-shadow: 0 1px 4px rgba(0,0,0,0.12);
   margin-top: -7px;
@@ -168,7 +337,7 @@ input[type="range"]::-moz-range-thumb {
   height: 18px;
   width: 18px;
   border-radius: 50%;
-  background: var(--color-accent-sage);
+  background: var(--color-cta-blue);
   border: 2px solid white;
   box-shadow: 0 1px 4px rgba(0,0,0,0.12);
   cursor: pointer;
@@ -285,10 +454,10 @@ kbd {
   line-height: 1;
 }
 .auth-shell .kbd-hint {
-  border: none;
-  background: #F5F0E8;
-  color: #000000;
-  border-radius: 0;
+  border: 1px solid var(--color-brand-medium-grey);
+  background: var(--color-brand-light-grey);
+  color: var(--color-brand-dark-gray);
+  border-radius: 0.375rem;
 }
 .kbd-hint.opacity-50 {
   background: rgba(255, 255, 255, 0.5);
@@ -348,12 +517,12 @@ h1 {
 /* Focus styles — softer glow */
 *:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(63, 81, 71, 0.12);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
 }
 
 /* Selection color */
 ::selection {
-  background: rgba(63, 81, 71, 0.15);
+  background: rgba(37, 99, 235, 0.18);
 }
 
 /* Smooth scrolling */
@@ -364,5 +533,5 @@ html {
 /* Checkbox styling */
 input[type="checkbox"] {
   @apply rounded-sm border-bg-tertiary;
-  accent-color: var(--color-accent-sage);
+  accent-color: var(--color-cta-blue);
 }

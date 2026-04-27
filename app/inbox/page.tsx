@@ -6,6 +6,7 @@ import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
 import { getProfileOnboarding } from "@/lib/profile";
 import type { Database } from "@/lib/types/database";
 import { InboxPageClient } from "./InboxPageClient";
+import { requireWorkspaceIdServer } from "@/lib/workspaces/server";
 
 type Transaction =
   Database["public"]["Tables"]["transactions"]["Row"];
@@ -20,6 +21,9 @@ export default async function InboxPage() {
   const profile = await getProfileOnboarding((supabase as any), userId);
   const taxYear = getEffectiveTaxYear(cookieStore, profile);
   const db = supabase;
+  const wsRes = await requireWorkspaceIdServer(db as any, userId);
+  if ("error" in wsRes) redirect("/login");
+  const workspaceId = wsRes.workspaceId;
 
   // Inbox shows pending items that are either:
   // - expense transactions already analyzed by AI, or
@@ -27,7 +31,7 @@ export default async function InboxPage() {
   const { data: transactions } = await (db as any)
     .from("transactions")
     .select("*")
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("tax_year", taxYear)
     .eq("status", "pending")
     .or("transaction_type.eq.income,and(transaction_type.eq.expense,ai_confidence.not.is.null)")
@@ -37,7 +41,7 @@ export default async function InboxPage() {
   const { count: pendingCount } = await (db as any)
     .from("transactions")
     .select("*", { count: "exact", head: true })
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("tax_year", taxYear)
     .eq("status", "pending")
     .or("transaction_type.eq.income,and(transaction_type.eq.expense,ai_confidence.not.is.null)");
@@ -45,14 +49,14 @@ export default async function InboxPage() {
   const { count: totalPendingCount } = await (db as any)
     .from("transactions")
     .select("*", { count: "exact", head: true })
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("status", "pending")
     .or("transaction_type.eq.income,and(transaction_type.eq.expense,ai_confidence.not.is.null)");
 
   const { count: unanalyzedCount } = await (db as any)
     .from("transactions")
     .select("*", { count: "exact", head: true })
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("tax_year", taxYear)
     .eq("status", "pending")
     .eq("transaction_type", "expense")
@@ -76,6 +80,7 @@ export default async function InboxPage() {
       initialUnanalyzedCount={unanalyzedCount ?? 0}
       initialTransactions={transactions ?? []}
       userId={userId}
+      workspaceId={workspaceId}
       taxRate={taxRate}
     />
   );

@@ -7,6 +7,7 @@ import { normalizeVendor } from "@/lib/vendor-matching";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { getPlanLimitsForUser } from "@/lib/billing/get-user-plan";
 import { computeCsvAiEligibility } from "@/lib/billing/limits";
+import { requireWorkspaceIdForApi } from "@/lib/workspaces/server";
 
 type IncomingRow = {
   date: string;
@@ -30,6 +31,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdForApi(supabase as any, userId, req);
+  if ("error" in wsRes) {
+    return NextResponse.json({ error: wsRes.error }, { status: wsRes.status });
+  }
+  const workspaceId = wsRes.workspaceId;
 
   let body: unknown;
   try {
@@ -67,6 +73,7 @@ export async function POST(req: Request) {
       .select("id, source_type")
       .eq("id", dataSourceIdVal)
       .eq("user_id", userId)
+      .eq("workspace_id", workspaceId)
       .maybeSingle();
 
     if (dsLookupErr) {
@@ -105,6 +112,7 @@ export async function POST(req: Request) {
         .from("transactions")
         .select("date,vendor_normalized,data_source_id")
         .eq("user_id", userId)
+        .eq("workspace_id", workspaceId)
         .in("date", dateValues)
         .in("vendor_normalized", vendorValues);
 
@@ -151,6 +159,7 @@ export async function POST(req: Request) {
     .from("transactions")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("source", "csv_upload")
     .eq("eligible_for_ai", true);
 
@@ -178,6 +187,7 @@ export async function POST(req: Request) {
     const eligibleForAi = index < eligibleImported;
     return {
       user_id: userId,
+      workspace_id: workspaceId,
       date: dateStr,
       vendor: row.vendor,
       description: row.description ?? null,
@@ -215,7 +225,8 @@ export async function POST(req: Request) {
       .from("transactions")
       .select("id", { count: "exact", head: true })
       .eq("data_source_id", dataSourceIdVal)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .eq("workspace_id", workspaceId);
 
     if (countErr) {
       console.warn("[transactions/upload] Failed to recount transactions for data source", countErr);
@@ -228,7 +239,8 @@ export async function POST(req: Request) {
         transaction_count: txCount ?? 0,
       })
       .eq("id", dataSourceIdVal)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .eq("workspace_id", workspaceId);
   }
 
   return NextResponse.json({

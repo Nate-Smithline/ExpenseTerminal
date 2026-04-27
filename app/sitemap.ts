@@ -4,7 +4,7 @@ import type { MetadataRoute } from "next";
 // Includes marketing pages and auth flows, excludes app-internal dashboards/settings.
 const PUBLIC_ROUTES = [
   "",
-  "request-demo",
+  "lets-talk",
   "signup",
   "login",
   "auth/forgot-password",

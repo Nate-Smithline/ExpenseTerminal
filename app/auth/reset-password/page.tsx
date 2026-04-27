@@ -65,14 +65,14 @@ function ResetPasswordContent() {
   if (!ready && !error) {
     return (
       <AuthLayout>
-        <p className="text-center text-sm text-mono-medium">Checking link...</p>
+        <p className="text-center text-sm text-brand-dark-gray">Checking link...</p>
       </AuthLayout>
     );
   }
 
   return (
     <AuthLayout>
-      <p className="text-center text-sm text-mono-medium mb-8">
+      <p className="text-center text-sm text-brand-dark-gray mb-8">
         Set a new password for your account.
       </p>
 
@@ -100,23 +100,19 @@ function ResetPasswordContent() {
           className="auth-input"
         />
 
-        {error && (
-          <p className="text-sm text-danger bg-bg-secondary border border-bg-tertiary p-3 rounded-lg">
-            {error}
-          </p>
-        )}
+        {error && <p className="auth-banner-error">{error}</p>}
 
         <button
           type="submit"
           disabled={loading}
-          className="btn-warm w-full"
+          className="auth-btn-primary"
         >
           {loading ? "Updating..." : "Set new password"}
         </button>
       </form>
 
-      <p className="mt-6 text-sm text-mono-medium text-center">
-        <Link href="/login" className="text-accent-navy font-medium">
+      <p className="mt-6 text-sm text-brand-dark-gray text-center">
+        <Link href="/login" className="auth-text-link">
           Back to sign in
         </Link>
       </p>
@@ -129,7 +125,7 @@ export default function ResetPasswordPage() {
     <Suspense
       fallback={
         <AuthLayout>
-          <p className="text-center text-sm text-mono-medium">Checking link...</p>
+          <p className="text-center text-sm text-brand-dark-gray">Checking link...</p>
         </AuthLayout>
       }
     >

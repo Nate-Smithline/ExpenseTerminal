@@ -1,4 +1,6 @@
-export function verificationEmailHtml(verifyUrl: string, token: string): string {
+const OTP_EXPIRY_COPY = "This code expires in 1 hour.";
+
+export function verificationEmailHtml(verifyUrl: string, otp: string): string {
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -6,62 +8,42 @@ export function verificationEmailHtml(verifyUrl: string, token: string): string 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-  <title>Verify your email</title>
+  <title>Your code</title>
 </head>
-<body style="margin:0;padding:0;background-color:#f9f7f5;font-family:'Satoshi',Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9f7f5;padding:48px 20px;">
+<body style="margin:0;padding:0;background-color:#f9f7f5;font-family:system-ui,-apple-system,Segoe UI,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9f7f5;padding:40px 16px;">
     <tr>
       <td align="center">
-        <!-- Logo -->
-        <table role="presentation" width="520" cellpadding="0" cellspacing="0">
+        <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
           <tr>
-            <td style="padding:0 0 32px;text-align:center;">
-              <span style="font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:400;color:#2a2a2a;letter-spacing:-0.01em;">ExpenseTerminal</span>
-            </td>
-          </tr>
-        </table>
-
-        <!-- Main card -->
-        <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 16px -4px rgba(0,0,0,0.1);">
-          <tr>
-            <td style="padding:48px 48px 20px;">
-              <h1 style="margin:0 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:26px;font-weight:400;color:#2a2a2a;letter-spacing:-0.01em;text-align:center;">
-                Verify your email
+            <td style="padding:36px 32px 16px;">
+              <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#5B82B4;letter-spacing:0.04em;text-transform:uppercase;">ExpenseTerminal</p>
+              <h1 style="margin:0 0 12px;font-size:22px;font-weight:600;color:#2a2a2a;line-height:1.25;">
+                Your verification code
               </h1>
-              <p style="margin:0;font-size:15px;color:#636363;line-height:1.7;text-align:center;">
-                Welcome to ExpenseTerminal. Enter the code below or click the button to verify your account.
+              <p style="margin:0;font-size:15px;color:#636363;line-height:1.6;">
+                Enter this 6-digit code in the app to confirm your email. If you didn&rsquo;t sign up, ignore this message.
               </p>
             </td>
           </tr>
           <tr>
-            <td style="padding:24px 48px;text-align:center;">
-              <div style="background:#f9f7f5;border:1px solid #e8e2dc;border-radius:12px;padding:20px 32px;display:inline-block;">
-                <code style="font-size:22px;font-weight:600;color:#3f5147;letter-spacing:2px;font-family:monospace;">${token}</code>
+            <td style="padding:8px 32px 28px;text-align:center;">
+              <div style="background:#E8EEF5;border-radius:12px;padding:20px 24px;display:inline-block;min-width:200px;">
+                <span style="font-size:28px;font-weight:700;letter-spacing:0.35em;color:#3f5147;font-family:ui-monospace,Menlo,monospace;">${otp}</span>
               </div>
             </td>
           </tr>
           <tr>
-            <td style="padding:24px 48px 16px;text-align:center;">
-              <a href="${verifyUrl}" style="display:inline-block;background:#3f5147;color:#ffffff;text-decoration:none;font-size:15px;font-weight:500;padding:14px 48px;border-radius:999px;font-family:'Satoshi',Helvetica,Arial,sans-serif;">
-                Verify My Email
+            <td style="padding:0 32px 28px;text-align:center;">
+              <a href="${verifyUrl}" style="display:inline-block;color:#5B82B4;font-size:14px;font-weight:500;text-decoration:underline;">
+                Or verify in one tap
               </a>
             </td>
           </tr>
           <tr>
-            <td style="padding:8px 48px 48px;text-align:center;">
-              <p style="margin:0;font-size:12px;color:#a3a3a3;line-height:1.6;">
-                This link expires in 24 hours. If you didn&rsquo;t create an account, you can safely ignore this email.
-              </p>
-            </td>
-          </tr>
-        </table>
-
-        <!-- Footer -->
-        <table role="presentation" width="520" cellpadding="0" cellspacing="0">
-          <tr>
-            <td style="padding:32px 48px 0;text-align:center;">
-              <p style="margin:0;font-size:11px;color:#a3a3a3;line-height:1.6;">
-                &copy; ${new Date().getFullYear()} ExpenseTerminal &middot; AI-powered business deduction tracking
+            <td style="padding:0 32px 36px;">
+              <p style="margin:0;font-size:12px;color:#a3a3a3;line-height:1.5;text-align:center;">
+                ${OTP_EXPIRY_COPY} Don&rsquo;t share this code with anyone.
               </p>
             </td>
           </tr>
@@ -73,18 +55,14 @@ export function verificationEmailHtml(verifyUrl: string, token: string): string 
 </html>`;
 }
 
-export function verificationEmailText(verifyUrl: string, token: string): string {
-  return `Verify your email
+export function verificationEmailText(verifyUrl: string, otp: string): string {
+  return `ExpenseTerminal — verify your email
 
-Welcome to ExpenseTerminal! Enter this code to verify your account:
+Your code: ${otp}
 
-${token}
+${OTP_EXPIRY_COPY}
 
-Or visit this link: ${verifyUrl}
+Optional link: ${verifyUrl}
 
-This link expires in 24 hours.
-
-If you didn't create an account, you can safely ignore this email.
-
-- ExpenseTerminal`;
+If you didn't create an account, ignore this email.`;
 }

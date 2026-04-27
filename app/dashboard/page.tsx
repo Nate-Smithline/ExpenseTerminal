@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { cookies } from "next/headers";
@@ -5,6 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
 import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
 import { getProfileOnboarding } from "@/lib/profile";
+import { requireWorkspaceIdServer } from "@/lib/workspaces/server";
 import { GettingStartedChecklist } from "./GettingStartedChecklist";
 import { DashboardHeader } from "./DashboardHeader";
 import { WhatCanIDeduct } from "./WhatCanIDeduct";
@@ -15,6 +17,7 @@ import { ExportCallout } from "./ExportCallout";
 import { ForYourAwareness } from "./ForYourAwareness";
 import { DashboardPeriodBar } from "./DashboardPeriodBar";
 import { TaxDetailsSections } from "./TaxDetailsSections";
+import { DashboardQuarterlyHighlight } from "./DashboardQuarterlyHighlight";
 
 function deductibleAmount(t: { amount: string; deduction_percent?: number | null; is_meal?: boolean; is_travel?: boolean }): number {
   const amt = Math.abs(Number(t.amount));
@@ -32,6 +35,9 @@ export default async function DashboardPage() {
   const profile = await getProfileOnboarding((authClient as any), userId);
   const taxYear = getEffectiveTaxYear(cookieStore, profile);
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdServer(supabase as any, userId);
+  if ("error" in wsRes) redirect("/login");
+  const workspaceId = wsRes.workspaceId;
 
   // Fetch user's tax rate for this year
   const { data: taxYearRow } = await (supabase as any)
@@ -46,7 +52,7 @@ export default async function DashboardPage() {
   const { data: completedTx } = await (supabase as any)
     .from("transactions")
     .select("id, amount, category, is_meal, is_travel, deduction_percent")
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("tax_year", taxYear)
     .eq("transaction_type", "expense")
     .in("status", ["completed", "auto_sorted"]);
@@ -54,7 +60,7 @@ export default async function DashboardPage() {
   const { data: incomeTx } = await (supabase as any)
     .from("transactions")
     .select("amount")
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("tax_year", taxYear)
     .eq("transaction_type", "income")
     .in("status", ["completed", "auto_sorted"]);
@@ -62,13 +68,13 @@ export default async function DashboardPage() {
   const { data: additionalDeductions } = await (supabase as any)
     .from("deductions")
     .select("type, amount, tax_savings")
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("tax_year", taxYear);
 
   const { count: pendingCount } = await (supabase as any)
     .from("transactions")
     .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("tax_year", taxYear)
     .eq("status", "pending")
     .eq("transaction_type", "expense");
@@ -76,7 +82,7 @@ export default async function DashboardPage() {
   const { data: pendingTx } = await (supabase as any)
     .from("transactions")
     .select("amount, deduction_percent, is_meal")
-    .eq("user_id", userId)
+    .eq("workspace_id", workspaceId)
     .eq("tax_year", taxYear)
     .eq("status", "pending")
     .eq("transaction_type", "expense");
@@ -85,7 +91,7 @@ export default async function DashboardPage() {
   const { count: dataSourcesCount } = await (supabase as any)
     .from("data_sources")
     .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
+    .eq("workspace_id", workspaceId);
 
   const { data: orgSettings } = await (supabase as any)
     .from("org_settings")
@@ -153,6 +159,9 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-10">
+      <Suspense fallback={null}>
+        <DashboardQuarterlyHighlight />
+      </Suspense>
       <div className="space-y-4">
         <DashboardHeader
           pendingCount={pendingCount ?? 0}

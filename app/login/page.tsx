@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseClient } from "@/lib/supabase/client";
 import { getAuthErrorMessage } from "@/lib/auth-errors";
@@ -11,18 +11,28 @@ function LoginFallback() {
   return (
     <div className="relative w-full">
       <AuthLayout isLoading={false}>
-        <h1 className="text-center text-lg md:text-2xl font-display text-mono-dark mb-6">
+        <h1 className="text-center text-xl md:text-[22px] mb-6">
           Sign in to review your business deductions.
         </h1>
-        <div className="h-12 bg-bg-tertiary animate-pulse" />
+        <div className="h-12 bg-brand-light-grey animate-pulse rounded-[12px]" />
       </AuthLayout>
     </div>
   );
 }
 
+function safeAppInternalPath(next: string | null): string | null {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return null;
+  if (next.includes(":")) return null;
+  return next;
+}
+
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const postLoginPath = useMemo(
+    () => safeAppInternalPath(searchParams.get("next")) ?? "/inbox",
+    [searchParams]
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -92,8 +102,6 @@ function LoginContent() {
           (user.user_metadata as any)?.email_confirm === true);
 
       if (!emailConfirmed) {
-        // If the email isn't confirmed yet, send a fresh verification email
-        // and guide the user to the verification screen.
         try {
           await fetch("/api/email/send-verification", {
             method: "POST",
@@ -101,16 +109,13 @@ function LoginContent() {
             body: JSON.stringify({ email: emailValue, userId: user?.id }),
           });
         } catch {
-          // Best-effort; the verify-pending screen still allows resending.
+          // Best-effort; onboarding still allows resending.
         }
 
-        // Ensure any partial session is cleared.
-        await supabase.auth.signOut();
-
         setLoading(false);
-        const params = new URLSearchParams({ email: emailValue });
-        if (user?.id) params.set("userId", user.id);
-        router.push("/auth/verify-pending?" + params.toString());
+        const params = new URLSearchParams();
+        params.set("email", emailValue);
+        router.push("/onboarding?" + params.toString());
         return;
       }
 
@@ -127,7 +132,7 @@ function LoginContent() {
         }
 
         router.refresh();
-        router.push("/inbox");
+        router.push(postLoginPath);
       }
     } catch (err) {
       const message =
@@ -144,16 +149,12 @@ function LoginContent() {
     <div className="relative w-full">
       <AuthLayout isLoading={loading}>
         <>
-          <h1 className="text-center text-lg md:text-2xl font-display text-mono-dark mb-6">
+          <h1 className="text-center text-xl md:text-[22px] mb-6">
             Sign in to review your business deductions.
           </h1>
 
           <form onSubmit={handleSubmit} className="space-y-3.5 w-full min-w-0">
-            {error && (
-              <p className="text-sm p-3 bg-[#FEE2E2] text-[#DC2626]">
-                {error}
-              </p>
-            )}
+            {error && <p className="auth-banner-error">{error}</p>}
 
             <input
               ref={emailInputRef}
@@ -162,7 +163,7 @@ function LoginContent() {
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="auth-input h-12"
+              className="auth-input"
             />
             <div className="relative">
               <input
@@ -172,12 +173,12 @@ function LoginContent() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="auth-input h-12 pr-12"
+                className="auth-input pr-12"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-mono-light hover:text-mono-medium transition-colors flex items-center justify-center"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-dark-gray hover:opacity-70 transition-opacity flex items-center justify-center"
                 tabIndex={-1}
                 style={{ height: "20px", width: "20px" }}
               >
@@ -190,25 +191,21 @@ function LoginContent() {
             <div className="flex items-center justify-between">
               <Link
                 href="/auth/forgot-password"
-                className="flex items-center gap-2 text-sm font-semibold text-mono-medium hover:text-accent-navy transition-colors"
+                className="auth-text-link inline-flex items-center gap-2 underline-offset-4 hover:underline"
               >
                 <span className="kbd-hint hidden md:inline-flex">F</span>
                 Forgot Password?
               </Link>
               <Link
                 href="/signup"
-                className="flex items-center gap-2 text-sm font-semibold text-mono-medium hover:text-accent-navy transition-colors"
+                className="auth-text-link inline-flex items-center gap-2 underline-offset-4 hover:underline"
               >
                 <span className="kbd-hint hidden md:inline-flex">S</span>
                 Sign Up
               </Link>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-2 bg-black text-white text-sm font-medium h-12 px-4 rounded-none transition-opacity duration-150 hover:opacity-70 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
+            <button type="submit" disabled={loading} className="auth-btn-primary mt-2">
               {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>

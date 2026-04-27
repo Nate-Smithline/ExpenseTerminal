@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { FilingStatus } from "@/lib/onboarding/income-brackets";
+import { INCOME_BRACKETS } from "@/lib/onboarding/income-brackets";
 
 interface OnboardingProgress {
   notification_frequency?: boolean;
@@ -13,8 +16,6 @@ interface OnboardingProgress {
   link_account?: boolean;
   skipped_all?: boolean;
 }
-
-type FilingStatus = "single" | "married_filing_jointly";
 
 type StepId = keyof Omit<OnboardingProgress, "skipped_all">;
 
@@ -59,27 +60,6 @@ const BUSINESS_TYPES: Array<{ label: string; value: string }> = [
   { label: "Partnership", value: "partnership" },
   { label: "Other", value: "other" },
 ];
-
-const INCOME_BRACKETS: Record<FilingStatus, Array<{ id: string; label: string; taxRate: number }>> = {
-  single: [
-    { id: "single:0-11925", label: "$0 - $11,925 (10%)", taxRate: 0.1 },
-    { id: "single:11926-48475", label: "$11,926 - $48,475 (12%)", taxRate: 0.12 },
-    { id: "single:48476-103350", label: "$48,476 - $103,350 (22%)", taxRate: 0.22 },
-    { id: "single:103351-197300", label: "$103,351 - $197,300 (24%)", taxRate: 0.24 },
-    { id: "single:197301-250525", label: "$197,301 - $250,525 (32%)", taxRate: 0.32 },
-    { id: "single:250526-626350", label: "$250,526 - $626,350 (35%)", taxRate: 0.35 },
-    { id: "single:626351-plus", label: "$626,351+ (37%)", taxRate: 0.37 },
-  ],
-  married_filing_jointly: [
-    { id: "joint:0-23850", label: "$0 - $23,850 (10%)", taxRate: 0.1 },
-    { id: "joint:23851-96950", label: "$23,851 - $96,950 (12%)", taxRate: 0.12 },
-    { id: "joint:96951-206700", label: "$96,951 - $206,700 (22%)", taxRate: 0.22 },
-    { id: "joint:206701-394600", label: "$206,701 - $394,600 (24%)", taxRate: 0.24 },
-    { id: "joint:394601-501050", label: "$394,601 - $501,050 (32%)", taxRate: 0.32 },
-    { id: "joint:501051-752800", label: "$501,051 - $752,800 (35%)", taxRate: 0.35 },
-    { id: "joint:752801-plus", label: "$752,801+ (37%)", taxRate: 0.37 },
-  ],
-};
 
 function StepDone({ label, value }: { label: string; value: string }) {
   return (
@@ -229,6 +209,12 @@ export function GettingStartedChecklist({
         </div>
         <p className="text-xs text-mono-medium mt-1 font-sans">
           {completedCount} of {STEP_ORDER.length} action steps complete.
+        </p>
+        <p className="text-xs text-mono-medium mt-2">
+          <Link href="/setup" className="font-medium text-sovereign-blue hover:underline">
+            Prefer a short walkthrough?
+          </Link>{" "}
+          — hustle type, deductions, then connect your bank.
         </p>
       </div>
 

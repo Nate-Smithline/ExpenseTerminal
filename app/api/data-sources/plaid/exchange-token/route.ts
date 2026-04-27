@@ -3,6 +3,7 @@ import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { getPlaidClient, encryptAccessToken } from "@/lib/plaid";
+import { requireWorkspaceIdForApi } from "@/lib/workspaces/server";
 
 function getRequestHostname(req: Request): string {
   const xfHost = req.headers.get("x-forwarded-host");
@@ -47,6 +48,12 @@ export async function POST(req: Request) {
   }
 
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdForApi(supabase as any, userId, req);
+  if ("error" in wsRes) {
+    return NextResponse.json({ error: wsRes.error }, { status: wsRes.status });
+  }
+  const workspaceId = wsRes.workspaceId;
+
   const hostname = getRequestHostname(req);
   const plaid = getPlaidClient(hostname);
 
@@ -125,6 +132,7 @@ export async function POST(req: Request) {
             .from("data_sources")
             .insert({
               user_id: userId,
+              workspace_id: workspaceId,
               name: displayName,
               account_type: accountType,
               institution: institutionName,
@@ -154,6 +162,7 @@ export async function POST(req: Request) {
           .from("data_sources")
           .insert({
             user_id: userId,
+            workspace_id: workspaceId,
             name: institutionName ?? "Bank account",
             account_type: "checking",
             institution: institutionName,

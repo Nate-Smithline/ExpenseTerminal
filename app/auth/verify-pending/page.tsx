@@ -58,35 +58,35 @@ function VerifyPendingContent() {
 
   return (
     <>
-      <p className="text-center text-sm text-mono-medium mb-4">
-        Welcome to ExpenseTerminal. Please check your email and confirm your
-        account to get started.
+      <p className="text-center text-sm text-brand-dark-gray mb-4">
+        Welcome to ExpenseTerminal. We sent a <strong className="text-brand-black">6-digit code</strong> to your email
+        — or continue in the full onboarding flow at{" "}
+        <a href="/onboarding" className="auth-text-link underline">
+          /onboarding
+        </a>
+        .
       </p>
 
       {email && (
-        <p className="text-center text-xs text-mono-light mb-4">
-          We sent a verification email to <strong className="text-mono-medium">{email}</strong>
+        <p className="text-center text-xs text-brand-dark-gray mb-4">
+          We sent a verification email to <strong className="font-semibold text-brand-black">{email}</strong>
         </p>
       )}
 
       <form onSubmit={handleVerify} className="space-y-3.5 mb-6">
-        <label className="block text-xs font-medium text-mono-medium">
+        <label className="block text-[11px] font-semibold uppercase tracking-wide text-brand-dark-gray">
           Verification code
         </label>
         <input
           type="text"
           required
-          placeholder="e.g. ark-the-olive-dove"
+          placeholder="6-digit code"
           value={code}
           onChange={(e) => setCode(e.target.value)}
           className="auth-input"
         />
 
-        {error && (
-          <p className="text-sm text-danger bg-bg-secondary border border-bg-tertiary p-3 rounded-lg">
-            {error}
-          </p>
-        )}
+        {error && <p className="auth-banner-error">{error}</p>}
 
         <button
           type="submit"
@@ -97,8 +97,8 @@ function VerifyPendingContent() {
         </button>
       </form>
 
-      <div className="border-t border-bg-tertiary pt-4 mt-2">
-        <p className="text-center text-xs text-mono-light mb-3">
+      <div className="border-t border-brand-medium-grey pt-4 mt-2">
+        <p className="text-center text-xs text-brand-dark-gray mb-3">
           Didn&apos;t see the email? You can resend it.
         </p>
         <button
@@ -113,7 +113,7 @@ function VerifyPendingContent() {
             : "Resend Verification Email"}
         </button>
         {resent && (
-          <p className="text-center text-xs text-success mt-3">
+          <p className="text-center text-xs text-brand-green mt-3 font-medium">
             Check your inbox — a new link and code are on the way.
           </p>
         )}
@@ -127,7 +127,7 @@ export default function VerifyPendingPage() {
     <AuthLayout>
       <Suspense
         fallback={
-          <p className="text-center text-sm text-mono-light">Loading...</p>
+          <p className="text-center text-sm text-brand-dark-gray">Loading...</p>
         }
       >
         <VerifyPendingContent />

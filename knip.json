@@ -1,0 +1,9 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignore": ["supabase/**", "satoshi/**"],
+  "ignoreDependencies": ["postcss"],
+  "rules": {
+    "exports": "off",
+    "types": "off"
+  }
+}

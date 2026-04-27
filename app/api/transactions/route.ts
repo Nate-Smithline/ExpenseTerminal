@@ -6,6 +6,7 @@ import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limi
 import { parseQueryLimit, parseQueryOffset, parseQueryTaxYear, uuidSchema, transactionPostBodySchema, transactionDraftBodySchema, ACTIVITY_SORT_COLUMNS } from "@/lib/validation/schemas";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { safeErrorMessage } from "@/lib/api/safe-error";
+import { requireWorkspaceIdForApi } from "@/lib/workspaces/server";
 
 /**
  * GET: Fetch transactions with filters.
@@ -23,6 +24,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdForApi(supabase as any, userId, req);
+  if ("error" in wsRes) {
+    return NextResponse.json({ error: wsRes.error }, { status: wsRes.status });
+  }
+  const workspaceId = wsRes.workspaceId;
 
   const { searchParams } = new URL(req.url);
   const taxYearParam = searchParams.get("tax_year");
@@ -51,11 +57,11 @@ export async function GET(req: Request) {
   const inboxOnly = searchParams.get("inbox") === "true";
 
   const transactionColumns =
-    "id,user_id,date,vendor,description,amount,category,schedule_c_line,ai_confidence,ai_reasoning,ai_suggestions,status,business_purpose,quick_label,notes,vendor_normalized,auto_sort_rule_id,deduction_percent,is_meal,is_travel,tax_year,source,transaction_type,data_source_id,created_at,updated_at";
+    "id,user_id,workspace_id,date,vendor,description,amount,category,schedule_c_line,ai_confidence,ai_reasoning,ai_suggestions,status,business_purpose,quick_label,notes,vendor_normalized,auto_sort_rule_id,deduction_percent,is_meal,is_travel,tax_year,source,transaction_type,data_source_id,data_feed_external_id,display_name,deduction_likelihood,enrichment_status,created_at,updated_at";
   let query = (supabase as any)
     .from("transactions")
     .select(countOnly ? "*" : transactionColumns, countOnly ? { count: "exact", head: true } : { count: "exact" })
-    .eq("user_id", userId);
+    .eq("workspace_id", workspaceId);
 
   if (taxYear != null) query = query.eq("tax_year", taxYear);
   if (dateFrom) query = query.gte("date", dateFrom);
@@ -80,7 +86,9 @@ export async function GET(req: Request) {
   }
   if (searchTerm.length > 0) {
     const pattern = `%${searchTerm}%`;
-    query = query.or(`vendor.ilike.${pattern},description.ilike.${pattern}`);
+    query = query.or(
+      `vendor.ilike.${pattern},description.ilike.${pattern},category.ilike.${pattern},display_name.ilike.${pattern}`
+    );
   }
 
   if (!countOnly) {
@@ -122,6 +130,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
   const supabase = authClient;
+  const wsRes = await requireWorkspaceIdForApi(supabase as any, userId, req);
+  if ("error" in wsRes) {
+    return NextResponse.json({ error: wsRes.error }, { status: wsRes.status });
+  }
+  const workspaceId = wsRes.workspaceId;
 
   let body: unknown;
   try {
@@ -134,11 +147,12 @@ export async function POST(req: Request) {
   if (fullParsed.success) {
     const { date, vendor, amount, description, transaction_type = "income" } = fullParsed.data;
     const taxYear = new Date(date).getFullYear();
-    const insertCols = "id,user_id,date,vendor,description,amount,status,tax_year,source,transaction_type,vendor_normalized,created_at";
+    const insertCols = "id,user_id,workspace_id,date,vendor,description,amount,status,tax_year,source,transaction_type,vendor_normalized,created_at";
     const { data, error } = await (supabase as any)
       .from("transactions")
       .insert({
         user_id: userId,
+        workspace_id: workspaceId,
         date: new Date(date).toISOString().slice(0, 10),
         vendor,
         description: description ?? null,
@@ -168,11 +182,12 @@ export async function POST(req: Request) {
     const { status: draftStatus, transaction_type: draftType } = draftParsed.data;
     const today = new Date().toISOString().slice(0, 10);
     const taxYear = new Date().getFullYear();
-    const insertCols = "id,user_id,date,vendor,description,amount,status,tax_year,source,transaction_type,vendor_normalized,created_at,updated_at";
+    const insertCols = "id,user_id,workspace_id,date,vendor,description,amount,status,tax_year,source,transaction_type,vendor_normalized,created_at,updated_at";
     const { data: draftData, error: draftError } = await (supabase as any)
       .from("transactions")
       .insert({
         user_id: userId,
+        workspace_id: workspaceId,
         date: today,
         vendor: "",
         description: null,

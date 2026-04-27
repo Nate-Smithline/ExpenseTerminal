@@ -8,7 +8,7 @@ import { safeErrorMessage } from "@/lib/api/safe-error";
 
 export async function GET(req: Request) {
   const authClient = await createSupabaseRouteClient();
-  const auth = await requireAuth(authClient);
+  const auth = await requireAuth(authClient, { allowUnverified: true });
   if (!auth.authorized) {
     return Response.json(auth.body, { status: auth.status });
   }
@@ -42,7 +42,7 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   const authClient = await createSupabaseRouteClient();
-  const auth = await requireAuth(authClient);
+  const auth = await requireAuth(authClient, { allowUnverified: true });
   if (!auth.authorized) {
     return Response.json(auth.body, { status: auth.status });
   }

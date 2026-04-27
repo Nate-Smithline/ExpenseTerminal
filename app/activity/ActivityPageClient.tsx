@@ -400,6 +400,7 @@ export function ActivityPageClient({
       const normalized: Transaction = {
         id: String(row.id),
         user_id: String(row.user_id),
+        workspace_id: row.workspace_id != null ? String(row.workspace_id) : null,
         date: String(row.date),
         vendor: row.vendor != null ? String(row.vendor) : "",
         description: row.description != null ? String(row.description) : null,
@@ -426,6 +427,15 @@ export function ActivityPageClient({
         is_travel: null,
         data_source_id: null,
         data_feed_external_id: row.data_feed_external_id != null ? String(row.data_feed_external_id) : null,
+        plaid_raw_json: null,
+        display_name: null,
+        rename_confidence: null,
+        rename_source: null,
+        deduction_suggestions: null,
+        deduction_likelihood: null,
+        routed_to_inbox: false,
+        inbox_resolved_at: null,
+        enrichment_status: "pending",
       };
       setSidebarTransaction(normalized);
       const txs = await loadTransactions();

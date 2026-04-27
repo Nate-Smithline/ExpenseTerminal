@@ -1,18 +1,21 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
-import { hashToken } from "@/lib/verification-tokens";
+import { hashToken, isSixDigitOtp } from "@/lib/verification-tokens";
 import { sendWelcomeEmailForUser } from "@/lib/email/send-welcome";
 
 /**
- * GET /auth/verify?token=ark-the-olive-dove
- * Validates the Bible-word token, marks the email as verified,
- * and redirects to the inbox.
+ * GET /auth/verify?token=...
+ * Validates a 6-digit OTP or legacy Bible-word token, marks the email as verified,
+ * and redirects to login.
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const tokenParam = searchParams.get("token");
-  const token = tokenParam
-    ? tokenParam.toLowerCase().trim().replace(/\s+/g, "-")
+  const raw = tokenParam?.trim() ?? "";
+  const token = raw
+    ? isSixDigitOtp(raw)
+      ? raw
+      : raw.toLowerCase().replace(/\s+/g, "-")
     : null;
 
   if (!token) {

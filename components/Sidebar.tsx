@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect } from "react";
+import { CommandPaletteSidebarTrigger } from "@/components/CommandPalette";
 
 const mainNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
@@ -51,7 +52,7 @@ export function Sidebar() {
       <div className="pl-8 pr-5 pt-6 pb-4">
         <Link href="/" className="inline-flex items-center">
           <Image
-            src="/xt-logo-v2.png"
+            src="/xt-logo-brand.png"
             alt="XT"
             width={80}
             height={32}
@@ -59,6 +60,10 @@ export function Sidebar() {
             priority={false}
           />
         </Link>
+      </div>
+
+      <div className="px-5 pb-2">
+        <CommandPaletteSidebarTrigger />
       </div>
 
       {/* Main nav - block extends to left edge; content stays aligned (pl-8 = 5+3) */}

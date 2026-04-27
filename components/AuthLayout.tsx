@@ -6,48 +6,47 @@ import Link from "next/link";
 interface AuthLayoutProps {
   children: React.ReactNode;
   isLoading?: boolean;
+  /** Override default `max-w-[420px]` for wider flows (e.g. signup wizard). */
+  contentClassName?: string;
+  /** When false, hides the XT mark above the form (e.g. signup). */
+  showLogo?: boolean;
 }
 
-export function AuthLayout({ children, isLoading = false }: AuthLayoutProps) {
+const AUTH_SIDEBAR_IMAGE = "/auth-sidebar-green-hills.png";
+
+export function AuthLayout({
+  children,
+  isLoading = false,
+  contentClassName,
+  showLogo = true,
+}: AuthLayoutProps) {
+  const contentTopSpacer = isLoading || showLogo ? "mt-4" : "mt-0";
+
   return (
     <div className="flex min-h-screen">
-      {/* Left half — high-res background image */}
-      <div className="hidden lg:block lg:w-1/2 fixed left-0 top-0 h-screen overflow-hidden">
-        <div className="absolute inset-0">
+      <div className="hidden lg:block lg:w-1/2 fixed left-0 top-0 h-screen overflow-hidden bg-black">
+        <div className="absolute inset-0" aria-hidden>
           <Image
-            src="/auth-sidebar-bg-v2.png"
+            src={AUTH_SIDEBAR_IMAGE}
             alt=""
             fill
             className="object-cover object-center"
             priority
-            quality={100}
+            quality={95}
             sizes="50vw"
           />
         </div>
-        <div className="absolute inset-0 flex items-end p-12">
-          <div className="text-white drop-shadow-[0_4px_10px_rgba(0,0,0,0.55)]">
-            <p className="font-display text-2xl md:text-3xl leading-snug mb-3 font-medium">
-              Track every deduction.<br />
-              File with confidence.
-            </p>
-            <p className="text-sm md:text-base">
-              AI-powered expense tracking for small businesses
-            </p>
-          </div>
-        </div>
       </div>
 
-      {/* Right half — form area */}
       <div
         className="auth-shell flex-1 flex flex-col min-h-screen overflow-y-auto lg:ml-[50%] min-w-0"
         style={{ backgroundColor: "#FFFFFF" }}
       >
         <div className="flex-1 flex flex-col items-center justify-center px-6 sm:px-12 py-12 pb-28">
-          {/* Logo / loader spinner */}
           {isLoading && (
             <div className="mb-8">
               <svg
-                className="w-12 h-12 text-mono-light animate-spin-slow"
+                className="w-12 h-12 text-brand-dark-gray animate-spin-slow"
                 viewBox="0 0 50 50"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
@@ -77,20 +76,25 @@ export function AuthLayout({ children, isLoading = false }: AuthLayoutProps) {
             </div>
           )}
 
-          {/* XT logo — link to home (larger for visibility) */}
-          <Link href="/" className="mb-6 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-accent-sage/50 rounded">
-            <Image
-              src="/xt-logo-v2.png"
-              alt="XT"
-              width={160}
-              height={64}
-              className="h-16 w-auto object-contain"
-              priority
-            />
-          </Link>
+          {showLogo && !isLoading && (
+            <Link
+              href="/"
+              className="mb-4 flex shrink-0 items-center justify-center rounded-[var(--radius-lg)] focus:outline-none focus:ring-2 focus:ring-brand-blue/40"
+            >
+              <Image
+                src="/xt-logo-brand.png"
+                alt="XT"
+                width={72}
+                height={52}
+                className="h-8 w-auto object-contain"
+                priority
+              />
+            </Link>
+          )}
 
-          {/* Form content — no header on login/signup */}
-          <div className="w-full max-w-[420px] min-w-0 mt-6">{children}</div>
+          <div className={`w-full min-w-0 ${contentTopSpacer} ${contentClassName ?? "max-w-[420px]"}`}>
+            {children}
+          </div>
         </div>
       </div>
     </div>

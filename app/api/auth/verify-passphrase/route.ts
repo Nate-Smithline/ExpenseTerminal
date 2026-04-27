@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { isValidEmail } from "@/lib/validation/email";
-import { hashToken } from "@/lib/verification-tokens";
+import { hashToken, isSixDigitOtp } from "@/lib/verification-tokens";
 import { rateLimitByIdentifier, emailVerificationLimit } from "@/lib/middleware/rate-limit";
 import { sendWelcomeEmailForUser } from "@/lib/email/send-welcome";
 
 type VerifyPassphraseBody = {
   email?: string;
   passphrase?: string;
+  /** Preferred: 6-digit email OTP */
+  code?: string;
 };
 
 /**
  * POST /api/auth/verify-passphrase
- * Body: { email, passphrase }
- * Validates a Bible-word passphrase from the verification email,
+ * Body: { email, code } or { email, passphrase }
+ * Validates a 6-digit OTP (or legacy passphrase) from the verification email,
  * marks the email as verified, updates the user to email_confirm=true,
  * and sends a welcome email.
  */
@@ -26,11 +28,10 @@ export async function POST(req: Request) {
   }
 
   const email = body.email?.trim() ?? "";
-  const rawPassphrase = body.passphrase?.trim() ?? "";
-  const passphrase =
-    rawPassphrase
-      .toLowerCase()
-      .replace(/\s+/g, "-");
+  const rawCode = (body.code ?? body.passphrase)?.trim() ?? "";
+  const passphrase = isSixDigitOtp(rawCode)
+    ? rawCode
+    : rawCode.toLowerCase().replace(/\s+/g, "-");
 
   if (!email || !passphrase) {
     return NextResponse.json(

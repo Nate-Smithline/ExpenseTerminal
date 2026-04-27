@@ -37,10 +37,16 @@ export function DashboardHeader({ pendingCount, userName }: DashboardHeaderProps
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-4">
-      <div className="flex flex-col justify-center">
+      <div className="flex flex-col justify-center gap-1">
         <h1 className="text-2xl md:text-3xl font-display font-normal text-mono-dark tracking-tight">
           {(greeting ?? "Welcome back")}, {displayName}
         </h1>
+        <Link
+          href="/setup"
+          className="text-xs font-medium text-sovereign-blue hover:underline w-fit"
+        >
+          Guided setup (4 steps)
+        </Link>
       </div>
       {(pendingCount ?? 0) > 0 && (
         <Link

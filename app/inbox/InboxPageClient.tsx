@@ -19,32 +19,51 @@ interface InboxPageClientProps {
   initialUnanalyzedCount?: number;
   initialTransactions: Transaction[];
   userId: string;
+  /** Matches server-resolved workspace so /api/transactions sees the same tenant as the page. */
+  workspaceId: string;
   taxRate?: number;
 }
 
-async function fetchTransactions(params: Record<string, string>): Promise<Transaction[]> {
-  const qs = new URLSearchParams(params).toString();
+const transactionsListFetchInit = (workspaceId: string): RequestInit => ({
+  credentials: "same-origin",
+  cache: "no-store",
+  headers: { "x-workspace-id": workspaceId },
+});
+
+async function fetchTransactions(
+  params: Record<string, string>,
+  workspaceId: string,
+): Promise<Transaction[]> {
+  const q = new URLSearchParams(params);
+  q.set("workspace_id", workspaceId);
+  const qs = q.toString();
   const url = `/api/transactions?${qs}`;
-  const res = await fetch(url);
+  const res = await fetch(url, transactionsListFetchInit(workspaceId));
   const body = await res.json().catch(() => ({}));
   if (!res.ok) return [];
   return body.data ?? [];
 }
 
-async function fetchCount(params: Record<string, string>): Promise<number> {
-  const qs = new URLSearchParams({ ...params, count_only: "true" }).toString();
+async function fetchCount(params: Record<string, string>, workspaceId: string): Promise<number> {
+  const q = new URLSearchParams(params);
+  q.set("workspace_id", workspaceId);
+  q.set("count_only", "true");
+  const qs = q.toString();
   const url = `/api/transactions?${qs}`;
-  const res = await fetch(url);
+  const res = await fetch(url, transactionsListFetchInit(workspaceId));
   const body = await res.json().catch(() => ({}));
   if (!res.ok) return 0;
   return body.count ?? 0;
 }
 
-async function fetchTotalPendingCount(): Promise<number> {
-  return fetchCount({ inbox: "true" });
+async function fetchTotalPendingCount(workspaceId: string): Promise<number> {
+  return fetchCount({ inbox: "true" }, workspaceId);
 }
 
-async function fetchUnanalyzedIds(params: Record<string, string>): Promise<string[]> {
+async function fetchUnanalyzedIds(
+  params: Record<string, string>,
+  workspaceId: string,
+): Promise<string[]> {
   const limit = 1000;
   let offset = 0;
   const allIds: string[] = [];
@@ -54,15 +73,19 @@ async function fetchUnanalyzedIds(params: Record<string, string>): Promise<strin
   // This ensures we analyze all remaining transactions, not just the first page.
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const qs = new URLSearchParams({
+    const q = new URLSearchParams({
       ...params,
       analyzed_only: "false",
       limit: String(limit),
       offset: String(offset),
-    }).toString();
-    const res = await fetch(`/api/transactions?${qs}`);
+    });
+    q.set("workspace_id", workspaceId);
+    const qs = q.toString();
+    const res = await fetch(`/api/transactions?${qs}`, transactionsListFetchInit(workspaceId));
     if (!res.ok) {
-      throw new Error("Failed to load unanalyzed transactions");
+      const errBody = (await res.json().catch(() => ({}))) as { error?: string };
+      const detail = errBody.error ?? res.statusText ?? `HTTP ${res.status}`;
+      throw new Error(`Failed to load unanalyzed transactions: ${detail}`);
     }
     const body = await res.json();
     const data = (body.data ?? []) as { id: string }[];
@@ -82,6 +105,7 @@ export function InboxPageClient({
   initialUnanalyzedCount = 0,
   initialTransactions,
   userId,
+  workspaceId,
   taxRate = 0.24,
 }: InboxPageClientProps) {
   const [selectedYear, setSelectedYear] = useState(initialYear);
@@ -182,22 +206,31 @@ export function InboxPageClient({
 
   const reloadInbox = useCallback(async () => {
     const [txs, countForYear, totalPending, unanalyzed] = await Promise.all([
-      fetchTransactions({
-        tax_year: String(selectedYear),
-        inbox: "true",
-        limit: "50",
-      }),
-      fetchCount({
-        tax_year: String(selectedYear),
-        inbox: "true",
-      }),
-      fetchTotalPendingCount(),
-      fetchCount({
-        tax_year: String(selectedYear),
-        status: "pending",
-        transaction_type: "expense",
-        analyzed_only: "false",
-      }),
+      fetchTransactions(
+        {
+          tax_year: String(selectedYear),
+          inbox: "true",
+          limit: "50",
+        },
+        workspaceId,
+      ),
+      fetchCount(
+        {
+          tax_year: String(selectedYear),
+          inbox: "true",
+        },
+        workspaceId,
+      ),
+      fetchTotalPendingCount(workspaceId),
+      fetchCount(
+        {
+          tax_year: String(selectedYear),
+          status: "pending",
+          transaction_type: "expense",
+          analyzed_only: "false",
+        },
+        workspaceId,
+      ),
     ]);
     setTransactions(txs);
     setPendingCount(totalPending);
@@ -205,7 +238,7 @@ export function InboxPageClient({
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("inbox-count-changed"));
     }
-  }, [selectedYear]);
+  }, [selectedYear, workspaceId]);
 
   function runBackgroundAI(txIds: string[]): Promise<{ ok: boolean; error?: string }> {
     if (txIds.length === 0) return Promise.resolve({ ok: true });
@@ -345,11 +378,14 @@ export function InboxPageClient({
   async function runBulkAnalyze() {
     setBulkAnalyzing(true);
     try {
-      const allIds = await fetchUnanalyzedIds({
-        tax_year: String(selectedYear),
-        status: "pending",
-        transaction_type: "expense",
-      });
+      const allIds = await fetchUnanalyzedIds(
+        {
+          tax_year: String(selectedYear),
+          status: "pending",
+          transaction_type: "expense",
+        },
+        workspaceId,
+      );
       if (allIds.length === 0) {
         setToast("No transactions need analysis");
         setTimeout(() => setToast(null), 3000);
@@ -365,6 +401,10 @@ export function InboxPageClient({
           break;
         }
       }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to load transactions for bulk analysis";
+      setToast(msg);
+      setTimeout(() => setToast(null), 8000);
     } finally {
       setBulkAnalyzing(false);
     }
@@ -568,15 +608,18 @@ export function InboxPageClient({
 
   const handleCheckSimilar = useCallback(
     async (vendor: string, excludeId: string): Promise<Transaction[]> => {
-      return fetchTransactions({
-        tax_year: String(selectedYear),
-        status: "pending",
-        transaction_type: "expense",
-        vendor_normalized: normalizeVendor(vendor),
-        exclude_id: excludeId,
-      });
+      return fetchTransactions(
+        {
+          tax_year: String(selectedYear),
+          status: "pending",
+          transaction_type: "expense",
+          vendor_normalized: normalizeVendor(vendor),
+          exclude_id: excludeId,
+        },
+        workspaceId,
+      );
     },
-    [selectedYear],
+    [selectedYear, workspaceId],
   );
 
   const handleApplyToAllSimilar = useCallback(

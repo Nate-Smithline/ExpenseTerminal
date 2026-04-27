@@ -222,7 +222,10 @@
               Estimated value captured from deductions
             </p>
            </div>
-          <div className="border border-[#F0F1F7] rounded-none bg-white p-6">
+          <div
+            id="quarterly-estimated-tax"
+            className="border border-[#F0F1F7] rounded-none bg-white p-6 scroll-mt-24 ring-offset-2"
+          >
             <p className="text-xs font-medium text-mono-medium uppercase tracking-wider mb-1.5">Est. Payment</p>
              <p className="text-xl font-sans font-semibold text-mono-dark tabular-nums tracking-tight">
               ${estPayment.toLocaleString("en-US", { minimumFractionDigits: 2 })}

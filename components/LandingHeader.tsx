@@ -11,7 +11,7 @@ type NavLink = { href: string; label: string; primary?: true };
 
 const NAV_LINKS: NavLink[] = [
   ...(SHOW_PRICING_LINK ? [{ href: "/pricing", label: "Pricing" } satisfies NavLink] : []),
-  { href: "/request-demo", label: "Request Demo" },
+  { href: "/lets-talk", label: "Let’s Talk" },
   { href: "/login", label: "Login" },
   { href: "/signup", label: "Try Free", primary: true },
 ];
@@ -69,10 +69,10 @@ export function LandingHeader() {
       <nav className="flex items-center justify-between px-4 md:px-16 py-3 bg-[#5B82B4]">
         <Link
           href="/"
-          className="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-accent-sage/50 rounded"
+          className="flex items-center gap-2 rounded-[var(--radius-lg)] focus:outline-none focus:ring-2 focus:ring-cta-blue/40"
         >
           <Image
-            src="/xt-logo-v2.png"
+            src="/xt-logo-brand.png"
             alt="XT"
             width={168}
             height={60}
@@ -88,7 +88,7 @@ export function LandingHeader() {
               <Link
                 key={item.href}
                 href={item.href}
-                className="inline-flex items-center justify-center bg-black px-5 py-2.5 text-sm font-medium text-white rounded-none transition-colors hover:opacity-70"
+                className="inline-flex items-center justify-center bg-black px-5 py-2.5 text-sm font-medium text-white rounded-2xl transition-colors hover:opacity-70"
               >
                 {item.label}
               </Link>
@@ -110,7 +110,7 @@ export function LandingHeader() {
             <Link
               key={item.href}
               href={item.href}
-              className="inline-flex items-center justify-center bg-black px-4 py-2 text-sm font-medium text-white rounded-none transition-colors hover:opacity-70"
+              className="inline-flex items-center justify-center bg-black px-4 py-2 text-sm font-medium text-white rounded-2xl transition-colors hover:opacity-70"
             >
               {item.label}
             </Link>
@@ -174,7 +174,7 @@ export function LandingHeader() {
                   onClick={closeMenu}
                   className={
                     "primary" in item && item.primary
-                      ? "mx-4 mt-2 inline-flex items-center justify-center bg-black px-5 py-2.5 text-base font-medium text-white rounded-none transition-colors hover:opacity-70 text-center"
+                      ? "mx-4 mt-2 inline-flex items-center justify-center bg-black px-5 py-2.5 text-base font-medium text-white rounded-2xl transition-colors hover:opacity-70 text-center"
                       : "px-4 py-3 text-base text-black hover:bg-white/10 transition-colors"
                   }
                 >

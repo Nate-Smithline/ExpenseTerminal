@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { Sidebar } from "./Sidebar";
 import { UpgradeModalProvider } from "./UpgradeModalContext";
+import { CommandPaletteProvider, CommandPaletteMobileTrigger } from "./CommandPalette";
 
 const AUTH_ROUTES = ["/login", "/signup", "/auth", "/terms", "/privacy", "/cookies"];
-const FULL_WIDTH_ROUTES = ["/", "/pricing", "/request-demo"];
+const FULL_WIDTH_ROUTES = ["/", "/pricing", "/request-demo", "/lets-talk", "/onboarding", "/setup", "/brand"];
 
 const mobileFooterNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
@@ -101,6 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <UpgradeModalProvider>
+    <CommandPaletteProvider>
     <div className="min-h-screen flex bg-white">
       {/* Desktop sidebar — hidden on mobile */}
       <aside className="hidden md:block sticky top-0 h-screen shrink-0">
@@ -147,6 +149,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </span>
             </Link>
           ))}
+          <CommandPaletteMobileTrigger />
           <button
             type="button"
             onClick={mobileMenuOpen ? closeMenu : openMenu}
@@ -220,7 +223,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="px-5 pb-[calc(env(safe-area-inset-bottom)+12px)]">
               <a
                 href="mailto:expenseterminal@outlook.com"
-                className="w-full h-11 bg-[#E8EEF5] border border-[#F0F1F7] text-mono-dark text-sm font-medium rounded-none inline-flex items-center justify-center"
+                className="w-full h-11 bg-[#E8EEF5] border border-[#F0F1F7] text-mono-dark text-sm font-medium rounded-2xl inline-flex items-center justify-center"
               >
                 Contact Team
               </a>
@@ -229,6 +232,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
     </div>
+    </CommandPaletteProvider>
     </UpgradeModalProvider>
   );
 }

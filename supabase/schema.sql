@@ -326,6 +326,180 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_data_sources_user_fc_account
   ON public.data_sources(user_id, financial_connections_account_id)
   WHERE financial_connections_account_id IS NOT NULL;
 
+-- Workspaces MVP columns + backfill (keeps PostgREST schema in sync with the app)
+CREATE TABLE IF NOT EXISTS public.workspaces (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  business_type TEXT,
+  tax_filing_status TEXT,
+  fiscal_year_start INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.workspace_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES public.workspaces(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member',
+  joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (workspace_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_members_user ON public.workspace_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_members_workspace ON public.workspace_members(workspace_id);
+
+ALTER TABLE public.data_sources
+  ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id);
+
+ALTER TABLE public.transactions
+  ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id);
+
+ALTER TABLE public.deductions
+  ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id);
+
+ALTER TABLE public.vendor_patterns
+  ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES public.workspaces(id);
+
+CREATE INDEX IF NOT EXISTS idx_data_sources_workspace ON public.data_sources(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_workspace_date ON public.transactions(workspace_id, date DESC);
+CREATE INDEX IF NOT EXISTS idx_deductions_workspace_year ON public.deductions(workspace_id, tax_year);
+CREATE INDEX IF NOT EXISTS idx_vendor_patterns_workspace ON public.vendor_patterns(workspace_id);
+
+WITH users_with_data AS (
+  SELECT DISTINCT user_id FROM public.transactions
+  UNION
+  SELECT DISTINCT user_id FROM public.data_sources
+  UNION
+  SELECT DISTINCT user_id FROM public.deductions
+  UNION
+  SELECT DISTINCT user_id FROM public.vendor_patterns
+), user_names AS (
+  SELECT p.id AS user_id,
+         NULLIF(TRIM(COALESCE(p.display_name, CONCAT_WS(' ', p.first_name, p.last_name))), '') AS display_name,
+         NULLIF(TRIM(COALESCE(p.email, '')), '') AS email
+  FROM public.profiles p
+), to_create AS (
+  SELECT
+    u.user_id,
+    gen_random_uuid() AS workspace_id,
+    COALESCE(un.display_name, un.email, 'My workspace') AS workspace_name
+  FROM users_with_data u
+  LEFT JOIN user_names un ON un.user_id = u.user_id
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.workspace_members wm
+    WHERE wm.user_id = u.user_id
+  )
+), created AS (
+  INSERT INTO public.workspaces (id, name)
+  SELECT workspace_id, workspace_name FROM to_create
+  RETURNING id
+)
+INSERT INTO public.workspace_members (workspace_id, user_id, role)
+SELECT tc.workspace_id, tc.user_id, 'owner'
+FROM to_create tc
+JOIN created c ON c.id = tc.workspace_id;
+
+UPDATE public.transactions t
+SET workspace_id = wm.workspace_id
+FROM public.workspace_members wm
+WHERE t.workspace_id IS NULL
+  AND wm.user_id = t.user_id;
+
+UPDATE public.data_sources s
+SET workspace_id = wm.workspace_id
+FROM public.workspace_members wm
+WHERE s.workspace_id IS NULL
+  AND wm.user_id = s.user_id;
+
+UPDATE public.deductions d
+SET workspace_id = wm.workspace_id
+FROM public.workspace_members wm
+WHERE d.workspace_id IS NULL
+  AND wm.user_id = d.user_id;
+
+UPDATE public.vendor_patterns v
+SET workspace_id = wm.workspace_id
+FROM public.workspace_members wm
+WHERE v.workspace_id IS NULL
+  AND wm.user_id = v.user_id;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.transactions WHERE workspace_id IS NULL) THEN
+    RAISE NOTICE 'transactions.workspace_id still NULL for some rows; leaving nullable';
+  ELSE
+    ALTER TABLE public.transactions ALTER COLUMN workspace_id SET NOT NULL;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.data_sources WHERE workspace_id IS NULL) THEN
+    RAISE NOTICE 'data_sources.workspace_id still NULL for some rows; leaving nullable';
+  ELSE
+    ALTER TABLE public.data_sources ALTER COLUMN workspace_id SET NOT NULL;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.deductions WHERE workspace_id IS NULL) THEN
+    RAISE NOTICE 'deductions.workspace_id still NULL for some rows; leaving nullable';
+  ELSE
+    ALTER TABLE public.deductions ALTER COLUMN workspace_id SET NOT NULL;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.vendor_patterns WHERE workspace_id IS NULL) THEN
+    RAISE NOTICE 'vendor_patterns.workspace_id still NULL for some rows; leaving nullable';
+  ELSE
+    ALTER TABLE public.vendor_patterns ALTER COLUMN workspace_id SET NOT NULL;
+  END IF;
+END $$;
+
+DROP POLICY IF EXISTS data_sources_select_org_rules ON public.data_sources;
+DROP POLICY IF EXISTS data_sources_insert_own ON public.data_sources;
+DROP POLICY IF EXISTS data_sources_update_own ON public.data_sources;
+DROP POLICY IF EXISTS data_sources_delete_own ON public.data_sources;
+DROP POLICY IF EXISTS transactions_select_org_data_sources ON public.transactions;
+
+ALTER TABLE public.data_sources DROP COLUMN IF EXISTS org_id;
+
+DROP POLICY IF EXISTS "Data sources: members can manage" ON public.data_sources;
+CREATE POLICY "Data sources: members can manage"
+  ON public.data_sources FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = data_sources.workspace_id
+        AND wm.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = data_sources.workspace_id
+        AND wm.user_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "Transactions: members can manage" ON public.transactions;
+CREATE POLICY "Transactions: members can manage"
+  ON public.transactions FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = transactions.workspace_id
+        AND wm.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.workspace_members wm
+      WHERE wm.workspace_id = transactions.workspace_id
+        AND wm.user_id = auth.uid()
+    )
+  );
+
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS display_name TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS deduction_likelihood TEXT;
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS enrichment_status TEXT NOT NULL DEFAULT 'pending';
+
 ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS name TEXT;
 ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS conditions JSONB NOT NULL DEFAULT '{}'::jsonb;

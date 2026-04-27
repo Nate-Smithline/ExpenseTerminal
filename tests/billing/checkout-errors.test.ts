@@ -14,6 +14,8 @@ vi.mock("@/lib/middleware/auth", () => ({
 
 vi.mock("@/lib/stripe", () => ({
   getStripeClient: vi.fn(),
+  getStripeMode: vi.fn(() => "test"),
+  getStripeProductIdForPlan: vi.fn(() => "prod_test"),
   assertStripeProductEnv: vi.fn(),
 }));
 
@@ -47,7 +49,7 @@ describe("POST /api/billing/checkout error paths", () => {
   it("returns 500 when assertStripeProductEnv throws", async () => {
     const stripe = await import("@/lib/stripe");
     vi.mocked(stripe.assertStripeProductEnv).mockImplementationOnce(() => {
-      throw new Error("Starter product is not configured.");
+      throw new Error("Plus product is not configured.");
     });
 
     const { POST } = await import("@/app/api/billing/checkout/route");
@@ -55,7 +57,7 @@ describe("POST /api/billing/checkout error paths", () => {
       new Request("http://localhost/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: "starter" }),
+        body: JSON.stringify({ plan: "plus" }),
       })
     );
     expect(res.status).toBe(500);
