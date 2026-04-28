@@ -217,6 +217,58 @@ export function BrandShowcase() {
     return { pts, poly, strokePoly, min, max };
   }, [cashflowRows]);
 
+  const sparkCompare = useMemo(() => {
+    // A secondary, smoother series (e.g. prior period) for the “two line” look.
+    const nets = cashflowRows.map((r) => r.income - r.spend);
+    const compare = nets.map((v, i) => v - 0.9 + Math.sin(i * 0.9) * 0.25);
+    const min = Math.min(...nets, ...compare);
+    const max = Math.max(...nets, ...compare);
+    const range = Math.max(0.001, max - min);
+
+    const pts = nets.map((v, i) => {
+      const xPct = (i / Math.max(1, nets.length - 1)) * 100;
+      const yPct = (1 - (v - min) / range) * 100;
+      return { xPct, yPct, v };
+    });
+    const pts2 = compare.map((v, i) => {
+      const xPct = (i / Math.max(1, compare.length - 1)) * 100;
+      const yPct = (1 - (v - min) / range) * 100;
+      return { xPct, yPct, v };
+    });
+
+    function strokePolygon(points: { xPct: number; yPct: number }[], thicknessPct: number) {
+      if (points.length < 2) return "";
+      const left: { x: number; y: number }[] = [];
+      const right: { x: number; y: number }[] = [];
+
+      for (let i = 0; i < points.length; i++) {
+        const prev = points[Math.max(0, i - 1)];
+        const next = points[Math.min(points.length - 1, i + 1)];
+        const dx = next.xPct - prev.xPct;
+        const dy = next.yPct - prev.yPct;
+        const len = Math.max(0.001, Math.hypot(dx, dy));
+        const nx = (-dy / len) * thicknessPct;
+        const ny = (dx / len) * thicknessPct;
+
+        const p = points[i];
+        left.push({ x: p.xPct + nx, y: p.yPct + ny });
+        right.push({ x: p.xPct - nx, y: p.yPct - ny });
+      }
+
+      const all = [...left, ...right.reverse()];
+      return all.map((p) => `${p.x.toFixed(2)}% ${p.y.toFixed(2)}%`).join(", ");
+    }
+
+    return {
+      pts,
+      pts2,
+      stroke1: strokePolygon(pts, 0.85),
+      stroke2: strokePolygon(pts2, 0.8),
+      min,
+      max,
+    };
+  }, [cashflowRows]);
+
   function reorder(list: string[], from: number, to: number) {
     const copy = list.slice();
     const [item] = copy.splice(from, 1);
@@ -602,15 +654,47 @@ export function BrandShowcase() {
               }}
             >
               <div style={{ padding: 12, borderBottom: "1px solid var(--border)" }}>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
+                  <div>
+                    <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 650, letterSpacing: "-0.01em" }}>
+                      Gross volume
+                      <span
+                        style={{
+                          marginLeft: 8,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          height: 20,
+                          padding: "0 8px",
+                          borderRadius: 999,
+                          background: "rgba(31,122,74,0.14)",
+                          color: "rgba(31,122,74,0.95)",
+                          fontSize: 12,
+                          fontWeight: 650,
+                        }}
+                      >
+                        +262.2%
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 22, letterSpacing: "-0.02em", color: "var(--accent)" }}>
+                      €45,918.67
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 16, color: "rgba(17,17,17,0.80)", fontFamily: "var(--mono)" }}>
+                    €12,676.88
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ padding: 12, paddingTop: 10 }}>
                 <div
                   className="card"
                   style={{
                     position: "relative",
-                    height: 66,
+                    height: 74,
                     background:
                       "linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.30))",
-                    border: "1px solid var(--border)",
-                    borderRadius: 12,
+                    border: "1px solid rgba(17,17,17,0.08)",
+                    borderRadius: 10,
                     boxShadow: "none",
                     overflow: "hidden",
                   }}
@@ -621,28 +705,47 @@ export function BrandShowcase() {
                     style={{
                       position: "absolute",
                       inset: 0,
-                      background:
-                        "repeating-linear-gradient(90deg, rgba(17,17,17,0.05) 0px, rgba(17,17,17,0.05) 1px, transparent 1px, transparent 52px), repeating-linear-gradient(180deg, rgba(17,17,17,0.05) 0px, rgba(17,17,17,0.05) 1px, transparent 1px, transparent 22px)",
-                      opacity: 0.55,
+                      background: "repeating-linear-gradient(180deg, rgba(17,17,17,0.05) 0px, rgba(17,17,17,0.05) 1px, transparent 1px, transparent 24px)",
+                      opacity: 0.5,
                     }}
                   />
+
+                  {/* baseline */}
                   <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      bottom: 12,
+                      height: 1,
+                      background: "rgba(17,17,17,0.10)",
+                    }}
+                  />
+
+                  {/* secondary (gray) line */}
+                  <div
+                    aria-hidden="true"
                     style={{
                       position: "absolute",
                       inset: 0,
-                      background: "linear-gradient(180deg, rgba(47,111,235,0.22), rgba(47,111,235,0.04))",
-                      clipPath: `polygon(${spark.poly})`,
+                      background: "rgba(17,17,17,0.35)",
+                      clipPath: `polygon(${sparkCompare.stroke2})`,
+                      opacity: 0.65,
                     }}
                   />
+
+                  {/* primary (blue) line */}
                   <div
                     aria-hidden="true"
                     style={{
                       position: "absolute",
                       inset: 0,
                       background: "rgba(47,111,235,0.92)",
-                      clipPath: `polygon(${spark.strokePoly})`,
+                      clipPath: `polygon(${sparkCompare.stroke1})`,
                     }}
                   />
+
                   {graphHover !== null ? (
                     <div
                       aria-hidden="true"
@@ -650,14 +753,14 @@ export function BrandShowcase() {
                         position: "absolute",
                         top: 0,
                         bottom: 0,
-                        left: `${spark.pts[graphHover].xPct}%`,
+                        left: `${sparkCompare.pts[graphHover].xPct}%`,
                         width: 1,
                         background: "rgba(17,17,17,0.12)",
                       }}
                     />
                   ) : null}
 
-                  {spark.pts.map((p, i) => {
+                  {sparkCompare.pts.map((p, i) => {
                     const active = graphHover === i;
                     return (
                       <div
@@ -672,6 +775,7 @@ export function BrandShowcase() {
                           background: active ? "rgba(47,111,235,0.95)" : "rgba(17,17,17,0.22)",
                           boxShadow: active ? "0 0 0 3px rgba(47,111,235,0.18)" : "none",
                           border: "2px solid rgba(255,255,255,0.92)",
+                          opacity: active ? 1 : 0,
                         }}
                         aria-hidden="true"
                       />
@@ -681,8 +785,8 @@ export function BrandShowcase() {
                     <div
                       style={{
                         position: "absolute",
-                        left: `${spark.pts[graphHover].xPct}%`,
-                        top: `${spark.pts[graphHover].yPct}%`,
+                        left: `${sparkCompare.pts[graphHover].xPct}%`,
+                        top: `${sparkCompare.pts[graphHover].yPct}%`,
                         transform: "translate(-50%, -120%)",
                         padding: "7px 10px",
                         borderRadius: 10,
@@ -706,12 +810,13 @@ export function BrandShowcase() {
                     style={{
                       position: "absolute",
                       left: 10,
-                      bottom: 8,
+                      bottom: 6,
                       fontSize: 12,
                       color: "var(--muted)",
                     }}
                   >
-                    Net range <span className="kbd">{spark.min.toFixed(1)}k</span>–<span className="kbd">{spark.max.toFixed(1)}k</span>
+                    <span style={{ color: "var(--faint)" }}>Jun 2019</span>
+                    <span style={{ position: "absolute", right: 10, bottom: 0, color: "var(--faint)" }}>May 2020</span>
                   </div>
                 </div>
               </div>
