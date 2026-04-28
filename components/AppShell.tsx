@@ -7,13 +7,13 @@ import { Sidebar } from "./Sidebar";
 import { UpgradeModalProvider } from "./UpgradeModalContext";
 
 const AUTH_ROUTES = ["/login", "/signup", "/auth", "/terms", "/privacy", "/cookies"];
-const FULL_WIDTH_ROUTES = ["/", "/pricing", "/request-demo"];
+const FULL_WIDTH_ROUTES = ["/", "/pricing", "/request-demo", "/about", "/how-it-works"];
 
 const mobileFooterNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
-  { href: "/data-sources", label: "Accounts & Data", icon: "database" },
-  { href: "/inbox", label: "Inbox", icon: "inbox" },
-  { href: "/other-deductions", label: "Deductions", icon: "receipt_long" },
+  { href: "/transactions", label: "Transactions", icon: "inbox" },
+  { href: "/deductions", label: "Deductions", icon: "receipt_long" },
+  { href: "/tax-calendar", label: "Calendar", icon: "event" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -135,7 +135,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <span className="relative material-symbols-rounded text-[22px] leading-none">
                 {item.icon}
-                {item.href === "/inbox" && inboxCount != null && inboxCount > 0 && (
+                {item.href === "/transactions" && inboxCount != null && inboxCount > 0 && (
                   <span
                     className="absolute -top-0.5 -right-1.5 h-2 w-2 rounded-full bg-[#2563EB]"
                     aria-label="Inbox has items"

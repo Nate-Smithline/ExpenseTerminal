@@ -7,10 +7,10 @@ import { useState, useEffect } from "react";
 
 const mainNav = [
   { href: "/dashboard", label: "Home", icon: "home" },
-  { href: "/data-sources", label: "Accounts & Data", icon: "database" },
-  { href: "/inbox", label: "Inbox", icon: "visibility" },
-  { href: "/other-deductions", label: "Other Deductions", icon: "receipt_long" },
-  { href: "/tax-filing", label: "Tax Filing", icon: "description" },
+  { href: "/transactions", label: "Transactions", icon: "inbox" },
+  { href: "/deductions", label: "Deductions", icon: "receipt_long" },
+  { href: "/tax-calendar", label: "Tax Calendar", icon: "event" },
+  { href: "/settings", label: "Settings", icon: "settings" },
 ];
 
 const bottomNav = [
@@ -85,7 +85,7 @@ export function Sidebar() {
               {item.icon}
             </span>
             <span className="flex-1">{item.label}</span>
-            {item.href === "/inbox" && inboxCount != null && inboxCount > 0 && (
+            {item.href === "/transactions" && inboxCount != null && inboxCount > 0 && (
               <span className="bg-[#2563EB] text-white text-[11px] font-semibold rounded-none px-2 py-0.5 tabular-nums">
                 <span className="relative top-px">{inboxCount}</span>
               </span>
