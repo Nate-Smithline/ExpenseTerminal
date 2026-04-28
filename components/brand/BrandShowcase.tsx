@@ -146,22 +146,6 @@ export function BrandShowcase() {
     }
   }
 
-  const series = useMemo(() => [4, 6, 5, 7, 10, 9, 12, 11, 14, 13, 16, 15], []);
-
-  const chart = useMemo(() => {
-    const w = 520;
-    const h = 120;
-    const pad = 12;
-    const min = Math.min(...series);
-    const max = Math.max(...series);
-    const range = Math.max(1, max - min);
-    const xs = series.map((_, i) => pad + (i * (w - pad * 2)) / (series.length - 1));
-    const ys = series.map((v) => pad + (1 - (v - min) / range) * (h - pad * 2));
-    const points = xs.map((x, i) => ({ x, y: ys[i], v: series[i] }));
-    const d = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
-    return { w, h, pad, points, d, min, max };
-  }, [series]);
-
   const cashflowRows = useMemo(
     () => [
       { week: "W1", income: 12.4, spend: 9.1 },
@@ -174,98 +158,60 @@ export function BrandShowcase() {
     [],
   );
 
-  const spark = useMemo(() => {
-    const nets = cashflowRows.map((r) => r.income - r.spend);
-    const min = Math.min(...nets);
-    const max = Math.max(...nets);
-    const range = Math.max(0.001, max - min);
-    const pts = nets.map((v, i) => {
-      const xPct = (i / Math.max(1, nets.length - 1)) * 100;
-      const yPct = (1 - (v - min) / range) * 100;
-      return { xPct, yPct, v };
-    });
-    const poly = [
-      `0% 100%`,
-      ...pts.map((p) => `${p.xPct.toFixed(2)}% ${p.yPct.toFixed(2)}%`),
-      `100% 100%`,
-    ].join(", ");
-
-    function strokePolygon(points: { xPct: number; yPct: number }[], thicknessPct: number) {
-      if (points.length < 2) return "";
-      const left: { x: number; y: number }[] = [];
-      const right: { x: number; y: number }[] = [];
-
-      for (let i = 0; i < points.length; i++) {
-        const prev = points[Math.max(0, i - 1)];
-        const next = points[Math.min(points.length - 1, i + 1)];
-        const dx = next.xPct - prev.xPct;
-        const dy = next.yPct - prev.yPct;
-        const len = Math.max(0.001, Math.hypot(dx, dy));
-        const nx = (-dy / len) * thicknessPct;
-        const ny = (dx / len) * thicknessPct;
-
-        const p = points[i];
-        left.push({ x: p.xPct + nx, y: p.yPct + ny });
-        right.push({ x: p.xPct - nx, y: p.yPct - ny });
-      }
-
-      const all = [...left, ...right.reverse()];
-      return all.map((p) => `${p.x.toFixed(2)}% ${p.y.toFixed(2)}%`).join(", ");
-    }
-
-    const strokePoly = strokePolygon(pts, 0.9);
-    return { pts, poly, strokePoly, min, max };
-  }, [cashflowRows]);
-
-  const sparkCompare = useMemo(() => {
-    // A secondary, smoother series (e.g. prior period) for the “two line” look.
-    const nets = cashflowRows.map((r) => r.income - r.spend);
-    const compare = nets.map((v, i) => v - 0.9 + Math.sin(i * 0.9) * 0.25);
-    const min = Math.min(...nets, ...compare);
-    const max = Math.max(...nets, ...compare);
+  const chart = useMemo(() => {
+    const primary = cashflowRows.map((r) => r.income - r.spend);
+    const secondary = primary.map((v, i) => v - 0.9 + Math.sin(i * 0.9) * 0.25);
+    const min = Math.min(...primary, ...secondary);
+    const max = Math.max(...primary, ...secondary);
     const range = Math.max(0.001, max - min);
 
-    const pts = nets.map((v, i) => {
-      const xPct = (i / Math.max(1, nets.length - 1)) * 100;
-      const yPct = (1 - (v - min) / range) * 100;
-      return { xPct, yPct, v };
+    const w = 760;
+    const h = 190;
+    const padX = 18;
+    const padY = 18;
+
+    const points1 = primary.map((v, i) => {
+      const x = padX + (i * (w - padX * 2)) / Math.max(1, primary.length - 1);
+      const y = padY + (1 - (v - min) / range) * (h - padY * 2);
+      return { x, y, v };
     });
-    const pts2 = compare.map((v, i) => {
-      const xPct = (i / Math.max(1, compare.length - 1)) * 100;
-      const yPct = (1 - (v - min) / range) * 100;
-      return { xPct, yPct, v };
+    const points2 = secondary.map((v, i) => {
+      const x = padX + (i * (w - padX * 2)) / Math.max(1, secondary.length - 1);
+      const y = padY + (1 - (v - min) / range) * (h - padY * 2);
+      return { x, y, v };
     });
 
-    function strokePolygon(points: { xPct: number; yPct: number }[], thicknessPct: number) {
-      if (points.length < 2) return "";
-      const left: { x: number; y: number }[] = [];
-      const right: { x: number; y: number }[] = [];
-
-      for (let i = 0; i < points.length; i++) {
-        const prev = points[Math.max(0, i - 1)];
-        const next = points[Math.min(points.length - 1, i + 1)];
-        const dx = next.xPct - prev.xPct;
-        const dy = next.yPct - prev.yPct;
-        const len = Math.max(0.001, Math.hypot(dx, dy));
-        const nx = (-dy / len) * thicknessPct;
-        const ny = (dx / len) * thicknessPct;
-
-        const p = points[i];
-        left.push({ x: p.xPct + nx, y: p.yPct + ny });
-        right.push({ x: p.xPct - nx, y: p.yPct - ny });
+    const catmullRomToBezier = (pts: { x: number; y: number }[]) => {
+      if (pts.length < 2) return "";
+      const d: string[] = [];
+      d.push(`M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(0, i - 1)];
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        const p3 = pts[Math.min(pts.length - 1, i + 2)];
+        const c1x = p1.x + (p2.x - p0.x) / 6;
+        const c1y = p1.y + (p2.y - p0.y) / 6;
+        const c2x = p2.x - (p3.x - p1.x) / 6;
+        const c2y = p2.y - (p3.y - p1.y) / 6;
+        d.push(
+          `C ${c1x.toFixed(2)} ${c1y.toFixed(2)}, ${c2x.toFixed(2)} ${c2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`,
+        );
       }
-
-      const all = [...left, ...right.reverse()];
-      return all.map((p) => `${p.x.toFixed(2)}% ${p.y.toFixed(2)}%`).join(", ");
-    }
+      return d.join(" ");
+    };
 
     return {
-      pts,
-      pts2,
-      stroke1: strokePolygon(pts, 0.85),
-      stroke2: strokePolygon(pts2, 0.8),
+      w,
+      h,
+      padX,
+      padY,
       min,
       max,
+      points1,
+      points2,
+      d1: catmullRomToBezier(points1),
+      d2: catmullRomToBezier(points2),
     };
   }, [cashflowRows]);
 
@@ -666,7 +612,7 @@ export function BrandShowcase() {
                       <span style={{ marginLeft: 10, fontSize: 12, color: "var(--muted)" }}>
                         range{" "}
                         <span className="kbd">
-                          {sparkCompare.min.toFixed(1)}k–{sparkCompare.max.toFixed(1)}k
+                          {chart.min.toFixed(1)}k–{chart.max.toFixed(1)}k
                         </span>
                       </span>
                     </div>
@@ -699,93 +645,98 @@ export function BrandShowcase() {
                     setGraphHover(i);
                   }}
                 >
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      background: "repeating-linear-gradient(180deg, rgba(17,17,17,0.05) 0px, rgba(17,17,17,0.05) 1px, transparent 1px, transparent 24px)",
-                      opacity: 0.5,
-                    }}
-                  />
+                  <svg
+                    width="100%"
+                    height="100%"
+                    viewBox={`0 0 ${chart.w} ${chart.h}`}
+                    preserveAspectRatio="none"
+                    role="img"
+                    aria-label="Cashflow line chart"
+                    style={{ display: "block" }}
+                  >
+                    <defs>
+                      <linearGradient id="fillPrimary" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="rgba(47,111,235,0.18)" />
+                        <stop offset="100%" stopColor="rgba(47,111,235,0.02)" />
+                      </linearGradient>
+                    </defs>
 
-                  {/* baseline */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      right: 0,
-                      bottom: 18,
-                      height: 1,
-                      background: "rgba(17,17,17,0.10)",
-                    }}
-                  />
+                    {/* subtle horizontal grid */}
+                    {[0.2, 0.4, 0.6, 0.8].map((t) => {
+                      const y = chart.padY + t * (chart.h - chart.padY * 2);
+                      return (
+                        <line
+                          key={t}
+                          x1={0}
+                          x2={chart.w}
+                          y1={y}
+                          y2={y}
+                          stroke="rgba(17,17,17,0.06)"
+                          strokeWidth="1"
+                        />
+                      );
+                    })}
 
-                  {/* secondary (gray) line */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      background: "rgba(17,17,17,0.35)",
-                      clipPath: `polygon(${sparkCompare.stroke2})`,
-                      opacity: 0.65,
-                    }}
-                  />
-
-                  {/* primary (blue) line */}
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      background: "rgba(47,111,235,0.92)",
-                      clipPath: `polygon(${sparkCompare.stroke1})`,
-                    }}
-                  />
-
-                  {graphHover !== null ? (
-                    <div
-                      aria-hidden="true"
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        bottom: 0,
-                        left: `${sparkCompare.pts[graphHover].xPct}%`,
-                        width: 1,
-                        background: "rgba(17,17,17,0.12)",
-                      }}
+                    {/* filled area under primary */}
+                    <path
+                      d={`${chart.d1} L ${chart.points1[chart.points1.length - 1].x.toFixed(2)} ${(chart.h - chart.padY).toFixed(2)} L ${chart.points1[0].x.toFixed(2)} ${(chart.h - chart.padY).toFixed(2)} Z`}
+                      fill="url(#fillPrimary)"
+                      stroke="none"
                     />
-                  ) : null}
 
-                  {sparkCompare.pts.map((p, i) => {
-                    const active = graphHover === i;
-                    return (
-                      <div
-                        key={i}
-                        style={{
-                          position: "absolute",
-                          left: `calc(${p.xPct}% - 4px)`,
-                          top: `calc(${p.yPct}% - 4px)`,
-                          width: 8,
-                          height: 8,
-                          borderRadius: 999,
-                          background: active ? "rgba(47,111,235,0.95)" : "rgba(17,17,17,0.22)",
-                          boxShadow: active ? "0 0 0 3px rgba(47,111,235,0.18)" : "none",
-                          border: "2px solid rgba(255,255,255,0.92)",
-                          opacity: active ? 1 : 0,
-                        }}
-                        aria-hidden="true"
-                      />
-                    );
-                  })}
+                    {/* secondary line */}
+                    <path
+                      d={chart.d2}
+                      fill="none"
+                      stroke="rgba(17,17,17,0.40)"
+                      strokeWidth="2"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+
+                    {/* primary line */}
+                    <path
+                      d={chart.d1}
+                      fill="none"
+                      stroke="rgba(47,111,235,0.95)"
+                      strokeWidth="2.5"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+
+                    {/* hover rule + point */}
+                    {graphHover !== null ? (
+                      <>
+                        <line
+                          x1={chart.points1[graphHover].x}
+                          x2={chart.points1[graphHover].x}
+                          y1={0}
+                          y2={chart.h}
+                          stroke="rgba(17,17,17,0.12)"
+                          strokeWidth="1"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                        <circle
+                          cx={chart.points1[graphHover].x}
+                          cy={chart.points1[graphHover].y}
+                          r="4.5"
+                          fill="white"
+                          stroke="rgba(47,111,235,0.95)"
+                          strokeWidth="2.5"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      </>
+                    ) : null}
+                  </svg>
+
                   {graphHover !== null ? (
                     <div
                       style={{
                         position: "absolute",
-                        left: `${sparkCompare.pts[graphHover].xPct}%`,
-                        top: `${sparkCompare.pts[graphHover].yPct}%`,
+                        left: `${(chart.points1[graphHover].x / chart.w) * 100}%`,
+                        top: `${(chart.points1[graphHover].y / chart.h) * 100}%`,
                         transform: "translate(-50%, -120%)",
                         padding: "7px 10px",
                         borderRadius: 10,
@@ -804,12 +755,14 @@ export function BrandShowcase() {
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                             <span style={{ width: 8, height: 8, borderRadius: 999, background: "rgba(47,111,235,0.92)" }} />
                             <span style={{ fontFamily: "var(--mono)" }}>
-                              {(cashflowRows[graphHover].income - cashflowRows[graphHover].spend).toFixed(1)}k
+                              {chart.points1[graphHover].v.toFixed(1)}k
                             </span>
                           </span>
                           <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "rgba(17,17,17,0.70)" }}>
                             <span style={{ width: 8, height: 8, borderRadius: 999, background: "rgba(17,17,17,0.40)" }} />
-                            <span style={{ fontFamily: "var(--mono)" }}>{sparkCompare.pts2[graphHover].v.toFixed(1)}k</span>
+                            <span style={{ fontFamily: "var(--mono)" }}>
+                              {chart.points2[graphHover].v.toFixed(1)}k
+                            </span>
                           </span>
                         </div>
                       </div>
