@@ -1,25 +1,28 @@
 :root {
-  --bg: #ffffff;
-  --surface: #f7f7f8;
-  --surface-2: #efeff2;
-  --border: rgba(0, 0, 0, 0.10);
+  /* Braun/Rams: functional neutrals, one accent */
+  --bg: #F0EDE5;           /* Braun White */
+  --surface: #E6E1D8;      /* Light housing separation */
+  --surface-2: #C5C3BE;    /* Pebble */
+  --border: rgba(26, 26, 24, 0.18); /* Warm Black @ low alpha */
 
-  --text: #121316;
-  --muted: rgba(18, 19, 22, 0.68);
-  --faint: rgba(18, 19, 22, 0.45);
+  --text: #1A1A18;         /* Warm Black */
+  --muted: rgba(26, 26, 24, 0.72);
+  --faint: rgba(26, 26, 24, 0.48);
 
-  --accent: #1f6feb;
-  --accent-2: #0f4ccf;
-  --success: #1f7a4a;
-  --warning: #8a6a00;
-  --danger: #b42318;
+  /* Accent (use sparingly): Signal Red OR Function Yellow (not both).
+     We choose Signal Red for primary actions by default. */
+  --accent: #C02820;       /* Signal Red */
+  --accent-2: #9E1F1A;     /* Deeper red for hover */
+  --success: #1A1A18;      /* Rams: avoid green “success” unless truly functional */
+  --warning: #D4B018;      /* Function Yellow (reserved for indicators) */
+  --danger: #C02820;       /* Destructive uses same red, with tone/labeling */
 
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
 
-  --shadow-sm: 0 1px 6px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.08);
+  --shadow-sm: none;
+  --shadow-md: none;
 
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
@@ -58,8 +61,8 @@ a:hover {
 .card {
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
 }
 
 .sectionTitle {
@@ -71,7 +74,7 @@ a:hover {
 }
 
 .h1 {
-  font-size: 40px;
+  font-size: 36px;
   letter-spacing: -0.02em;
   line-height: 1.1;
   margin: 0;
@@ -104,26 +107,25 @@ a:hover {
   color: var(--text);
   height: 40px;
   padding: 0 14px;
-  border-radius: var(--radius-md);
-  font-weight: 600;
+  border-radius: var(--radius-sm);
+  font-weight: 650;
   font-size: 13px;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .btn:hover {
-  box-shadow: var(--shadow-sm);
-  transform: translateY(-1px);
+  background: rgba(26, 26, 24, 0.04);
 }
 
 .btn:active {
-  transform: translateY(0px);
+  background: rgba(26, 26, 24, 0.06);
 }
 
 .btnPrimary {
   background: var(--accent);
-  border-color: rgba(0, 0, 0, 0.10);
+  border-color: rgba(26, 26, 24, 0.22);
   color: white;
 }
 
@@ -136,15 +138,15 @@ a:hover {
 }
 
 .btnDanger {
-  background: #fff5f5;
-  border-color: rgba(180, 35, 24, 0.25);
-  color: var(--danger);
+  background: rgba(192, 40, 32, 0.08);
+  border-color: rgba(192, 40, 32, 0.28);
+  color: var(--text);
 }
 
 .input {
   height: 40px;
   padding: 0 12px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
@@ -153,8 +155,8 @@ a:hover {
 }
 
 .input:focus {
-  border-color: rgba(31, 111, 235, 0.45);
-  box-shadow: 0 0 0 4px rgba(31, 111, 235, 0.12);
+  border-color: rgba(26, 26, 24, 0.45);
+  box-shadow: 0 0 0 3px rgba(26, 26, 24, 0.10);
 }
 
 .badge {
@@ -174,7 +176,7 @@ a:hover {
   font-family: var(--mono);
   font-size: 11px;
   padding: 2px 7px;
-  border-radius: 8px;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
@@ -182,19 +184,19 @@ a:hover {
 
 .banner {
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-sm);
   padding: 14px 14px;
   background: var(--surface);
   color: var(--muted);
 }
 
 .bannerStrong {
-  background: rgba(31, 111, 235, 0.08);
-  border-color: rgba(31, 111, 235, 0.22);
+  background: var(--surface);
+  border-color: rgba(26, 26, 24, 0.28);
 }
 
 .bannerDanger {
-  background: rgba(180, 35, 24, 0.06);
-  border-color: rgba(180, 35, 24, 0.18);
+  background: rgba(192, 40, 32, 0.06);
+  border-color: rgba(192, 40, 32, 0.22);
 }
 
