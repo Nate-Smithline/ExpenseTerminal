@@ -174,6 +174,24 @@ export function BrandShowcase() {
     [],
   );
 
+  const spark = useMemo(() => {
+    const nets = cashflowRows.map((r) => r.income - r.spend);
+    const min = Math.min(...nets);
+    const max = Math.max(...nets);
+    const range = Math.max(0.001, max - min);
+    const pts = nets.map((v, i) => {
+      const xPct = (i / Math.max(1, nets.length - 1)) * 100;
+      const yPct = (1 - (v - min) / range) * 100;
+      return { xPct, yPct, v };
+    });
+    const poly = [
+      `0% 100%`,
+      ...pts.map((p) => `${p.xPct.toFixed(2)}% ${p.yPct.toFixed(2)}%`),
+      `100% 100%`,
+    ].join(", ");
+    return { pts, poly, min, max };
+  }, [cashflowRows]);
+
   function reorder(list: string[], from: number, to: number) {
     const copy = list.slice();
     const [item] = copy.splice(from, 1);
@@ -558,6 +576,62 @@ export function BrandShowcase() {
                 overflow: "hidden",
               }}
             >
+              <div style={{ padding: 12, borderBottom: "1px solid var(--border)" }}>
+                <div
+                  className="card"
+                  style={{
+                    position: "relative",
+                    height: 66,
+                    background: "rgba(255,255,255,0.32)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 12,
+                    boxShadow: "none",
+                    overflow: "hidden",
+                  }}
+                  aria-label="Line graph sparkline"
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: "rgba(47,111,235,0.16)",
+                      clipPath: `polygon(${spark.poly})`,
+                    }}
+                  />
+                  {spark.pts.map((p, i) => {
+                    const active = graphHover === i;
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          position: "absolute",
+                          left: `calc(${p.xPct}% - 5px)`,
+                          top: `calc(${p.yPct}% - 5px)`,
+                          width: 10,
+                          height: 10,
+                          borderRadius: 999,
+                          background: active ? "rgba(47,111,235,0.95)" : "rgba(17,17,17,0.26)",
+                          boxShadow: active ? "0 0 0 3px rgba(47,111,235,0.18)" : "none",
+                          border: "2px solid rgba(255,255,255,0.85)",
+                        }}
+                        aria-hidden="true"
+                      />
+                    );
+                  })}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 10,
+                      bottom: 8,
+                      fontSize: 12,
+                      color: "var(--muted)",
+                    }}
+                  >
+                    Net range <span className="kbd">{spark.min.toFixed(1)}k</span>–<span className="kbd">{spark.max.toFixed(1)}k</span>
+                  </div>
+                </div>
+              </div>
+
               <div
                 style={{
                   display: "grid",
