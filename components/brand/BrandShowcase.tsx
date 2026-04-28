@@ -97,6 +97,18 @@ export function BrandShowcase() {
   const [activeTab, setActiveTab] = useState<"Overview" | "Inbox" | "Settings">("Overview");
   const [switchOn, setSwitchOn] = useState(true);
   const [tipOpen, setTipOpen] = useState(false);
+  const [copyValue, setCopyValue] = useState("1099-K · Stripe · $4,210.00");
+  const [pasteValue, setPasteValue] = useState("");
+  const [viewMode, setViewMode] = useState<"Table" | "Board">("Table");
+  const [graphHover, setGraphHover] = useState<number | null>(null);
+  const [sortCards, setSortCards] = useState<string[]>([
+    "Review 12 transactions",
+    "Connect another account",
+    "Categorize deductions",
+    "Confirm tax calendar dates",
+  ]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
 
   const swatches: Swatch[] = useMemo(
     () => [
@@ -116,6 +128,55 @@ export function BrandShowcase() {
   function showToast(msg: string) {
     setToast(msg);
     window.setTimeout(() => setToast(null), 1400);
+  }
+
+  function clamp(n: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, n));
+  }
+
+  async function pasteFromClipboard() {
+    try {
+      const t = await navigator.clipboard.readText();
+      setPasteValue(t);
+      showToast("Pasted from clipboard");
+    } catch {
+      showToast("Paste blocked by browser permissions");
+    }
+  }
+
+  const series = useMemo(() => [4, 6, 5, 7, 10, 9, 12, 11, 14, 13, 16, 15], []);
+
+  const chart = useMemo(() => {
+    const w = 520;
+    const h = 120;
+    const pad = 12;
+    const min = Math.min(...series);
+    const max = Math.max(...series);
+    const range = Math.max(1, max - min);
+    const xs = series.map((_, i) => pad + (i * (w - pad * 2)) / (series.length - 1));
+    const ys = series.map((v) => pad + (1 - (v - min) / range) * (h - pad * 2));
+    const points = xs.map((x, i) => ({ x, y: ys[i], v: series[i] }));
+    const d = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+    return { w, h, pad, points, d, min, max };
+  }, [series]);
+
+  const cashflowRows = useMemo(
+    () => [
+      { week: "W1", income: 12.4, spend: 9.1 },
+      { week: "W2", income: 10.2, spend: 10.9 },
+      { week: "W3", income: 14.1, spend: 11.6 },
+      { week: "W4", income: 13.2, spend: 12.2 },
+      { week: "W5", income: 16.0, spend: 12.9 },
+      { week: "W6", income: 15.3, spend: 13.8 },
+    ],
+    [],
+  );
+
+  function reorder(list: string[], from: number, to: number) {
+    const copy = list.slice();
+    const [item] = copy.splice(from, 1);
+    copy.splice(to, 0, item);
+    return copy;
   }
 
   return (
@@ -364,8 +425,8 @@ export function BrandShowcase() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "120px 1fr 140px 140px",
-                gap: 0,
+                gridTemplateColumns: "120px 1fr 160px 140px 140px",
+                columnGap: 18,
                 background: "var(--surface)",
                 padding: density === "compact" ? "8px 12px" : "10px 12px",
                 fontSize: 12,
@@ -376,19 +437,21 @@ export function BrandShowcase() {
             >
               <div>Date</div>
               <div>Merchant</div>
+              <div>Label</div>
               <div style={{ textAlign: "right" }}>Amount</div>
               <div>Status</div>
             </div>
             {[
-              { date: "Oct 15", merchant: "Notion", amount: "$10.00", status: "Needs review" },
-              { date: "Oct 14", merchant: "Blue Bottle Coffee", amount: "$8.75", status: "Auto-sorted" },
-              { date: "Oct 12", merchant: "AWS", amount: "$42.13", status: "Auto-sorted" },
+              { date: "Oct 15", merchant: "Notion", label: "Software", amount: "$10.00", status: "Needs review" },
+              { date: "Oct 14", merchant: "Blue Bottle Coffee", label: "Meals", amount: "$8.75", status: "Auto-sorted" },
+              { date: "Oct 12", merchant: "AWS", label: "Infrastructure", amount: "$42.13", status: "Auto-sorted" },
             ].map((r) => (
               <div
                 key={r.date + r.merchant}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "120px 1fr 140px 140px",
+                  gridTemplateColumns: "120px 1fr 160px 140px 140px",
+                  columnGap: 18,
                   padding: density === "compact" ? "8px 12px" : "11px 12px",
                   borderTop: "1px solid var(--border)",
                   alignItems: "center",
@@ -397,12 +460,312 @@ export function BrandShowcase() {
               >
                 <div style={{ color: "var(--muted)" }}>{r.date}</div>
                 <div style={{ color: "var(--text)", fontWeight: 600 }}>{r.merchant}</div>
+                <div>
+                  <span className="badge">{r.label}</span>
+                </div>
                 <div style={{ textAlign: "right", fontFamily: "var(--mono)" }}>{r.amount}</div>
                 <div>
                   <span className="badge">{r.status}</span>
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 16 }}>
+          <p className="sectionTitle">Copy / Paste item</p>
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 650, letterSpacing: "-0.01em" }}>Copy row</div>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <input className="input" value={copyValue} onChange={(e) => setCopyValue(e.target.value)} />
+                <button
+                  className="btn btnPrimary"
+                  onClick={async () => {
+                    await copy(copyValue);
+                    showToast("Copied");
+                  }}
+                >
+                  Copy <span className="kbd">C</span>
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 650, letterSpacing: "-0.01em" }}>Paste row</div>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <input className="input" value={pasteValue} onChange={(e) => setPasteValue(e.target.value)} placeholder="Paste here…" />
+                <button className="btn" onClick={pasteFromClipboard}>
+                  Paste <span className="kbd">V</span>
+                </button>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--faint)" }}>
+                Note: paste may be blocked unless triggered by a user gesture and permitted by the browser.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 16 }}>
+          <p className="sectionTitle">Line graph (table with hover)</p>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 650, letterSpacing: "-0.01em", color: "var(--text)" }}>
+                Cashflow trend
+              </div>
+              <div style={{ marginTop: 4, color: "var(--muted)" }}>
+                Table-first: data is the UI; hover reveals the point.
+              </div>
+            </div>
+            <span className="badge">
+              Hover row: <span className="kbd">{graphHover === null ? "—" : cashflowRows[graphHover]?.week}</span>
+            </span>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div
+              className="card"
+              style={{
+                background: "var(--surface)",
+                boxShadow: "none",
+                borderRadius: 12,
+                border: "1px solid var(--border)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "70px 1fr 1fr 1fr",
+                  columnGap: 18,
+                  background: "rgba(255,255,255,0.32)",
+                  padding: density === "compact" ? "8px 12px" : "10px 12px",
+                  fontSize: 12,
+                  color: "var(--faint)",
+                  letterSpacing: "0.14em",
+                  textTransform: "uppercase",
+                  borderBottom: "1px solid var(--border)",
+                }}
+              >
+                <div>Week</div>
+                <div style={{ textAlign: "right" }}>Income</div>
+                <div style={{ textAlign: "right" }}>Spend</div>
+                <div style={{ textAlign: "right" }}>Net</div>
+              </div>
+
+              {cashflowRows.map((r, i) => {
+                const net = r.income - r.spend;
+                const hovered = graphHover === i;
+                return (
+                  <div
+                    key={r.week}
+                    onMouseEnter={() => setGraphHover(i)}
+                    onMouseLeave={() => setGraphHover(null)}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "70px 1fr 1fr 1fr",
+                      columnGap: 18,
+                      padding: density === "compact" ? "8px 12px" : "11px 12px",
+                      borderTop: "1px solid var(--border)",
+                      alignItems: "center",
+                      fontSize: 13,
+                      background: hovered ? "rgba(47,111,235,0.08)" : "transparent",
+                      cursor: "default",
+                    }}
+                  >
+                    <div style={{ color: "var(--muted)" }}>{r.week}</div>
+                    <div style={{ textAlign: "right", fontFamily: "var(--mono)" }}>${r.income.toFixed(1)}k</div>
+                    <div style={{ textAlign: "right", fontFamily: "var(--mono)" }}>${r.spend.toFixed(1)}k</div>
+                    <div style={{ textAlign: "right", fontFamily: "var(--mono)", color: net >= 0 ? "var(--text)" : "var(--danger)" }}>
+                      {net >= 0 ? "+" : "−"}${Math.abs(net).toFixed(1)}k
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div style={{ padding: density === "compact" ? "8px 12px" : "10px 12px" }}>
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                    Hover a row for detail. Keep charts legible, but keep the table authoritative.
+                  </div>
+                  {graphHover !== null ? (
+                    <span className="badge">
+                      {cashflowRows[graphHover].week} net{" "}
+                      <span className="kbd">
+                        {(cashflowRows[graphHover].income - cashflowRows[graphHover].spend).toFixed(1)}k
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="badge">
+                      Dataset <span className="kbd">6 rows</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 16 }}>
+          <p className="sectionTitle">Card sort</p>
+          <div className="p" style={{ marginBottom: 10 }}>
+            Drag to reorder. This is intentionally “low ceremony” (no animations, no libraries) for the kit.
+          </div>
+          <div style={{ display: "grid", gap: 10 }}>
+            {sortCards.map((t, i) => (
+              <div key={t} style={{ display: "grid", gap: 8 }}>
+                {dropIndex === i ? (
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      height: 0,
+                      borderTop: "2px solid rgba(47,111,235,0.65)",
+                      borderRadius: 999,
+                      boxShadow: "0 0 0 3px rgba(47,111,235,0.10)",
+                    }}
+                  />
+                ) : null}
+                <div
+                  className="card"
+                  draggable
+                  onDragStart={() => {
+                    setDragIndex(i);
+                    setDropIndex(i);
+                  }}
+                  onDragEnd={() => {
+                    setDragIndex(null);
+                    setDropIndex(null);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDropIndex(i);
+                  }}
+                  onDrop={() => {
+                    if (dragIndex === null) return;
+                    setSortCards((prev) => reorder(prev, dragIndex, i));
+                    setDragIndex(null);
+                    setDropIndex(null);
+                    showToast("Reordered");
+                  }}
+                  style={{
+                    padding: 12,
+                    background: dragIndex === i ? "rgba(17,17,17,0.02)" : "var(--bg)",
+                    boxShadow: "none",
+                    borderRadius: 12,
+                  }}
+                >
+                  <div className="row" style={{ justifyContent: "space-between" }}>
+                    <div style={{ fontWeight: 500, letterSpacing: "-0.01em", color: "var(--text)" }}>{t}</div>
+                    <span className="kbd">Drag</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {dropIndex === sortCards.length ? (
+              <div
+                aria-hidden="true"
+                style={{
+                  height: 0,
+                  borderTop: "2px solid rgba(47,111,235,0.65)",
+                  borderRadius: 999,
+                  boxShadow: "0 0 0 3px rgba(47,111,235,0.10)",
+                }}
+              />
+            ) : null}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 16 }}>
+          <p className="sectionTitle">Index cards (data items)</p>
+          <div className="p" style={{ marginBottom: 12 }}>
+            “Index card” items: data at the top, actions at the bottom. Designed for stacks, boards, and lists.
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+            {[
+              { title: "Stripe payout", subtitle: "Oct 15 · 2 items", amount: "$4,210.00", status: "Needs review" },
+              { title: "AWS bill", subtitle: "Oct 12 · Invoice", amount: "$42.13", status: "Auto-sorted" },
+              { title: "Coffee", subtitle: "Oct 14 · Receipt", amount: "$8.75", status: "Needs label" },
+            ].map((c) => (
+              <div key={c.title} className="card" style={{ padding: 12, boxShadow: "none", borderRadius: 12 }}>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 650, letterSpacing: "-0.01em", color: "var(--text)" }}>
+                      {c.title}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>{c.subtitle}</div>
+                  </div>
+                  <span className="badge">{c.status}</span>
+                </div>
+
+                <div style={{ marginTop: 12, padding: 10, borderRadius: 12, background: "var(--surface)", border: "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 12, color: "var(--faint)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                    Amount
+                  </div>
+                  <div style={{ marginTop: 6, fontFamily: "var(--mono)", fontSize: 16, color: "var(--text)" }}>{c.amount}</div>
+                </div>
+
+                <div className="row" style={{ justifyContent: "space-between", marginTop: 12 }}>
+                  <button className="btn btnGhost" style={{ height: 34, padding: "0 12px" }} onClick={() => showToast("Open")}>
+                    Open
+                  </button>
+                  <div className="row">
+                    <button className="btn" style={{ height: 34, padding: "0 12px" }} onClick={() => showToast("Label")}>
+                      Label
+                    </button>
+                    <button className="btn btnPrimary" style={{ height: 34, padding: "0 12px" }} onClick={() => showToast("Approve")}>
+                      Approve
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 16 }}>
+          <p className="sectionTitle">View</p>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <div className="tabs" role="tablist" aria-label="View selector">
+              {(["Table", "Board"] as const).map((t) => (
+                <button
+                  key={t}
+                  role="tab"
+                  aria-selected={viewMode === t}
+                  className={`tab ${viewMode === t ? "tabActive" : ""}`}
+                  onClick={() => setViewMode(t)}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <span className="badge">
+              View: <span className="kbd">{viewMode}</span>
+            </span>
+          </div>
+
+          <div className="card" style={{ marginTop: 12, padding: 12, background: "var(--surface)", boxShadow: "none", borderRadius: 12 }}>
+            {viewMode === "Table" ? (
+              <div style={{ color: "var(--muted)" }}>Table view: dense, scannable, keyboard-friendly.</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                {["Needs review", "Auto-sorted", "Flagged"].map((col) => (
+                  <div key={col} className="card" style={{ padding: 10, background: "var(--bg)", boxShadow: "none", borderRadius: 12 }}>
+                    <div style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--faint)" }}>
+                      {col}
+                    </div>
+                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                      {["Notion — $10", "AWS — $42", "Coffee — $8"].map((x) => (
+                        <div key={x} className="card" style={{ padding: 10, boxShadow: "none", borderRadius: 12 }}>
+                          <div style={{ fontWeight: 650, letterSpacing: "-0.01em" }}>{x}</div>
+                          <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>Drag between columns in the product.</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -440,6 +803,51 @@ export function BrandShowcase() {
             <span className="p" style={{ marginLeft: 6 }}>
               One job per modal. One primary action.
             </span>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 16 }}>
+          <p className="sectionTitle">Billing panel</p>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div className="h2">Pro</div>
+              <p className="p" style={{ marginTop: 6, maxWidth: 520 }}>
+                Minimal billing summary: plan, next charge, payment method, and one primary action.
+              </p>
+              <div className="row" style={{ marginTop: 12 }}>
+                <span className="badge">
+                  Next bill <span className="kbd">May 15</span>
+                </span>
+                <span className="badge">
+                  Amount <span className="kbd">$18.00</span>
+                </span>
+                <span className="badge">
+                  Card <span className="kbd">•••• 4242</span>
+                </span>
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
+              <button className="btn btnPrimary" onClick={() => showToast("Manage billing")}>
+                Manage billing
+              </button>
+              <button className="btn btnGhost" onClick={() => showToast("View invoices")}>
+                View invoices
+              </button>
+            </div>
+          </div>
+          <div className="card" style={{ marginTop: 14, padding: 12, background: "var(--surface)", boxShadow: "none", borderRadius: 12 }}>
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <div style={{ fontSize: 13, fontWeight: 650, letterSpacing: "-0.01em" }}>Usage</div>
+              <span className="badge">
+                Period <span className="kbd">Apr</span>
+              </span>
+            </div>
+            <div style={{ marginTop: 10, height: 10, borderRadius: 999, background: "rgba(17,17,17,0.08)", overflow: "hidden" }}>
+              <div style={{ width: "62%", height: "100%", background: "rgba(47,111,235,0.55)" }} />
+            </div>
+            <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
+              62% of monthly transaction imports used.
+            </div>
           </div>
         </div>
       </div>
