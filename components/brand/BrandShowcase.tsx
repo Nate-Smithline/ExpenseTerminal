@@ -167,8 +167,9 @@ export function BrandShowcase() {
 
     const w = 760;
     const h = 190;
-    const padX = 18;
-    const padY = 18;
+    // Extra left padding to make room for Y-axis labels.
+    const padX = 56;
+    const padY = 20;
 
     const points1 = primary.map((v, i) => {
       const x = padX + (i * (w - padX * 2)) / Math.max(1, primary.length - 1);
@@ -179,6 +180,14 @@ export function BrandShowcase() {
       const x = padX + (i * (w - padX * 2)) / Math.max(1, secondary.length - 1);
       const y = padY + (1 - (v - min) / range) * (h - padY * 2);
       return { x, y, v };
+    });
+
+    const ticksY = 4;
+    const yTicks = Array.from({ length: ticksY + 1 }).map((_, i) => {
+      const t = i / ticksY; // 0..1
+      const value = max - t * (max - min);
+      const y = padY + t * (h - padY * 2);
+      return { value, y };
     });
 
     const catmullRomToBezier = (pts: { x: number; y: number }[]) => {
@@ -208,6 +217,7 @@ export function BrandShowcase() {
       padY,
       min,
       max,
+      yTicks,
       points1,
       points2,
       d1: catmullRomToBezier(points1),
@@ -661,21 +671,73 @@ export function BrandShowcase() {
                       </linearGradient>
                     </defs>
 
-                    {/* subtle horizontal grid */}
-                    {[0.2, 0.4, 0.6, 0.8].map((t) => {
-                      const y = chart.padY + t * (chart.h - chart.padY * 2);
-                      return (
+                    {/* Y-axis ticks + grid */}
+                    {chart.yTicks.map((t, idx) => (
+                      <g key={idx}>
                         <line
-                          key={t}
-                          x1={0}
-                          x2={chart.w}
-                          y1={y}
-                          y2={y}
+                          x1={chart.padX}
+                          x2={chart.w - chart.padX}
+                          y1={t.y}
+                          y2={t.y}
                           stroke="rgba(17,17,17,0.06)"
                           strokeWidth="1"
+                          vectorEffect="non-scaling-stroke"
                         />
-                      );
-                    })}
+                        <text
+                          x={chart.padX - 10}
+                          y={t.y}
+                          textAnchor="end"
+                          dominantBaseline="middle"
+                          fontSize="11"
+                          fill="rgba(17,17,17,0.48)"
+                          style={{ fontFamily: "var(--mono)" }}
+                        >
+                          {`${t.value.toFixed(1)}k`}
+                        </text>
+                      </g>
+                    ))}
+
+                    {/* axes */}
+                    <line
+                      x1={chart.padX}
+                      x2={chart.padX}
+                      y1={chart.padY}
+                      y2={chart.h - chart.padY}
+                      stroke="rgba(17,17,17,0.10)"
+                      strokeWidth="1"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    <line
+                      x1={chart.padX}
+                      x2={chart.w - chart.padX}
+                      y1={chart.h - chart.padY}
+                      y2={chart.h - chart.padY}
+                      stroke="rgba(17,17,17,0.10)"
+                      strokeWidth="1"
+                      vectorEffect="non-scaling-stroke"
+                    />
+
+                    {/* X-axis labels */}
+                    {(() => {
+                      const labels = [
+                        { i: 0, anchor: "start" as const, dx: 0 },
+                        { i: Math.floor((cashflowRows.length - 1) / 2), anchor: "middle" as const, dx: 0 },
+                        { i: cashflowRows.length - 1, anchor: "end" as const, dx: 0 },
+                      ];
+                      return labels.map((l) => (
+                        <text
+                          key={l.i}
+                          x={chart.points1[l.i].x + l.dx}
+                          y={chart.h - chart.padY + 16}
+                          textAnchor={l.anchor}
+                          dominantBaseline="hanging"
+                          fontSize="11"
+                          fill="rgba(17,17,17,0.48)"
+                        >
+                          {cashflowRows[l.i].week}
+                        </text>
+                      ));
+                    })()}
 
                     {/* filled area under primary */}
                     <path
@@ -712,8 +774,8 @@ export function BrandShowcase() {
                         <line
                           x1={chart.points1[graphHover].x}
                           x2={chart.points1[graphHover].x}
-                          y1={0}
-                          y2={chart.h}
+                          y1={chart.padY}
+                          y2={chart.h - chart.padY}
                           stroke="rgba(17,17,17,0.12)"
                           strokeWidth="1"
                           vectorEffect="non-scaling-stroke"
