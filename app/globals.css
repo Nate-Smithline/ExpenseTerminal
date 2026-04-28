@@ -109,13 +109,14 @@ a:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
   height: 40px;
   padding: 0 14px;
   border-radius: var(--radius-md);
-  font-weight: 600;
+  font-weight: 500;
   font-size: 13px;
   letter-spacing: -0.01em;
   line-height: 1;
@@ -189,6 +190,110 @@ a:hover {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
+}
+
+.tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.tab {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.tab:hover {
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--text);
+}
+
+.tabActive {
+  background: var(--bg);
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
+}
+
+.switch {
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  position: relative;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.switchOn {
+  background: rgba(47, 111, 235, 0.18);
+  border-color: rgba(47, 111, 235, 0.32);
+}
+
+.switchThumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  transform: translateY(-50%);
+  transition: left 120ms ease;
+}
+
+.switchOn .switchThumb {
+  left: 21px;
+}
+
+.tooltip {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltipBubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(10px);
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tooltipBubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  rotate: 45deg;
 }
 
 .banner {

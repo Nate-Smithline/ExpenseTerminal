@@ -91,8 +91,12 @@ function PickerRow({
 export function BrandShowcase() {
   const [modalOpen, setModalOpen] = useState(false);
   const [bannerKind, setBannerKind] = useState<"info" | "strong" | "danger">("info");
+  const [bannerDismissed, setBannerDismissed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [density, setDensity] = useState<"comfortable" | "compact">("comfortable");
+  const [activeTab, setActiveTab] = useState<"Overview" | "Inbox" | "Settings">("Overview");
+  const [switchOn, setSwitchOn] = useState(true);
+  const [tipOpen, setTipOpen] = useState(false);
 
   const swatches: Swatch[] = useMemo(
     () => [
@@ -127,7 +131,10 @@ export function BrandShowcase() {
         </div>
         <div className="row">
           <span className="badge">
-            <span className="kbd">Cmd</span>+<span className="kbd">K</span> (future)
+            <span className="kbd">Cmd</span>
+            <span style={{ margin: "0 4px" }}>+</span>
+            <span className="kbd">K</span>
+            <span style={{ marginLeft: 2 }}>(future)</span>
           </span>
           <span className="badge">
             Density{" "}
@@ -143,34 +150,63 @@ export function BrandShowcase() {
       </div>
 
       <div style={{ marginTop: 22, display: "grid", gap: 14 }}>
-        <div
-          className={`banner ${bannerKind === "strong" ? "bannerStrong" : bannerKind === "danger" ? "bannerDanger" : ""}`}
-        >
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 650, color: "var(--text)" }}>
-                Notion-style callout
-              </div>
-              <div style={{ marginTop: 4 }}>
-                {bannerKind === "danger"
-                  ? "Destructive messaging: rare, specific, actionable."
-                  : bannerKind === "strong"
-                    ? "Primary informational banner with a single, clear CTA."
-                    : "Neutral informational banner for calm guidance."}
+        <div className="card" style={{ padding: 16 }}>
+          <p className="sectionTitle">Banners</p>
+
+          {!bannerDismissed ? (
+            <div
+              className={`banner ${bannerKind === "strong" ? "bannerStrong" : bannerKind === "danger" ? "bannerDanger" : ""}`}
+            >
+              <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 13, fontWeight: 650, color: "var(--text)" }}>
+                    Notion-style callout banner
+                  </div>
+                  <div>
+                    {bannerKind === "danger"
+                      ? "Destructive messaging: rare, specific, actionable."
+                      : bannerKind === "strong"
+                        ? "Primary informational banner with a single, clear CTA."
+                        : "Neutral informational banner for calm guidance."}
+                  </div>
+                  <div className="row" style={{ marginTop: 6 }}>
+                    <button className="btn btnPrimary" style={{ height: 34, padding: "0 12px" }} onClick={() => showToast("CTA clicked")}>
+                      Take action <span className="kbd">Enter</span>
+                    </button>
+                    <button className="btn btnGhost" style={{ height: 34, padding: "0 12px" }} onClick={() => showToast("Secondary clicked")}>
+                      Learn more
+                    </button>
+                  </div>
+                </div>
+
+                <div className="row">
+                  <button className="btn btnGhost" onClick={() => setBannerKind("info")}>
+                    Default
+                  </button>
+                  <button className="btn btnGhost" onClick={() => setBannerKind("strong")}>
+                    Info
+                  </button>
+                  <button className="btn btnGhost" onClick={() => setBannerKind("danger")}>
+                    Warning
+                  </button>
+                  <button className="btn btnGhost" onClick={() => setBannerDismissed(true)}>
+                    Dismiss <span className="kbd">Esc</span>
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="row">
-              <button className="btn btnGhost" onClick={() => setBannerKind("info")}>
-                Default
-              </button>
-              <button className="btn btnGhost" onClick={() => setBannerKind("strong")}>
-                Info
-              </button>
-              <button className="btn btnGhost" onClick={() => setBannerKind("danger")}>
-                Warning
-              </button>
+          ) : (
+            <div className="banner">
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <div>
+                  Banner dismissed. Banners should be skimmable, contextual, and easy to ignore.
+                </div>
+                <button className="btn btnGhost" onClick={() => setBannerDismissed(false)}>
+                  Restore
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="card" style={{ padding: 16 }}>
@@ -251,6 +287,66 @@ export function BrandShowcase() {
             <button className="btn" disabled style={{ opacity: 0.55, cursor: "not-allowed" }}>
               Disabled
             </button>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 16 }}>
+          <p className="sectionTitle">Tabs</p>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <div className="tabs" role="tablist" aria-label="Example tabs">
+              {(["Overview", "Inbox", "Settings"] as const).map((t) => (
+                <button
+                  key={t}
+                  role="tab"
+                  aria-selected={activeTab === t}
+                  className={`tab ${activeTab === t ? "tabActive" : ""}`}
+                  onClick={() => setActiveTab(t)}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <span className="badge">
+              Active: <span className="kbd">{activeTab}</span>
+            </span>
+          </div>
+          <div className="card" style={{ marginTop: 12, padding: 12, background: "var(--surface)" }}>
+            <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 650 }}>{activeTab}</div>
+            <div style={{ marginTop: 6, color: "var(--muted)" }}>
+              Tabs should be calm, obvious, and not fight page hierarchy.
+            </div>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: 16 }}>
+          <p className="sectionTitle">Switch + Tooltip</p>
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <div className="row">
+              <button
+                className={`switch ${switchOn ? "switchOn" : ""}`}
+                role="switch"
+                aria-checked={switchOn}
+                onClick={() => setSwitchOn((v) => !v)}
+                aria-label="Example switch"
+              >
+                <span className="switchThumb" />
+              </button>
+              <span className="badge">{switchOn ? "On" : "Off"}</span>
+            </div>
+
+            <span
+              className="tooltip"
+              onMouseEnter={() => setTipOpen(true)}
+              onMouseLeave={() => setTipOpen(false)}
+              onFocus={() => setTipOpen(true)}
+              onBlur={() => setTipOpen(false)}
+              tabIndex={0}
+            >
+              <button className="btn btnGhost" onClick={() => showToast("Tooltip target clicked")}>
+                Hover me <span className="kbd">?</span>
+              </button>
+              {tipOpen ? <span className="tooltipBubble">Tooltips explain, not decorate.</span> : null}
+            </span>
           </div>
         </div>
 
