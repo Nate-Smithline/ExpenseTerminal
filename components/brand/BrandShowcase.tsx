@@ -109,6 +109,8 @@ export function BrandShowcase() {
   ]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [scheduleCCategory, setScheduleCCategory] = useState("Advertising");
+  const [deductionReason, setDeductionReason] = useState<"Home office" | "Client travel" | "Software tools">("Software tools");
 
   const swatches: Swatch[] = useMemo(
     () => [
@@ -307,6 +309,29 @@ export function BrandShowcase() {
                 </div>
               </button>
             ))}
+          </div>
+          <div className="card" style={{ marginTop: 12, padding: 12, background: "var(--surface)", boxShadow: "none", borderRadius: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 650, letterSpacing: "-0.01em", color: "var(--text)" }}>
+              Usage guidance
+            </div>
+            <div style={{ marginTop: 8, display: "grid", gap: 6, color: "var(--muted)", fontSize: 13 }}>
+              <div>
+                <span className="badge">Accent</span>{" "}
+                Primary actions only (one per surface). Avoid “accent everywhere”.
+              </div>
+              <div>
+                <span className="badge">Surface</span>{" "}
+                Use for grouped regions and subtle callouts; keep borders doing most of the separation.
+              </div>
+              <div>
+                <span className="badge">Border</span>{" "}
+                Primary divider. Prefer borders over shadows unless you need elevation.
+              </div>
+              <div>
+                <span className="badge">Danger / Warning / Success</span>{" "}
+                Semantic only. Never use for decoration.
+              </div>
+            </div>
           </div>
         </div>
 
@@ -618,8 +643,9 @@ export function BrandShowcase() {
                   <div
                     aria-hidden="true"
                     style={{
-                      height: 0,
-                      borderTop: "2px solid rgba(47,111,235,0.65)",
+                      height: 4,
+                      background: "rgba(47,111,235,0.75)",
+                      borderRadius: 999,
                       borderRadius: 999,
                       boxShadow: "0 0 0 3px rgba(47,111,235,0.10)",
                     }}
@@ -665,8 +691,8 @@ export function BrandShowcase() {
               <div
                 aria-hidden="true"
                 style={{
-                  height: 0,
-                  borderTop: "2px solid rgba(47,111,235,0.65)",
+                  height: 4,
+                  background: "rgba(47,111,235,0.75)",
                   borderRadius: 999,
                   boxShadow: "0 0 0 3px rgba(47,111,235,0.10)",
                 }}
@@ -681,45 +707,83 @@ export function BrandShowcase() {
             “Index card” items: data at the top, actions at the bottom. Designed for stacks, boards, and lists.
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
-            {[
-              { title: "Stripe payout", subtitle: "Oct 15 · 2 items", amount: "$4,210.00", status: "Needs review" },
-              { title: "AWS bill", subtitle: "Oct 12 · Invoice", amount: "$42.13", status: "Auto-sorted" },
-              { title: "Coffee", subtitle: "Oct 14 · Receipt", amount: "$8.75", status: "Needs label" },
-            ].map((c) => (
-              <div key={c.title} className="card" style={{ padding: 12, boxShadow: "none", borderRadius: 12 }}>
-                <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 650, letterSpacing: "-0.01em", color: "var(--text)" }}>
-                      {c.title}
-                    </div>
-                    <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>{c.subtitle}</div>
-                  </div>
-                  <span className="badge">{c.status}</span>
+          <div className="card" style={{ padding: 12, boxShadow: "none", borderRadius: 12 }}>
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 650, letterSpacing: "-0.01em", color: "var(--text)" }}>
+                  Stripe payout
                 </div>
+                <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>Oct 15 · 2 items · Needs review</div>
+              </div>
+              <span className="badge">Confidence <span className="kbd">0.92</span></span>
+            </div>
 
-                <div style={{ marginTop: 12, padding: 10, borderRadius: 12, background: "var(--surface)", border: "1px solid var(--border)" }}>
-                  <div style={{ fontSize: 12, color: "var(--faint)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
-                    Amount
-                  </div>
-                  <div style={{ marginTop: 6, fontFamily: "var(--mono)", fontSize: 16, color: "var(--text)" }}>{c.amount}</div>
+            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <span className="badge">
+                  Schedule C <span className="kbd">{scheduleCCategory}</span>
+                </span>
+                <button
+                  className="btn btnGhost"
+                  style={{ height: 30, padding: "0 10px" }}
+                  onClick={() =>
+                    setScheduleCCategory((c) =>
+                      c === "Advertising" ? "Office expense" : c === "Office expense" ? "Software" : "Advertising",
+                    )
+                  }
+                >
+                  Change <span className="kbd">C</span>
+                </button>
+              </div>
+
+              <div style={{ padding: 10, borderRadius: 12, background: "var(--surface)", border: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 12, color: "var(--faint)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                  Amount
                 </div>
-
-                <div className="row" style={{ justifyContent: "space-between", marginTop: 12 }}>
-                  <button className="btn btnGhost" style={{ height: 34, padding: "0 12px" }} onClick={() => showToast("Open")}>
-                    Open
+                <div style={{ marginTop: 6, fontFamily: "var(--mono)", fontSize: 18, color: "var(--text)" }}>$4,210.00</div>
+                <div className="row" style={{ marginTop: 10, justifyContent: "space-between" }}>
+                  <span className="badge">Deductions</span>
+                  <button className="btn btnGhost" style={{ height: 30, padding: "0 10px" }} onClick={() => showToast("Review other items")}>
+                    Review other <span className="kbd">R</span>
                   </button>
-                  <div className="row">
-                    <button className="btn" style={{ height: 34, padding: "0 12px" }} onClick={() => showToast("Label")}>
-                      Label
-                    </button>
-                    <button className="btn btnPrimary" style={{ height: 34, padding: "0 12px" }} onClick={() => showToast("Approve")}>
-                      Approve
-                    </button>
-                  </div>
                 </div>
               </div>
-            ))}
+
+              <div>
+                <div style={{ fontSize: 12, color: "var(--faint)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+                  Potential deduction reasons
+                </div>
+                <div className="row" style={{ marginTop: 8 }}>
+                  {(["Home office", "Client travel", "Software tools"] as const).map((r) => (
+                    <button
+                      key={r}
+                      className={`btn ${deductionReason === r ? "" : "btnGhost"}`}
+                      style={{ height: 34, padding: "0 12px" }}
+                      onClick={() => setDeductionReason(r)}
+                    >
+                      {r} {deductionReason === r ? <span className="kbd">Selected</span> : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="row" style={{ justifyContent: "space-between", marginTop: 12 }}>
+              <button className="btn btnGhost" style={{ height: 34, padding: "0 12px" }} onClick={() => showToast("Open")}>
+                Open <span className="kbd">O</span>
+              </button>
+              <div className="row">
+                <button className="btn" style={{ height: 34, padding: "0 12px" }} onClick={() => showToast("Approved all like this")}>
+                  Approve all like this <span className="kbd">A</span>
+                </button>
+                <button className="btn btnPrimary" style={{ height: 34, padding: "0 12px" }} onClick={() => showToast("Approved this one")}>
+                  Approve this <span className="kbd">Enter</span>
+                </button>
+                <button className="btn btnGhost" style={{ height: 34, padding: "0 12px" }} onClick={() => showToast("Marked personal")}>
+                  Mark personal <span className="kbd">P</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -746,7 +810,64 @@ export function BrandShowcase() {
 
           <div className="card" style={{ marginTop: 12, padding: 12, background: "var(--surface)", boxShadow: "none", borderRadius: 12 }}>
             {viewMode === "Table" ? (
-              <div style={{ color: "var(--muted)" }}>Table view: dense, scannable, keyboard-friendly.</div>
+              <div
+                className="card"
+                style={{
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  boxShadow: "none",
+                  border: "1px solid var(--border)",
+                  background: "var(--bg)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "120px 1fr 160px 140px 140px",
+                    columnGap: 18,
+                    background: "var(--surface)",
+                    padding: density === "compact" ? "8px 12px" : "10px 12px",
+                    fontSize: 12,
+                    color: "var(--faint)",
+                    letterSpacing: "0.14em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  <div>Date</div>
+                  <div>Merchant</div>
+                  <div>Label</div>
+                  <div style={{ textAlign: "right" }}>Amount</div>
+                  <div>Status</div>
+                </div>
+                {[
+                  { date: "Oct 15", merchant: "Notion", label: "Software", amount: "$10.00", status: "Needs review" },
+                  { date: "Oct 14", merchant: "Blue Bottle Coffee", label: "Meals", amount: "$8.75", status: "Auto-sorted" },
+                  { date: "Oct 12", merchant: "AWS", label: "Infrastructure", amount: "$42.13", status: "Auto-sorted" },
+                ].map((r) => (
+                  <div
+                    key={"view-" + r.date + r.merchant}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "120px 1fr 160px 140px 140px",
+                      columnGap: 18,
+                      padding: density === "compact" ? "8px 12px" : "11px 12px",
+                      borderTop: "1px solid var(--border)",
+                      alignItems: "center",
+                      fontSize: 13,
+                    }}
+                  >
+                    <div style={{ color: "var(--muted)" }}>{r.date}</div>
+                    <div style={{ color: "var(--text)", fontWeight: 600 }}>{r.merchant}</div>
+                    <div>
+                      <span className="badge">{r.label}</span>
+                    </div>
+                    <div style={{ textAlign: "right", fontFamily: "var(--mono)" }}>{r.amount}</div>
+                    <div>
+                      <span className="badge">{r.status}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
                 {["Needs review", "Auto-sorted", "Flagged"].map((col) => (
@@ -843,7 +964,13 @@ export function BrandShowcase() {
               </span>
             </div>
             <div style={{ marginTop: 10, height: 10, borderRadius: 999, background: "rgba(17,17,17,0.08)", overflow: "hidden" }}>
-              <div style={{ width: "62%", height: "100%", background: "rgba(47,111,235,0.55)" }} />
+              <div
+                style={{
+                  width: "62%",
+                  height: "100%",
+                  background: "linear-gradient(90deg, rgba(47,111,235,0.85) 0%, rgba(31,122,74,0.78) 55%, rgba(138,106,0,0.78) 100%)",
+                }}
+              />
             </div>
             <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
               62% of monthly transaction imports used.
