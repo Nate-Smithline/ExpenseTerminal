@@ -657,40 +657,32 @@ export function BrandShowcase() {
                 <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
                   <div>
                     <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 650, letterSpacing: "-0.01em" }}>
-                      Gross volume
-                      <span
-                        style={{
-                          marginLeft: 8,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          height: 20,
-                          padding: "0 8px",
-                          borderRadius: 999,
-                          background: "rgba(31,122,74,0.14)",
-                          color: "rgba(31,122,74,0.95)",
-                          fontSize: 12,
-                          fontWeight: 650,
-                        }}
-                      >
-                        +262.2%
+                      Cashflow (net)
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 22, letterSpacing: "-0.02em", color: "var(--text)" }}>
+                      <span style={{ fontFamily: "var(--mono)" }}>
+                        {(cashflowRows[cashflowRows.length - 1].income - cashflowRows[cashflowRows.length - 1].spend).toFixed(1)}k
+                      </span>
+                      <span style={{ marginLeft: 10, fontSize: 12, color: "var(--muted)" }}>
+                        range{" "}
+                        <span className="kbd">
+                          {sparkCompare.min.toFixed(1)}k–{sparkCompare.max.toFixed(1)}k
+                        </span>
                       </span>
                     </div>
-                    <div style={{ marginTop: 6, fontSize: 22, letterSpacing: "-0.02em", color: "var(--accent)" }}>
-                      €45,918.67
-                    </div>
                   </div>
-                  <div style={{ fontSize: 16, color: "rgba(17,17,17,0.80)", fontFamily: "var(--mono)" }}>
-                    €12,676.88
-                  </div>
+                  <span className="badge">
+                    {cashflowRows[0].week} → {cashflowRows[cashflowRows.length - 1].week}
+                  </span>
                 </div>
               </div>
 
-              <div style={{ padding: 12, paddingTop: 10 }}>
+              <div style={{ padding: 12, paddingTop: 12 }}>
                 <div
                   className="card"
                   style={{
                     position: "relative",
-                    height: 74,
+                    height: 150,
                     background:
                       "linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.30))",
                     border: "1px solid rgba(17,17,17,0.08)",
@@ -699,6 +691,13 @@ export function BrandShowcase() {
                     overflow: "hidden",
                   }}
                   aria-label="Line graph sparkline"
+                  onMouseLeave={() => setGraphHover(null)}
+                  onMouseMove={(e) => {
+                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const x = (e.clientX - rect.left) / rect.width;
+                    const i = clamp(Math.round(x * (cashflowRows.length - 1)), 0, cashflowRows.length - 1);
+                    setGraphHover(i);
+                  }}
                 >
                   <div
                     aria-hidden="true"
@@ -717,7 +716,7 @@ export function BrandShowcase() {
                       position: "absolute",
                       left: 0,
                       right: 0,
-                      bottom: 12,
+                      bottom: 18,
                       height: 1,
                       background: "rgba(17,17,17,0.10)",
                     }}
@@ -799,24 +798,36 @@ export function BrandShowcase() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      <span style={{ color: "var(--muted)" }}>{cashflowRows[graphHover].week}</span>{" "}
-                      net{" "}
-                      <span style={{ fontFamily: "var(--mono)" }}>
-                        {(cashflowRows[graphHover].income - cashflowRows[graphHover].spend).toFixed(1)}k
-                      </span>
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <div style={{ color: "var(--muted)" }}>{cashflowRows[graphHover].week}</div>
+                        <div className="row" style={{ gap: 10 }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: 999, background: "rgba(47,111,235,0.92)" }} />
+                            <span style={{ fontFamily: "var(--mono)" }}>
+                              {(cashflowRows[graphHover].income - cashflowRows[graphHover].spend).toFixed(1)}k
+                            </span>
+                          </span>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "rgba(17,17,17,0.70)" }}>
+                            <span style={{ width: 8, height: 8, borderRadius: 999, background: "rgba(17,17,17,0.40)" }} />
+                            <span style={{ fontFamily: "var(--mono)" }}>{sparkCompare.pts2[graphHover].v.toFixed(1)}k</span>
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   ) : null}
                   <div
                     style={{
                       position: "absolute",
                       left: 10,
-                      bottom: 6,
+                      bottom: 8,
                       fontSize: 12,
                       color: "var(--muted)",
                     }}
                   >
-                    <span style={{ color: "var(--faint)" }}>Jun 2019</span>
-                    <span style={{ position: "absolute", right: 10, bottom: 0, color: "var(--faint)" }}>May 2020</span>
+                    <span style={{ color: "var(--faint)" }}>{cashflowRows[0].week}</span>
+                    <span style={{ position: "absolute", right: 10, bottom: 0, color: "var(--faint)" }}>
+                      {cashflowRows[cashflowRows.length - 1].week}
+                    </span>
                   </div>
                 </div>
               </div>
