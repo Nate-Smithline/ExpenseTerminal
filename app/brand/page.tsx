@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BrandShowcase } from "@/components/brand/BrandShowcase";
+import { BrandShowcase } from "../../components/brand/BrandShowcase";
 
 export default function BrandPage() {
   return (

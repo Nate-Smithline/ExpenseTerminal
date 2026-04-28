@@ -92,17 +92,18 @@ export function BrandShowcase() {
   const [modalOpen, setModalOpen] = useState(false);
   const [bannerKind, setBannerKind] = useState<"info" | "strong" | "danger">("info");
   const [toast, setToast] = useState<string | null>(null);
-  const [accentMode, setAccentMode] = useState<"signal_red" | "function_yellow">("signal_red");
 
   const swatches: Swatch[] = useMemo(
     () => [
-      { name: "Braun White", varName: "--bg", fallback: "#F0EDE5", description: "Primary housing / canvas." },
-      { name: "Light Surface", varName: "--surface", fallback: "#E6E1D8", description: "Secondary surface, subtle separation." },
-      { name: "Pebble", varName: "--surface-2", fallback: "#C5C3BE", description: "Controls and elevated areas (quiet hierarchy)." },
-      { name: "Warm Black", varName: "--text", fallback: "#1A1A18", description: "Typography and labels." },
-      { name: "Muted text", varName: "--muted", fallback: "rgba(26,26,24,0.72)", description: "Secondary information." },
-      { name: "Signal Red", varName: "--accent", fallback: "#C02820", description: "Primary action (one per context)." },
-      { name: "Function Yellow", varName: "--warning", fallback: "#D4B018", description: "Indicator only (sparingly)." },
+      { name: "Background", varName: "--bg", fallback: "#ffffff", description: "Primary canvas." },
+      { name: "Surface", varName: "--surface", fallback: "#f7f7f8", description: "Subtle section fill." },
+      { name: "Surface 2", varName: "--surface-2", fallback: "#efeff2", description: "Elevated backgrounds." },
+      { name: "Text", varName: "--text", fallback: "#121316", description: "Primary text." },
+      { name: "Muted", varName: "--muted", fallback: "rgba(18,19,22,0.68)", description: "Secondary text." },
+      { name: "Accent", varName: "--accent", fallback: "#1f6feb", description: "Primary action." },
+      { name: "Success", varName: "--success", fallback: "#1f7a4a", description: "Affirmations." },
+      { name: "Warning", varName: "--warning", fallback: "#8a6a00", description: "Caution." },
+      { name: "Danger", varName: "--danger", fallback: "#b42318", description: "Destructive." },
     ],
     [],
   );
@@ -117,10 +118,10 @@ export function BrandShowcase() {
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
           <p className="sectionTitle">Brand</p>
-          <h1 className="h1">Component library (Braun / Rams)</h1>
+          <h1 className="h1">Component library (Rams × Apple)</h1>
           <p className="p" style={{ marginTop: 10, maxWidth: 740 }}>
-            Functional color, strict hierarchy, and neutral forms. No decoration. Use one accent
-            only when it communicates meaning.
+            Calm defaults, honest UI, and a limited palette. This page is the living reference for
+            colors, typography, buttons, banners, modals, and pickers.
           </p>
         </div>
         <div className="row">
@@ -131,43 +132,6 @@ export function BrandShowcase() {
       </div>
 
       <div style={{ marginTop: 22, display: "grid", gap: 14 }}>
-        <div className="card" style={{ padding: 16, background: "var(--surface)" }}>
-          <p className="sectionTitle">Functional color</p>
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div style={{ maxWidth: 760 }}>
-              <p className="p">
-                Rams-era Braun uses color as an operational language: mostly neutrals, then a single
-                accent to mark the one control that must be immediately identifiable. Avoid “rainbow
-                UI.” Prefer tone, spacing, and labels.
-              </p>
-              <p className="p" style={{ marginTop: 8 }}>
-                Rule of thumb: <strong style={{ color: "var(--text)" }}>one chromatic accent per screen.</strong>
-              </p>
-            </div>
-            <div className="row">
-              <button
-                className={`btn ${accentMode === "signal_red" ? "btnPrimary" : ""}`}
-                onClick={() => setAccentMode("signal_red")}
-                title="Signal Red"
-              >
-                Signal Red
-              </button>
-              <button
-                className={`btn ${accentMode === "function_yellow" ? "btnPrimary" : ""}`}
-                onClick={() => setAccentMode("function_yellow")}
-                title="Function Yellow"
-                style={
-                  accentMode === "function_yellow"
-                    ? { background: "var(--warning)", color: "var(--text)", borderColor: "rgba(26,26,24,0.28)" }
-                    : undefined
-                }
-              >
-                Function Yellow
-              </button>
-            </div>
-          </div>
-        </div>
-
         <div className={`banner ${bannerKind === "strong" ? "bannerStrong" : bannerKind === "danger" ? "bannerDanger" : ""}`}>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <div>
@@ -187,7 +151,7 @@ export function BrandShowcase() {
                 Neutral
               </button>
               <button className="btn btnGhost" onClick={() => setBannerKind("strong")}>
-                Emphasis
+                Accent
               </button>
               <button className="btn btnGhost" onClick={() => setBannerKind("danger")}>
                 Danger
@@ -240,25 +204,24 @@ export function BrandShowcase() {
           <p className="sectionTitle">Typography</p>
           <div style={{ display: "grid", gap: 12 }}>
             <div>
-              <div className="h1">Less, but better.</div>
+              <div className="h1">Get tax assistance and savings — without the time or hassle.</div>
               <p className="p" style={{ marginTop: 10 }}>
-                Typography carries hierarchy without decoration. Use uppercase section labels, tabular numbers,
-                and explicit names for controls.
+                Body text should be calm, direct, and scannable. Avoid jargon. Make the next action obvious.
               </p>
             </div>
             <div className="row">
               <span className="badge">Default badge</span>
               <span className="badge">
-                <span style={{ width: 8, height: 8, borderRadius: 999, background: "var(--accent)" }} />
-                Active
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: "var(--success)" }} />
+                Success
               </span>
               <span className="badge">
                 <span style={{ width: 8, height: 8, borderRadius: 999, background: "var(--warning)" }} />
-                Indicator
+                Warning
               </span>
               <span className="badge">
-                <span style={{ width: 8, height: 8, borderRadius: 999, background: "var(--text)" }} />
-                Label
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: "var(--danger)" }} />
+                Danger
               </span>
             </div>
           </div>
@@ -267,16 +230,7 @@ export function BrandShowcase() {
         <div className="card" style={{ padding: 16 }}>
           <p className="sectionTitle">Buttons</p>
           <div className="row">
-            <button
-              className="btn btnPrimary"
-              style={
-                accentMode === "function_yellow"
-                  ? { background: "var(--warning)", color: "var(--text)", borderColor: "rgba(26,26,24,0.28)" }
-                  : undefined
-              }
-            >
-              Primary
-            </button>
+            <button className="btn btnPrimary">Primary action</button>
             <button className="btn">Secondary</button>
             <button className="btn btnGhost">Ghost</button>
             <button className="btn btnDanger">Destructive</button>
