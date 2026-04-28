@@ -116,7 +116,7 @@ export function BrandShowcase() {
 
   return (
     <div style={{ padding: "28px 0 60px" }}>
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-end" }}>
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <p className="sectionTitle">Brand</p>
           <h1 className="h1">Brand kit (Apple × Rams × Notion)</h1>
