@@ -189,7 +189,32 @@ export function BrandShowcase() {
       ...pts.map((p) => `${p.xPct.toFixed(2)}% ${p.yPct.toFixed(2)}%`),
       `100% 100%`,
     ].join(", ");
-    return { pts, poly, min, max };
+
+    function strokePolygon(points: { xPct: number; yPct: number }[], thicknessPct: number) {
+      if (points.length < 2) return "";
+      const left: { x: number; y: number }[] = [];
+      const right: { x: number; y: number }[] = [];
+
+      for (let i = 0; i < points.length; i++) {
+        const prev = points[Math.max(0, i - 1)];
+        const next = points[Math.min(points.length - 1, i + 1)];
+        const dx = next.xPct - prev.xPct;
+        const dy = next.yPct - prev.yPct;
+        const len = Math.max(0.001, Math.hypot(dx, dy));
+        const nx = (-dy / len) * thicknessPct;
+        const ny = (dx / len) * thicknessPct;
+
+        const p = points[i];
+        left.push({ x: p.xPct + nx, y: p.yPct + ny });
+        right.push({ x: p.xPct - nx, y: p.yPct - ny });
+      }
+
+      const all = [...left, ...right.reverse()];
+      return all.map((p) => `${p.x.toFixed(2)}% ${p.y.toFixed(2)}%`).join(", ");
+    }
+
+    const strokePoly = strokePolygon(pts, 0.9);
+    return { pts, poly, strokePoly, min, max };
   }, [cashflowRows]);
 
   function reorder(list: string[], from: number, to: number) {
@@ -582,7 +607,8 @@ export function BrandShowcase() {
                   style={{
                     position: "relative",
                     height: 66,
-                    background: "rgba(255,255,255,0.32)",
+                    background:
+                      "linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0.30))",
                     border: "1px solid var(--border)",
                     borderRadius: 12,
                     boxShadow: "none",
@@ -591,13 +617,46 @@ export function BrandShowcase() {
                   aria-label="Line graph sparkline"
                 >
                   <div
+                    aria-hidden="true"
                     style={{
                       position: "absolute",
                       inset: 0,
-                      background: "rgba(47,111,235,0.16)",
+                      background:
+                        "repeating-linear-gradient(90deg, rgba(17,17,17,0.05) 0px, rgba(17,17,17,0.05) 1px, transparent 1px, transparent 52px), repeating-linear-gradient(180deg, rgba(17,17,17,0.05) 0px, rgba(17,17,17,0.05) 1px, transparent 1px, transparent 22px)",
+                      opacity: 0.55,
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: "linear-gradient(180deg, rgba(47,111,235,0.22), rgba(47,111,235,0.04))",
                       clipPath: `polygon(${spark.poly})`,
                     }}
                   />
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: "rgba(47,111,235,0.92)",
+                      clipPath: `polygon(${spark.strokePoly})`,
+                    }}
+                  />
+                  {graphHover !== null ? (
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        bottom: 0,
+                        left: `${spark.pts[graphHover].xPct}%`,
+                        width: 1,
+                        background: "rgba(17,17,17,0.12)",
+                      }}
+                    />
+                  ) : null}
+
                   {spark.pts.map((p, i) => {
                     const active = graphHover === i;
                     return (
@@ -605,19 +664,44 @@ export function BrandShowcase() {
                         key={i}
                         style={{
                           position: "absolute",
-                          left: `calc(${p.xPct}% - 5px)`,
-                          top: `calc(${p.yPct}% - 5px)`,
-                          width: 10,
-                          height: 10,
+                          left: `calc(${p.xPct}% - 4px)`,
+                          top: `calc(${p.yPct}% - 4px)`,
+                          width: 8,
+                          height: 8,
                           borderRadius: 999,
-                          background: active ? "rgba(47,111,235,0.95)" : "rgba(17,17,17,0.26)",
+                          background: active ? "rgba(47,111,235,0.95)" : "rgba(17,17,17,0.22)",
                           boxShadow: active ? "0 0 0 3px rgba(47,111,235,0.18)" : "none",
-                          border: "2px solid rgba(255,255,255,0.85)",
+                          border: "2px solid rgba(255,255,255,0.92)",
                         }}
                         aria-hidden="true"
                       />
                     );
                   })}
+                  {graphHover !== null ? (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: `${spark.pts[graphHover].xPct}%`,
+                        top: `${spark.pts[graphHover].yPct}%`,
+                        transform: "translate(-50%, -120%)",
+                        padding: "7px 10px",
+                        borderRadius: 10,
+                        border: "1px solid var(--border)",
+                        background: "rgba(255,255,255,0.92)",
+                        boxShadow: "var(--shadow-sm)",
+                        backdropFilter: "blur(10px)",
+                        color: "var(--text)",
+                        fontSize: 12,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <span style={{ color: "var(--muted)" }}>{cashflowRows[graphHover].week}</span>{" "}
+                      net{" "}
+                      <span style={{ fontFamily: "var(--mono)" }}>
+                        {(cashflowRows[graphHover].income - cashflowRows[graphHover].spend).toFixed(1)}k
+                      </span>
+                    </div>
+                  ) : null}
                   <div
                     style={{
                       position: "absolute",
