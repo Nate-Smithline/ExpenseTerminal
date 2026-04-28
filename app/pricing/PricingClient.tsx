@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getPlanDefinition, type PlanId } from "@/lib/billing/plans";
+import type { PlanId } from "@/lib/billing/plans";
 
 export function PricingClient({
   checkoutSessionId,
@@ -70,15 +70,14 @@ export function PricingClient({
     })();
   }, [checkoutSessionId, router]);
 
-  const planIds: PlanId[] = ["free", "plus"];
-  const isPro = currentPlan === "starter" || currentPlan === "plus";
+  const isPaid = currentPlan === "starter" || currentPlan === "plus";
 
-  const startCheckout = async () => {
+  const startCheckout = async (interval: "month" | "year") => {
     setCheckoutLoading(true);
-    const res = await fetch("/api/billing/checkout", {
+    const res = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan: "plus" }),
+      body: JSON.stringify({ interval }),
     });
     const data = await res.json().catch(() => ({}));
     setCheckoutLoading(false);
@@ -89,96 +88,88 @@ export function PricingClient({
   return (
     <div>
       <div className="mt-4 grid gap-6 sm:grid-cols-2">
-        {planIds.map((id) => {
-          const plan = getPlanDefinition(id);
-          const isCurrentPlan = id === "plus" ? isPro : currentPlan === "free";
-
-          return (
-            <div
-              key={plan.id}
-              className="flex flex-col border border-[#E8EEF5] bg-[#F5F0E8] px-5 py-6 sm:px-6 sm:py-7"
+        <div className="flex flex-col border border-[#E8EEF5] bg-white px-5 py-6 sm:px-6 sm:py-7">
+          <p className="font-display text-lg text-[#0D1F35]">Monthly</p>
+          <p className="mt-1 text-sm text-[#5B82B4]">$18/month</p>
+          <p className="mt-3 text-sm text-mono-medium">
+            Year-round tracking and sorting so you’re always ready.
+          </p>
+          <ul className="mt-4 flex-1 space-y-3 list-none pl-0">
+            {[
+              "Connect accounts via Plaid",
+              "Auto-sort transactions with confidence",
+              "Review what needs review",
+              "Export a clean CPA package",
+            ].map((h) => (
+              <li key={h} className="flex gap-3 text-sm text-mono-medium">
+                <span
+                  className="mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full border border-[#5B82B4] bg-[#5B82B4]/10"
+                  aria-hidden
+                />
+                <span>{h}</span>
+              </li>
+            ))}
+          </ul>
+          {isPaid ? (
+            <Link
+              href="/settings"
+              className="mt-4 inline-block text-center w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8]"
             >
-              <p className="font-display text-lg text-[#0D1F35]">
-                {plan.name}
-              </p>
-              <p className="mt-1 text-sm text-[#5B82B4]">
-                {plan.priceHuman}
-                {plan.priceInterval === "year" && "/year"}
-              </p>
-              <p className="mt-3 text-sm text-mono-medium">
-                {plan.description}
-              </p>
-              <ul className="mt-4 flex-1 space-y-3 list-none pl-0">
-                {plan.highlights.map((h, i) => (
-                  <li
-                    key={i}
-                    className="flex gap-3 text-sm text-mono-medium"
-                  >
-                    <span
-                      className="mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full border border-[#5B82B4] bg-[#5B82B4]/10"
-                      aria-hidden
-                    />
-                    <span>{h}</span>
-                  </li>
-                ))}
-              </ul>
-              {plan.id === "free" && (
-                <>
-                  {isPro ? (
-                    <button
-                      type="button"
-                      onClick={() => setDowngradeModalOpen(true)}
-                      className="mt-4 w-full px-4 py-2 border border-[#E8EEF5] text-sm font-medium text-mono-dark hover:bg-[#E8EEF5] text-center"
-                    >
-                      Downgrade
-                    </button>
-                  ) : (
-                    <>
-                      {currentPlan !== null ? (
-                        <button
-                          type="button"
-                          onClick={startCheckout}
-                          disabled={checkoutLoading}
-                          className="mt-4 w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8] disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          {checkoutLoading ? "Redirecting…" : "Upgrade to Pro"}
-                        </button>
-                      ) : (
-                        <Link
-                          href="/signup"
-                          className="mt-4 inline-block text-center w-full px-4 py-2 border border-[#E8EEF5] text-sm font-medium text-mono-dark hover:bg-[#E8EEF5]"
-                        >
-                          Get started
-                        </Link>
-                      )}
-                    </>
-                  )}
-                </>
-              )}
-              {plan.id === "plus" && (
-                <>
-                  {isPro ? (
-                    <Link
-                      href="/preferences/billing"
-                      className="mt-4 inline-block text-center w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8]"
-                    >
-                      You&apos;re on Pro · Manage plan
-                    </Link>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={startCheckout}
-                      disabled={checkoutLoading}
-                      className="mt-4 w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8] disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {checkoutLoading ? "Redirecting…" : "Upgrade to Pro"}
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          );
-        })}
+              You&apos;re subscribed · Manage
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => startCheckout("month")}
+              disabled={checkoutLoading}
+              className="mt-4 w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8] disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {checkoutLoading ? "Redirecting…" : "Choose monthly"}
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-col border border-[#E8EEF5] bg-[#F5F0E8] px-5 py-6 sm:px-6 sm:py-7">
+          <p className="font-display text-lg text-[#0D1F35]">Annual</p>
+          <p className="mt-1 text-sm text-[#5B82B4]">
+            $180/year <span className="text-mono-light">(save $36)</span>
+          </p>
+          <p className="mt-3 text-sm text-mono-medium">
+            The believer plan — lock it in and forget about it.
+          </p>
+          <ul className="mt-4 flex-1 space-y-3 list-none pl-0">
+            {[
+              "Everything in monthly",
+              "Best value (2 months free)",
+              "Built for year-round use",
+            ].map((h) => (
+              <li key={h} className="flex gap-3 text-sm text-mono-medium">
+                <span
+                  className="mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full border border-[#5B82B4] bg-[#5B82B4]/10"
+                  aria-hidden
+                />
+                <span>{h}</span>
+              </li>
+            ))}
+          </ul>
+          {isPaid ? (
+            <Link
+              href="/settings"
+              className="mt-4 inline-block text-center w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8]"
+            >
+              You&apos;re subscribed · Manage
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => startCheckout("year")}
+              disabled={checkoutLoading}
+              className="mt-4 w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8] disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {checkoutLoading ? "Redirecting…" : "Choose annual"}
+            </button>
+          )}
+        </div>
       </div>
 
               {downgradeModalOpen && (
@@ -213,7 +204,7 @@ export function PricingClient({
                 Cancel
               </button>
               <Link
-                href="/preferences/billing"
+                href="/settings/billing"
                 className="px-4 py-2 text-sm font-medium bg-[#2563EB] text-white rounded-none hover:bg-[#1D4ED8]"
               >
                 Go to Billing

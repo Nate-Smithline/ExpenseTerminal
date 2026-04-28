@@ -5,15 +5,16 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 
-const SHOW_PRICING_LINK = false;
+const SHOW_PRICING_LINK = true;
 
 type NavLink = { href: string; label: string; primary?: true };
 
 const NAV_LINKS: NavLink[] = [
   ...(SHOW_PRICING_LINK ? [{ href: "/pricing", label: "Pricing" } satisfies NavLink] : []),
-  { href: "/request-demo", label: "Request Demo" },
+  { href: "/how-it-works", label: "How it works" },
+  { href: "/about", label: "About" },
   { href: "/login", label: "Login" },
-  { href: "/signup", label: "Try Free", primary: true },
+  { href: "/onboarding", label: "Find my deductions", primary: true },
 ];
 
 export function LandingHeader() {
