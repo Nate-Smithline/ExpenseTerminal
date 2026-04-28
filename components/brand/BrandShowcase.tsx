@@ -733,21 +733,57 @@ export function BrandShowcase() {
 
                   {graphHover !== null ? (
                     <div
-                      style={{
-                        position: "absolute",
-                        left: `${(chart.points1[graphHover].x / chart.w) * 100}%`,
-                        top: `${(chart.points1[graphHover].y / chart.h) * 100}%`,
-                        transform: "translate(-50%, -120%)",
-                        padding: "7px 10px",
-                        borderRadius: 10,
-                        border: "1px solid var(--border)",
-                        background: "rgba(255,255,255,0.92)",
-                        boxShadow: "var(--shadow-sm)",
-                        backdropFilter: "blur(10px)",
-                        color: "var(--text)",
-                        fontSize: 12,
-                        whiteSpace: "nowrap",
-                      }}
+                      style={(() => {
+                        const x = chart.points1[graphHover].x / chart.w;
+                        const y = chart.points1[graphHover].y / chart.h;
+
+                        // Keep tooltip inside the chart container (no clipping).
+                        const alignX = x < 0.18 ? "left" : x > 0.82 ? "right" : "center";
+                        const placeY = y < 0.22 ? "below" : "above";
+
+                        const xPct = x * 100;
+                        const yPct = y * 100;
+
+                        const left =
+                          alignX === "left"
+                            ? `calc(${xPct}% + 10px)`
+                            : alignX === "right"
+                              ? `calc(${xPct}% - 10px)`
+                              : `${xPct}%`;
+
+                        const transform =
+                          placeY === "above"
+                            ? alignX === "left"
+                              ? "translate(0%, -120%)"
+                              : alignX === "right"
+                                ? "translate(-100%, -120%)"
+                                : "translate(-50%, -120%)"
+                            : alignX === "left"
+                              ? "translate(0%, 16px)"
+                              : alignX === "right"
+                                ? "translate(-100%, 16px)"
+                                : "translate(-50%, 16px)";
+
+                        return {
+                          position: "absolute" as const,
+                          left,
+                          top: `${yPct}%`,
+                          transform,
+                          padding: "7px 10px",
+                          borderRadius: 10,
+                          border: "1px solid var(--border)",
+                          background: "rgba(255,255,255,0.92)",
+                          boxShadow: "var(--shadow-sm)",
+                          backdropFilter: "blur(10px)",
+                          color: "var(--text)",
+                          fontSize: 12,
+                          whiteSpace: "nowrap" as const,
+                          maxWidth: 260,
+                          overflow: "hidden" as const,
+                          textOverflow: "ellipsis" as const,
+                          pointerEvents: "none" as const,
+                        };
+                      })()}
                     >
                       <div style={{ display: "grid", gap: 4 }}>
                         <div style={{ color: "var(--muted)" }}>{cashflowRows[graphHover].week}</div>
