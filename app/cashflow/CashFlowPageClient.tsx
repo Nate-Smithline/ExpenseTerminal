@@ -42,24 +42,25 @@ function BarChart({ months }: { months: MonthData[] }) {
   if (months.length === 0) return null;
   const maxVal = Math.max(...months.flatMap(m => [m.income, m.expenses]), 1);
   const h = 200;
-  const bw = 20;
   const gap = 8;
+
+  // Fixed viewBox width so the SVG always scales proportionally at width="100%"
+  // regardless of how many months are shown. Bars are distributed evenly.
+  const viewW = 600;
+  const slotW = viewW / months.length;
+  const bw = Math.max(6, Math.min(30, Math.floor((slotW - gap) / 2) - 6));
   const groupW = bw * 2 + gap;
-  const totalW = months.length * (groupW + 16);
 
   return (
-    <svg viewBox={`0 0 ${totalW} ${h + 32}`} className="cf__chart" width="100%" style={{ overflow: "visible" }}>
+    <svg viewBox={`0 0 ${viewW} ${h + 32}`} className="cf__chart" width="100%" style={{ overflow: "visible" }}>
       {months.map((m, i) => {
-        const x = i * (groupW + 16);
+        const x = i * slotW + (slotW - groupW) / 2;
         const incH = Math.round((m.income / maxVal) * h);
         const expH = Math.round((m.expenses / maxVal) * h);
         return (
           <g key={m.month} transform={`translate(${x}, 0)`}>
-            {/* Income bar */}
             <rect x={0} y={h - incH} width={bw} height={incH} fill="var(--forest)" rx={3} opacity={0.85} />
-            {/* Expense bar */}
             <rect x={bw + gap} y={h - expH} width={bw} height={expH} fill="var(--clay)" rx={3} opacity={0.7} />
-            {/* Month label */}
             <text x={bw + gap / 2} y={h + 20} textAnchor="middle" fontSize={11} fill="var(--ink-3)" fontFamily="var(--font-sans)">
               {monthLabel(m.month)}
             </text>
