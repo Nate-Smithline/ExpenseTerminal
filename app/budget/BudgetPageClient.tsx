@@ -432,7 +432,11 @@ export function BudgetPageClient() {
       );
     }
 
-    loadBudget(month);
+    await loadBudget(month);
+    // Auto-focus the new group's name so the user can type immediately
+    if (group?.id) {
+      setEditingGroupName({ groupId: group.id, value: name });
+    }
   }
 
   async function renameGroup(id: string, name: string) {
@@ -1415,7 +1419,7 @@ function LineDetailRail({
         {/* Default marker rule */}
         <div className="line-rail__rule">
           <div className="line-rail__rule-label">
-            Auto-tag transactions
+            Deduction classification
             {defaultMarker && (
               <span className="line-rail__rule-badge">
                 {defaultMarker === "Partial" ? `${defaultPct}% biz` : defaultMarker}
@@ -1423,7 +1427,7 @@ function LineDetailRail({
             )}
           </div>
           <p className="line-rail__rule-hint">
-            Transactions dropped here are automatically tagged.
+            Set a default so every expense here is pre-classified for Schedule C. Business = fully deductible; Partial = pro-rated by percentage; Personal = not deductible.
           </p>
           <div style={{ position: "relative" }}>
             <div className="line-rail__rule-btns">
@@ -1488,37 +1492,13 @@ function LineDetailRail({
 
         <section className="line-rail__activity">
           <div className="line-rail__activity-head">
-            <h3 className="line-rail__activity-title">Activity this month</h3>
-            <div className="line-rail__activity-filters" role="tablist" aria-label="Filter activity">
-              {(
-                [
-                  ["all", "All"],
-                  ["business", "Business"],
-                  ["personal", "Personal"],
-                  ["partial", "Partial"],
-                  ["unset", "Untagged"],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={activityFilter === key}
-                  className={`line-rail__activity-filter${activityFilter === key ? " is-active" : ""}`}
-                  onClick={() => setActivityFilter(key)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <h3 className="line-rail__activity-title">Activity</h3>
           </div>
 
           {activityLoading ? (
             <p className="line-rail__activity-empty">Loading…</p>
           ) : activity.length === 0 && !hasPlanned ? (
-            <p className="line-rail__activity-empty">
-              Drag transactions from the list onto this line to track spending.
-            </p>
+            <p className="line-rail__activity-empty">No transactions yet.</p>
           ) : filteredActivity.length === 0 ? (
             <p className="line-rail__activity-empty">No transactions match this filter.</p>
           ) : (
@@ -1573,11 +1553,6 @@ function LineDetailRail({
           {filteredActivity.length > 0 && (
             <div className="line-rail__activity-foot">
               {fmtMoney(activityTotal)} {isIncome ? "received" : "spent"}
-              {activityFilter !== "all" && (
-                <span style={{ marginLeft: 8, color: "var(--ink-4)", fontWeight: 500 }}>
-                  (filtered)
-                </span>
-              )}
             </div>
           )}
         </section>
@@ -1684,8 +1659,7 @@ function BudgetGroup({
             <div className="group__columns">
               <div>Line</div>
               <div className="group__columns-num">Planned</div>
-              <div className="group__columns-num">Actual</div>
-              <div className="group__columns-num">Left</div>
+              <div className="group__columns-dial">Actual · Remaining</div>
             </div>
           )}
 
@@ -1743,9 +1717,19 @@ function BudgetGroup({
             <div className="group__foot">
               <div className="group__foot-label">Total</div>
               <div className="group__foot-num">{totalAllocated > 0 ? fmtMoney(totalAllocated) : "—"}</div>
-              <div className="group__foot-num">{fmtMoney(totalActual)}</div>
-              <div className={`group__foot-num${totalAllocated === 0 ? " group__foot-num--mute" : ""}`}>
-                {totalAllocated > 0 ? fmtMoney(totalAllocated - totalActual) : "—"}
+              <div className="group__foot-dial">
+                <span className="group__foot-actual">{fmtMoney(totalActual)}</span>
+                <div className="line__dial-track">
+                  {totalAllocated > 0 && (
+                    <div
+                      className="line__dial-fill"
+                      style={{ width: `${Math.min(100, Math.max(0, (totalActual / totalAllocated) * 100))}%` }}
+                    />
+                  )}
+                </div>
+                <span className={`group__foot-rem${totalAllocated === 0 ? " group__foot-rem--mute" : ""}`}>
+                  {totalAllocated > 0 ? fmtMoney(totalAllocated - totalActual) : "—"}
+                </span>
               </div>
             </div>
           )}
@@ -1789,7 +1773,8 @@ function BudgetLine({
   editingLineName, onStartEditLineName, onChangeLineName, onSaveLineName, onCancelEditLineName,
 }: BudgetLineProps) {
   const actual = line.actual ?? 0;
-  const remaining = (line.allocated ?? 0) - actual;
+  const planned = line.allocated ?? 0;
+  const remaining = planned - actual;
   const remainingColor =
     line.allocated == null ? "var(--ink-3)"
     : remaining < 0 ? "var(--ember)"
@@ -1856,12 +1841,20 @@ function BudgetLine({
           )}
         </div>
 
-        {/* Actual */}
-        <div className="line__actual">{actual > 0 ? fmtMoney(actual) : "—"}</div>
-
-        {/* Remaining */}
-        <div className="line__remaining" style={{ color: remainingColor }}>
-          {line.allocated != null ? fmtMoney(remaining) : "—"}
+        {/* Progress dial: actual ‹bar› remaining */}
+        <div className="line__dial">
+          <span className="line__dial-actual">{actual > 0 ? fmtMoney(actual) : "—"}</span>
+          <div className="line__dial-track">
+            {line.allocated != null && planned > 0 && (
+              <div
+                className={`line__dial-fill${remaining < 0 ? " line__dial-fill--over" : ""}`}
+                style={{ width: `${Math.min(100, Math.max(0, (actual / planned) * 100))}%` }}
+              />
+            )}
+          </div>
+          <span className="line__dial-rem" style={{ color: remainingColor }}>
+            {line.allocated != null ? fmtMoney(Math.abs(remaining)) : "—"}
+          </span>
         </div>
       </div>
     </div>
