@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MarkerPill, type Marker } from "@/components/MarkerPill";
 import { MarkerEditor } from "@/components/MarkerEditor";
 import { PartialDial } from "@/components/PartialDial";
@@ -599,6 +600,17 @@ export function BudgetPageClient() {
     clearLineDrag();
   }
 
+  async function deleteTxn(txId: string) {
+    setTxns(prev => prev.filter(t => t.id !== txId));
+    setLineActivityTxns(prev => prev.filter(t => t.id !== txId));
+    await fetch("/api/transactions/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: txId }),
+    });
+    loadBudget(month);
+  }
+
   async function assignTxn(txId: string, lineId: string) {
     // If the transaction belongs to a different month, confirm before assigning
     const txn = txns.find(t => t.id === txId);
@@ -963,8 +975,9 @@ export function BudgetPageClient() {
         </main>
 
         {/* ── Right rail ── */}
-        {selectedLineCtx && (
-          <div className="budget-rail-backdrop" onClick={() => setSelectedLineId(null)} />
+        {selectedLineCtx && createPortal(
+          <div className="budget-rail-backdrop" onClick={() => setSelectedLineId(null)} />,
+          document.body
         )}
         <aside className={`budget-rail${selectedLineCtx ? " budget-rail--line" : ""}`}>
           {selectedLineCtx ? (
@@ -979,6 +992,7 @@ export function BudgetPageClient() {
                 deleteLine(selectedLineCtx.line.id);
                 setSelectedLineId(null);
               }}
+              onDeleteTxn={deleteTxn}
               onUpdateLine={(lineId, patch) => {
                 setData(prev => {
                   if (!prev) return prev;
@@ -1085,6 +1099,7 @@ export function BudgetPageClient() {
                           }
                           onCloseMarkerPop={() => setMarkerPopTxId(null)}
                           onSaveMarker={(marker, pct) => saveMarker(tx.id, marker, pct)}
+                          onDelete={() => deleteTxn(tx.id)}
                         />
                       ))
                     )}
@@ -1109,7 +1124,7 @@ export function BudgetPageClient() {
       </div>
 
       {/* Delete group confirmation */}
-      {deleteGroupId && (
+      {deleteGroupId && createPortal(
         <div
           className="budget-modal-backdrop"
           role="dialog"
@@ -1138,7 +1153,7 @@ export function BudgetPageClient() {
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
     </div>
   );
 }
@@ -1260,6 +1275,7 @@ function LineDetailRail({
   month,
   onClose,
   onDelete,
+  onDeleteTxn,
   onUpdateLine,
 }: {
   line: BudgetLineData;
@@ -1269,6 +1285,7 @@ function LineDetailRail({
   month: string;
   onClose: () => void;
   onDelete: () => void;
+  onDeleteTxn: (txId: string) => void;
   onUpdateLine: (lineId: string, patch: Partial<BudgetLineData>) => void;
 }) {
   const isIncome = group.kind === "income";
@@ -1508,7 +1525,7 @@ function LineDetailRail({
             <ul className="line-rail__activity-list">
               {filteredActivity.map(tx => {
                 const d = fmtDate(tx.date);
-                const label = tx.description?.trim() || tx.vendor;
+                const label = tx.vendor || tx.description?.trim() || "—";
                 const isOtherMonth = tx.date.slice(0, 7) !== month;
                 const yearLabel = isOtherMonth
                   ? new Date(tx.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })
@@ -1522,13 +1539,21 @@ function LineDetailRail({
                     </div>
                     <div className="line-rail__activity-body">
                       <div className="line-rail__activity-vendor">{label}</div>
-                      {tx.description && tx.vendor !== label && (
-                        <div className="line-rail__activity-sub">{tx.vendor}</div>
+                      {tx.description?.trim() && tx.description.trim() !== label && (
+                        <div className="line-rail__activity-sub">{tx.description.trim()}</div>
                       )}
                     </div>
                     <div className={`line-rail__activity-amt${isIncome ? " line-rail__activity-amt--in" : ""}`}>
                       {isIncome ? "+" : "−"}{fmtMoney(Math.abs(tx.amount))}
                     </div>
+                    <button
+                      type="button"
+                      className="line-rail__activity-delete"
+                      onClick={() => onDeleteTxn(tx.id)}
+                      title="Delete transaction"
+                    >
+                      <ITrash size={12} />
+                    </button>
                   </li>
                 );
               })}
@@ -1855,6 +1880,7 @@ interface TxnCardProps {
   onOpenPartialEditor: () => void;
   onCloseMarkerPop: () => void;
   onSaveMarker: (marker: Marker, businessPct: number) => void;
+  onDelete: () => void;
 }
 
 function TxnCard({
@@ -1867,6 +1893,7 @@ function TxnCard({
   onOpenPartialEditor,
   onCloseMarkerPop,
   onSaveMarker,
+  onDelete,
 }: TxnCardProps) {
   const { day, mon } = fmtDate(tx.date);
   const isPos = tx.transaction_type === "income";
@@ -1905,6 +1932,16 @@ function TxnCard({
         <div className="txn__drag">
           <IDrag size={12} />
         </div>
+
+        {/* Delete */}
+        <button
+          type="button"
+          className="txn__delete"
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          title="Delete transaction"
+        >
+          <ITrash size={13} />
+        </button>
       </div>
 
       {/* Quick tag + optional partial editor */}

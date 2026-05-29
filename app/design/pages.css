@@ -818,14 +818,14 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 72px 16px 16px;
-  background: rgba(28, 26, 23, .35);
+  background: rgba(28, 26, 23, .4);
   backdrop-filter: blur(2px);
   overflow-y: auto;
 }
 .acc-modal {
   width: 100%;
   max-width: 420px;
+  margin: 72px 16px 32px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-3);

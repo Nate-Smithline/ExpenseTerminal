@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { usePlaidLink } from "react-plaid-link";
 import { IPlus, IInfo, ITrendUp, IClose } from "@/components/ui/icons";
 
@@ -521,7 +522,7 @@ export function AccountsPageClient() {
       )}
 
       {/* Import date picker modal */}
-      {pendingLink && !importing && (
+      {pendingLink && !importing && createPortal(
         <div
           className="acc-modal-backdrop"
           role="dialog"
@@ -591,9 +592,9 @@ export function AccountsPageClient() {
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
 
-      {(importing || importError) && (
+      {(importing || importError) && createPortal(
         <div className="acc-modal-backdrop" role="dialog" aria-modal="true">
           <div className="acc-modal" style={{ padding: 0 }}>
             {importError ? (
@@ -638,10 +639,10 @@ export function AccountsPageClient() {
             )}
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* Delete confirmation */}
-      {deleteAccount && (
+      {deleteAccount && createPortal(
         <div
           className="acc-modal-backdrop"
           role="dialog"
@@ -691,7 +692,7 @@ export function AccountsPageClient() {
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
     </div>
   );
 }
@@ -719,7 +720,7 @@ function AccountEditModal({
     ? new Date(account.last_successful_sync_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
     : null;
 
-  return (
+  return createPortal(
     <div
       className="acc-modal-backdrop"
       role="dialog"
@@ -805,7 +806,7 @@ function AccountEditModal({
         </div>
       </div>
     </div>
-  );
+  , document.body);
 }
 
 // ─── AccountCard ─────────────────────────────────────────────────────────────
