@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, name, position, kind,
       budget_lines (
-        id, name, allocated, rolled_over, position,
+        id, name, allocated, rolled_over, position, default_marker, default_business_pct,
         budget_line_transactions ( transaction_id )
       )
     `)

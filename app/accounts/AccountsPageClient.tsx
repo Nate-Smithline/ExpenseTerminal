@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { IPlus, IInfo, ITrendUp, IClose } from "@/components/ui/icons";
 
@@ -12,6 +12,7 @@ interface DataSource {
   source_type: string;
   account_type: string | null;
   institution_name: string | null;
+  institution: string | null;
   mask: string | null;
   balance: number | null;
   balance_updated_at: string | null;
@@ -47,7 +48,7 @@ function initials(name: string): string {
 }
 
 function accountLabel(acc: DataSource): string {
-  return acc.institution_name ?? acc.name ?? "Account";
+  return acc.institution_name ?? acc.institution ?? acc.name ?? "Account";
 }
 
 function groupAccounts(sources: DataSource[]): AccountGroup[] {
@@ -66,6 +67,61 @@ function groupAccounts(sources: DataSource[]): AccountGroup[] {
 
 // ─── Main component ─────────────────────────────────────────────────────────
 
+interface PendingLink {
+  public_token: string;
+  metadata: {
+    institution?: { institution_id?: string; name?: string };
+    accounts?: Array<{ id?: string; name?: string; type?: string; subtype?: string }>;
+  };
+}
+
+type LookbackOption =
+  | { label: string; kind: "days"; days: number }
+  | { label: string; kind: "month_start" }
+  | { label: string; kind: "year_start" }
+  | { label: string; kind: "all" };
+
+const LOOKBACK_OPTIONS: LookbackOption[] = [
+  { label: "This month", kind: "month_start" },
+  { label: "This year", kind: "year_start" },
+  { label: "Last 30 days", kind: "days", days: 30 },
+  { label: "Last 60 days", kind: "days", days: 60 },
+  { label: "Last twelve months", kind: "days", days: 365 },
+  { label: "All available", kind: "all" },
+];
+
+function lookbackStartDate(opt: LookbackOption): string | null {
+  if (opt.kind === "all") return null;
+  if (opt.kind === "month_start") {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  }
+  if (opt.kind === "year_start") {
+    return `${new Date().getFullYear()}-01-01`;
+  }
+  const d = new Date();
+  d.setDate(d.getDate() - opt.days);
+  return d.toISOString().slice(0, 10);
+}
+
+const LOAD_STEPS = [
+  "Connecting to your accounts…",
+  "Loading account details…",
+  "Fetching balances…",
+  "Almost ready…",
+];
+
+const IMPORT_STEPS = [
+  "Securely connecting to your bank…",
+  "Verifying account credentials…",
+  "Pulling account details…",
+  "Fetching current balance…",
+  "Setting up transaction history…",
+  "Importing transactions…",
+  "Organizing your data…",
+  "Almost done…",
+];
+
 export function AccountsPageClient() {
   const [sources, setSources] = useState<DataSource[]>([]);
   const [syncing, setSyncing] = useState<string | null>(null);
@@ -75,23 +131,56 @@ export function AccountsPageClient() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
+  const [pendingLink, setPendingLink] = useState<PendingLink | null>(null);
+  const [selectedLookback, setSelectedLookback] = useState(4); // index into LOOKBACK_OPTIONS (Last twelve months)
+  const [importing, setImporting] = useState(false);
+
+  // ── Loading bar ─────────────────────────────────────────────────────────
+  const [loadPhase, setLoadPhase] = useState<"loading" | "done" | "idle">("loading");
+  const [loadStep, setLoadStep] = useState(0);
+  const [loadPct, setLoadPct] = useState(8);
+  const loadTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Import progress ──────────────────────────────────────────────────────
+  const [importStep, setImportStep] = useState(0);
+  const [importPct, setImportPct] = useState(6);
+  const importTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const editAccount = editAccountId ? sources.find(s => s.id === editAccountId) ?? null : null;
   const deleteAccount = deleteConfirmId ? sources.find(s => s.id === deleteConfirmId) ?? null : null;
 
   // ── Load accounts ───────────────────────────────────────────────────────
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showBar = false) => {
+    if (showBar) {
+      setLoadPhase("loading");
+      setLoadStep(0);
+      setLoadPct(8);
+      if (loadTimer.current) clearInterval(loadTimer.current);
+      let step = 0;
+      loadTimer.current = setInterval(() => {
+        step += 1;
+        setLoadStep(Math.min(step, LOAD_STEPS.length - 1));
+        setLoadPct(Math.min(8 + step * 22, 88));
+      }, 600);
+    }
     try {
       const res = await fetch("/api/data-sources?limit=100", { cache: "no-store" });
       const { data } = await res.json();
       setSources(data ?? []);
     } finally {
-      // no-op
+      if (showBar) {
+        if (loadTimer.current) clearInterval(loadTimer.current);
+        setLoadPct(100);
+        setLoadStep(LOAD_STEPS.length - 1);
+        setTimeout(() => setLoadPhase("done"), 500);
+        setTimeout(() => setLoadPhase("idle"), 1000);
+      }
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(true); }, [load]);
 
   // ── Plaid link ──────────────────────────────────────────────────────────
 
@@ -108,15 +197,11 @@ export function AccountsPageClient() {
 
   const { open: openLink, ready } = usePlaidLink({
     token: linkToken,
-    onSuccess: async (public_token, metadata) => {
+    onSuccess: (public_token, metadata) => {
       setLinking(false);
       setLinkToken(null);
-      await fetch("/api/data-sources/plaid/exchange-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ public_token, metadata }),
-      });
-      load();
+      // Show date picker modal before completing the import
+      setPendingLink({ public_token, metadata: metadata as PendingLink["metadata"] });
     },
     onExit: () => {
       setLinking(false);
@@ -127,6 +212,89 @@ export function AccountsPageClient() {
   useEffect(() => {
     if (linkToken && ready) openLink();
   }, [linkToken, ready, openLink]);
+
+  async function confirmImport() {
+    if (!pendingLink) return;
+    setImporting(true);
+    setImportError(null);
+    setImportStep(0);
+    setImportPct(6);
+
+    if (importTimer.current) clearInterval(importTimer.current);
+    let step = 0;
+    importTimer.current = setInterval(() => {
+      step += 1;
+      const maxStep = IMPORT_STEPS.length - 2;
+      setImportStep(Math.min(step, maxStep));
+      setImportPct(Math.min(6 + step * 14, 82));
+    }, 900);
+
+    const opt = LOOKBACK_OPTIONS[selectedLookback];
+    const startDate = opt ? lookbackStartDate(opt) : null;
+    try {
+      const res = await fetch("/api/data-sources/plaid/exchange-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          public_token: pendingLink.public_token,
+          metadata: pendingLink.metadata,
+          start_date: startDate,
+        }),
+      });
+
+      if (importTimer.current) clearInterval(importTimer.current);
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg = body?.error ?? `Import failed (${res.status})`;
+        console.error("[confirmImport]", msg);
+        setImportError(msg);
+        setImporting(false);
+        return;
+      }
+
+      // Kick off transaction sync for each newly created account
+      const exchangeBody = await res.json().catch(() => ({}));
+      const newIds: string[] = exchangeBody?.dataSourceIds ?? [];
+
+      if (newIds.length > 0) {
+        setImportStep(5); // "Importing transactions…"
+        setImportPct(72);
+
+        // Sync all accounts in parallel — fire and collect results
+        const syncResults = await Promise.allSettled(
+          newIds.map(id =>
+            fetch("/api/data-sources/plaid/sync", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ dataSourceId: id }),
+            })
+          )
+        );
+
+        // Surface the first sync error if any (non-fatal — accounts are still created)
+        for (const r of syncResults) {
+          if (r.status === "rejected") {
+            console.warn("[confirmImport] sync failed:", r.reason);
+          } else if (!r.value.ok) {
+            const errBody = await r.value.json().catch(() => ({}));
+            console.warn("[confirmImport] sync error:", errBody?.error);
+          }
+        }
+      }
+
+      setImportStep(IMPORT_STEPS.length - 1);
+      setImportPct(100);
+      await new Promise(r => setTimeout(r, 700));
+      await load();
+      setPendingLink(null);
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+    } finally {
+      if (importTimer.current) clearInterval(importTimer.current);
+      setImporting(false);
+    }
+  }
 
   // ── Sync ────────────────────────────────────────────────────────────────
 
@@ -218,11 +386,27 @@ export function AccountsPageClient() {
       </header>
 
       <div className="acc">
+        {/* Loading bar */}
+        {(loadPhase === "loading" || loadPhase === "done") && (
+          <div className={`acc-load${loadPhase === "done" ? " acc-load--done" : ""}`}>
+            <div className="acc-load__bar-track">
+              <div
+                className={`acc-load__bar-fill${loadPct < 100 ? " acc-load__bar-fill--shimmer" : ""}`}
+                style={{ width: `${loadPct}%` }}
+              />
+            </div>
+            <div className="acc-load__status">
+              {loadPct < 100 && <span className="acc-load__dot" />}
+              <span className="acc-load__step">{LOAD_STEPS[loadStep]}</span>
+            </div>
+          </div>
+        )}
+
         <div className="acc-note">
           <IInfo size={14} />
           <span>
-            Use <strong>Edit</strong> on any account to sync, pause transaction imports, mark a tax savings account, or delete.
-            Pausing keeps the <strong>balance &amp; net worth</strong> live without importing transactions into budget &amp; tax.
+            Use <strong>Edit</strong> on any account to sync, manage transaction imports, mark a tax savings account, or delete.
+            <strong>Balance only</strong> mode keeps balance &amp; net worth live without importing transactions.
           </span>
         </div>
 
@@ -336,6 +520,126 @@ export function AccountsPageClient() {
         />
       )}
 
+      {/* Import date picker modal */}
+      {pendingLink && !importing && (
+        <div
+          className="acc-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="acc-import-title"
+        >
+          <div className="acc-modal" onClick={e => e.stopPropagation()}>
+            <div className="acc-modal__head">
+              <div>
+                <h2 id="acc-import-title" className="acc-modal__title">How far back should we pull?</h2>
+                <p className="acc-modal__sub">
+                  {pendingLink.metadata?.institution?.name ?? "Your bank"} — choose the transaction history to import
+                </p>
+              </div>
+            </div>
+            <div className="acc-modal__body" style={{ gap: 8 }}>
+              {LOOKBACK_OPTIONS.map((opt, i) => (
+                <button
+                  key={opt.label}
+                  type="button"
+                  onClick={() => setSelectedLookback(i)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "10px 14px",
+                    border: selectedLookback === i ? "2px solid var(--forest)" : "1px solid var(--border-soft)",
+                    borderRadius: "var(--r-2)",
+                    background: selectedLookback === i ? "var(--forest-tint)" : "var(--bone)",
+                    cursor: "pointer",
+                    fontWeight: selectedLookback === i ? 600 : 400,
+                    color: selectedLookback === i ? "var(--forest-deep)" : "var(--ink)",
+                    fontSize: 14,
+                    textAlign: "left",
+                    width: "100%",
+                  }}
+                >
+                  <span style={{
+                    width: 16, height: 16, borderRadius: "50%",
+                    border: selectedLookback === i ? "5px solid var(--forest)" : "2px solid var(--ink-4)",
+                    flexShrink: 0,
+                  }} />
+                  {opt.label}
+                  {opt.kind === "days" && opt.days === 365 && (
+                    <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 500, color: "var(--forest)", background: "var(--forest-tint)", padding: "2px 7px", borderRadius: 999 }}>
+                      Recommended
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="acc-modal__actions" style={{ flexDirection: "row", justifyContent: "flex-end", paddingTop: 16 }}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setPendingLink(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={confirmImport}
+              >
+                Import transactions
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(importing || importError) && (
+        <div className="acc-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="acc-modal" style={{ padding: 0 }}>
+            {importError ? (
+              <div className="acc-import-progress">
+                <div className="acc-import-progress__icon" style={{ background: "var(--ember-tint)", color: "var(--ember)" }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                </div>
+                <div className="acc-import-progress__title">Import failed</div>
+                <div className="acc-import-progress__status" style={{ color: "var(--ember-deep)" }}>
+                  {importError}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  style={{ marginTop: 4 }}
+                  onClick={() => { setImportError(null); setPendingLink(null); }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            ) : (
+              <div className="acc-import-progress">
+                <div className="acc-import-progress__icon">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
+                  </svg>
+                </div>
+                <div className="acc-import-progress__title">Importing account</div>
+                <div className="acc-import-progress__track">
+                  <div
+                    className="acc-import-progress__fill"
+                    style={{ width: `${importPct}%` }}
+                  />
+                </div>
+                <div key={importStep} className="acc-import-progress__status">
+                  {IMPORT_STEPS[importStep]}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Delete confirmation */}
       {deleteAccount && (
         <div
@@ -442,12 +746,12 @@ function AccountEditModal({
         <div className="acc-modal__body">
           <div className="acc-modal__row">
             <div>
-              <div className="acc-modal__row-label">Paused</div>
+              <div className="acc-modal__row-label">Balance only</div>
               <div className="acc-modal__row-hint">
-                When on, balance still updates but transactions are not imported
+                When on, balance still syncs but no transactions are imported
               </div>
             </div>
-            <label className="acct__toggle" title="Pause transaction import">
+            <label className="acct__toggle" title="Balance only mode">
               <input
                 type="checkbox"
                 checked={!account.pull_transactions}
@@ -548,7 +852,7 @@ function AccountCard({
       <div className="acct__foot">
         <span>
           {isPlaid && lastSync ? `Synced ${lastSync}` : "Manual"}
-          {!account.pull_transactions && " · Paused"}
+          {!account.pull_transactions && " · Balance only"}
         </span>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {account.is_tax_fund && (

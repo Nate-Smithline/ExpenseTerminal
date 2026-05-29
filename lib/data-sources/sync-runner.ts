@@ -475,7 +475,7 @@ export async function runSyncForDataSource(
     try {
       const { data: row, error: fetchError } = await (supabase as any)
         .from("data_sources")
-        .select("id, plaid_access_token, plaid_item_id, plaid_cursor")
+        .select("id, plaid_access_token, plaid_item_id, plaid_cursor, plaid_sync_start_date, plaid_account_id")
         .eq("id", dataSourceId)
         .eq("user_id", userId)
         .single();
@@ -499,6 +499,7 @@ export async function runSyncForDataSource(
       const plaid = getPlaidClient(options?.hostname);
       const accessToken = decryptAccessToken(row.plaid_access_token as string);
       let cursor: string | undefined = (row.plaid_cursor as string) || undefined;
+      const syncStartDate: string | null = (row.plaid_sync_start_date as string) || null;
 
       let addedCount = 0;
       let modifiedCount = 0;
@@ -527,6 +528,8 @@ export async function runSyncForDataSource(
         for (const tx of data.added) {
           addedCount += 1;
           const dateStr = tx.date;
+          // Skip transactions older than the user-chosen lookback start date
+          if (syncStartDate && dateStr < syncStartDate) continue;
           const year = new Date(dateStr).getFullYear();
           // Plaid: positive = money out (expense), negative = money in (income)
           const amount = Number((-tx.amount).toFixed(2));
@@ -609,6 +612,22 @@ export async function runSyncForDataSource(
         .eq("data_source_id", dataSourceId);
       const transactionCount = count ?? 0;
 
+      // Refresh balance from Plaid
+      let freshBalance: number | null = null;
+      try {
+        const balRes = await plaid.accountsGet({ access_token: accessToken });
+        const plaidAcc = balRes.data.accounts.find(
+          (a: { account_id: string }) => a.account_id === (row.plaid_account_id as string | undefined)
+        ) ?? (balRes.data.accounts.length === 1 ? balRes.data.accounts[0] : null);
+        if (plaidAcc) freshBalance = plaidAcc.balances?.current ?? null;
+      } catch {
+        // Non-fatal: balance stays as-is if fetch fails
+      }
+
+      const balanceUpdate = freshBalance !== null
+        ? { balance: freshBalance, balance_updated_at: new Date().toISOString() }
+        : {};
+
       const hadAddedButNoInsert = addedCount > 0 && upsertedCount === 0 && firstInsertError;
       await (supabase as any)
         .from("data_sources")
@@ -618,6 +637,7 @@ export async function runSyncForDataSource(
           last_error_summary: hadAddedButNoInsert && firstInsertError ? `Transactions could not be saved: ${firstInsertError.slice(0, 400)}` : null,
           last_successful_sync_at: new Date().toISOString(),
           transaction_count: transactionCount,
+          ...balanceUpdate,
         })
         .eq("id", dataSourceId)
         .eq("user_id", userId);

@@ -23,6 +23,45 @@ export async function GET(req: NextRequest) {
   const budgetLineId = searchParams.get("budget_line_id");
   const search = searchParams.get("search")?.trim() ?? "";
 
+  const db = supabase as Supa;
+
+  const columns =
+    "id,date,vendor,description,amount,transaction_type,marker,business_pct,business_purpose,hint_vendor,hint_plaid_category,category,schedule_c_line,status";
+
+  // When fetching all transactions for a specific line, month filter is optional
+  if (budgetLineId) {
+    const { data: line } = await db
+      .from("budget_lines")
+      .select("id")
+      .eq("id", budgetLineId)
+      .eq("user_id", userId)
+      .single();
+    if (!line) return NextResponse.json({ error: "Line not found" }, { status: 404 });
+
+    const { data: links } = await db
+      .from("budget_line_transactions")
+      .select("transaction_id")
+      .eq("budget_line_id", budgetLineId)
+      .eq("user_id", userId);
+
+    const assignedIds = (links ?? []).map((r: { transaction_id: string }) => r.transaction_id);
+    if (assignedIds.length === 0) return NextResponse.json({ transactions: [] });
+
+    let lineQuery = db
+      .from("transactions")
+      .select(columns)
+      .eq("user_id", userId)
+      .in("id", assignedIds)
+      .order("date", { ascending: false })
+      .limit(500);
+
+    if (search) lineQuery = lineQuery.ilike("vendor", `%${search}%`);
+
+    const { data: lineTxns, error: lineErr } = await lineQuery;
+    if (lineErr) return NextResponse.json({ error: lineErr.message }, { status: 500 });
+    return NextResponse.json({ transactions: lineTxns ?? [] });
+  }
+
   if (!month || !/^\d{4}-\d{2}$/.test(month)) {
     return NextResponse.json({ error: "month param required (YYYY-MM)" }, { status: 400 });
   }
@@ -30,11 +69,6 @@ export async function GET(req: NextRequest) {
   const [y, m] = month.split("-").map(Number);
   const startDate = `${month}-01`;
   const endDate = new Date(y, m, 0).toISOString().slice(0, 10);
-
-  const db = supabase as Supa;
-
-  const columns =
-    "id,date,vendor,description,amount,transaction_type,marker,business_pct,business_purpose,hint_vendor,hint_plaid_category,category,schedule_c_line,status";
 
   let query = db
     .from("transactions")
@@ -51,30 +85,6 @@ export async function GET(req: NextRequest) {
 
   const { data: txns, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  // Transactions assigned to a specific budget line
-  if (budgetLineId) {
-    const { data: line } = await db
-      .from("budget_lines")
-      .select("id")
-      .eq("id", budgetLineId)
-      .eq("user_id", userId)
-      .single();
-    if (!line) return NextResponse.json({ error: "Line not found" }, { status: 404 });
-
-    const { data: links } = await db
-      .from("budget_line_transactions")
-      .select("transaction_id")
-      .eq("budget_line_id", budgetLineId)
-      .eq("user_id", userId);
-
-    const assignedIds = new Set(
-      (links ?? []).map((r: { transaction_id: string }) => r.transaction_id)
-    );
-    return NextResponse.json({
-      transactions: (txns ?? []).filter((t: { id: string }) => assignedIds.has(t.id)),
-    });
-  }
 
   // If only unassigned requested, filter out those with a budget_line_transactions row
   if (assignedParam === "false" && txns?.length) {

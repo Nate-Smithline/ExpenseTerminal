@@ -57,52 +57,13 @@ export function MarkerEditor({ marker, businessPct, onSave, onClose }: MarkerEdi
 
   return (
     <div className="marker-editor" ref={popRef}>
-      <div className="marker-editor__title">Transaction type</div>
-
-      {/* 3-way segmented control */}
-      <div className="marker-editor__seg">
-        <button
-          type="button"
-          className={`marker-editor__btn${localMarker === "Personal" ? " is-active is-personal" : ""}`}
-          onClick={() => selectMarker("Personal")}
-        >
-          <span className="marker-editor__btn-dot" style={{ background: "var(--clay)" }} />
-          Personal
-        </button>
-        <button
-          type="button"
-          className={`marker-editor__btn${localMarker === "Partial" ? " is-active is-partial" : ""}`}
-          onClick={() => selectMarker("Partial")}
-        >
-          <span className="marker-editor__btn-split">
-            <span style={{ background: "var(--clay)", flex: 1 }} />
-            <span style={{ background: "var(--forest)", flex: 1 }} />
-          </span>
-          Partial
-        </button>
-        <button
-          type="button"
-          className={`marker-editor__btn${localMarker === "Business" ? " is-active is-business" : ""}`}
-          onClick={() => selectMarker("Business")}
-        >
-          <span className="marker-editor__btn-dot" style={{ background: "var(--forest)" }} />
-          Business
-        </button>
+      <div className="marker-editor__dial">
+        <PartialDial
+          value={localPct}
+          onChange={handleDialChange}
+          compact
+        />
       </div>
-
-      {/* Dial — only shown for Partial */}
-      {localMarker === "Partial" && (
-        <div className="marker-editor__dial">
-          <PartialDial
-            value={localPct}
-            onChange={handleDialChange}
-            compact
-          />
-          <div className="marker-editor__dial-help">
-            Drag to set the business percentage
-          </div>
-        </div>
-      )}
 
       {/* Footer */}
       <div className="marker-editor__foot">

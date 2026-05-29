@@ -67,7 +67,7 @@
 .nav-drawer {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 400;
   display: flex;
 }
 .nav-drawer__backdrop {

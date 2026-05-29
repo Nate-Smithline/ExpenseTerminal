@@ -35,7 +35,7 @@ export function UpgradeModal({
 
   return (
     <div
-      className="fixed inset-0 min-h-[100dvh] z-[100] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
+      className="fixed inset-0 min-h-[100dvh] z-[200] flex items-center justify-center bg-black/30 backdrop-blur-[2px]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="upgrade-modal-title"

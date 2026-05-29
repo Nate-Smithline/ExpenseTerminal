@@ -23,10 +23,10 @@ export async function POST(req: NextRequest) {
 
   const db = supabase as Supa;
 
-  // Verify line ownership
+  // Verify line ownership and fetch its default marker
   const { data: line } = await db
     .from("budget_lines")
-    .select("id")
+    .select("id, default_marker, default_business_pct")
     .eq("id", budget_line_id)
     .eq("user_id", userId)
     .single();
@@ -41,7 +41,27 @@ export async function POST(req: NextRequest) {
     );
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+
+  // Auto-apply the line's default marker to the transaction (if one is set)
+  if (line.default_marker) {
+    const marker = line.default_marker as string;
+    const pct =
+      marker === "Business" ? 100
+      : marker === "Personal" ? 0
+      : (line.default_business_pct ?? 50);
+
+    await db
+      .from("transactions")
+      .update({
+        marker,
+        business_pct: pct,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", transaction_id)
+      .eq("user_id", userId);
+  }
+
+  return NextResponse.json({ ok: true, applied_marker: line.default_marker ?? null });
 }
 
 /**

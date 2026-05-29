@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MarkerPill, type Marker } from "@/components/MarkerPill";
 import { MarkerEditor } from "@/components/MarkerEditor";
-import { IChevronD, IChevronR, IDrag, IPlus, IClose, ISearch, IExport, ISpark2 } from "@/components/ui/icons";
+import { PartialDial } from "@/components/PartialDial";
+import { IChevronD, IChevronR, IDrag, IPlus, IClose, ISearch, IExport, ISpark2, ITrash } from "@/components/ui/icons";
 import { planLineMove, sortBudgetGroups, sortBudgetLines } from "@/lib/budget/line-order";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -31,6 +32,8 @@ interface BudgetLineData {
   rolled_over: number;
   position: number;
   notes?: string | null;
+  default_marker?: "Business" | "Personal" | "Partial" | null;
+  default_business_pct?: number | null;
   budget_line_transactions: { transaction_id: string }[];
   actual?: number;
 }
@@ -214,7 +217,7 @@ export function BudgetPageClient() {
     }
     let cancelled = false;
     setLineActivityLoading(true);
-    fetch(`/api/budget/transactions?month=${month}&budget_line_id=${selectedLineId}`)
+    fetch(`/api/budget/transactions?budget_line_id=${selectedLineId}`)
       .then(r => r.json())
       .then(({ transactions }) => {
         if (!cancelled) setLineActivityTxns(transactions ?? []);
@@ -455,16 +458,12 @@ export function BudgetPageClient() {
   // ── Line actions ─────────────────────────────────────────────────────────
 
   async function addLine(groupId: string) {
-    const name = newLineValue.trim();
-    if (!name) return;
     const group = data?.groups.find(g => g.id === groupId);
     const pos = group?.budget_lines.length ?? 0;
-    setNewLineValue("");
-    setAddingLineTo(null);
     const res = await fetch("/api/budget/lines", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ budget_group_id: groupId, name, position: pos }),
+      body: JSON.stringify({ budget_group_id: groupId, name: "New line", position: pos }),
     });
     const body = await res.json().catch(() => ({}));
     if (res.ok && body.line) {
@@ -479,6 +478,8 @@ export function BudgetPageClient() {
           ),
         };
       });
+      // Immediately put the new line's name into edit mode so user can type the name
+      setEditingLineName({ lineId: body.line.id, value: "New line" });
     } else {
       loadBudget(month);
     }
@@ -599,11 +600,43 @@ export function BudgetPageClient() {
   }
 
   async function assignTxn(txId: string, lineId: string) {
+    // If the transaction belongs to a different month, confirm before assigning
+    const txn = txns.find(t => t.id === txId);
+    if (txn) {
+      const txnMonth = txn.date.slice(0, 7); // "YYYY-MM"
+      if (txnMonth !== month) {
+        const txnLabel = new Date(txn.date + "T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
+        const budgetLabel = new Date(month + "-01T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
+        const ok = window.confirm(
+          `This transaction is from ${txnLabel}, but your budget is for ${budgetLabel}.\n\nAssign it anyway?`
+        );
+        if (!ok) return;
+      }
+    }
+
+    // Find the line's default marker so we can reflect it locally before reload
+    const targetLine = data?.groups.flatMap(g => g.budget_lines).find(l => l.id === lineId);
+    const defaultMarker = targetLine?.default_marker ?? null;
+    const defaultPct =
+      defaultMarker === "Business" ? 100
+      : defaultMarker === "Personal" ? 0
+      : (targetLine?.default_business_pct ?? 50);
+
     await fetch("/api/budget/assign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ transaction_id: txId, budget_line_id: lineId }),
     });
+
+    // Optimistically apply the marker locally so the rail updates immediately
+    if (defaultMarker) {
+      setTxns(prev => prev.map(t =>
+        t.id === txId
+          ? { ...t, marker: defaultMarker as Marker, business_pct: defaultPct }
+          : t
+      ));
+    }
+
     loadBudget(month);
   }
 
@@ -894,7 +927,6 @@ export function BudgetPageClient() {
                     }
                     onSaveLineName={renameLine}
                     onCancelEditLineName={() => setEditingLineName(null)}
-                    onDeleteLine={deleteLine}
                     editingGroupName={editingGroupName}
                     onStartEditGroupName={() =>
                       setEditingGroupName({ groupId: group.id, value: group.name })
@@ -915,15 +947,7 @@ export function BudgetPageClient() {
                     onLineDragEnd={handleLineDragEnd}
                     onLineDragOverGroup={handleLineDragOverGroup}
                     onLineDrop={handleLineDrop}
-                    addingLineTo={addingLineTo}
-                    newLineValue={newLineValue}
-                    onStartAddLine={() => {
-                      setAddingLineTo(group.id);
-                      setNewLineValue("");
-                    }}
-                    onChangeNewLine={setNewLineValue}
-                    onConfirmAddLine={() => addLine(group.id)}
-                    onCancelAddLine={() => setAddingLineTo(null)}
+                    onStartAddLine={() => addLine(group.id)}
                   />
                 ))}
               </div>
@@ -939,6 +963,9 @@ export function BudgetPageClient() {
         </main>
 
         {/* ── Right rail ── */}
+        {selectedLineCtx && (
+          <div className="budget-rail-backdrop" onClick={() => setSelectedLineId(null)} />
+        )}
         <aside className={`budget-rail${selectedLineCtx ? " budget-rail--line" : ""}`}>
           {selectedLineCtx ? (
             <LineDetailRail
@@ -946,7 +973,26 @@ export function BudgetPageClient() {
               group={selectedLineCtx.group}
               activity={lineActivityTxns}
               activityLoading={lineActivityLoading}
+              month={month}
               onClose={() => setSelectedLineId(null)}
+              onDelete={() => {
+                deleteLine(selectedLineCtx.line.id);
+                setSelectedLineId(null);
+              }}
+              onUpdateLine={(lineId, patch) => {
+                setData(prev => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    groups: prev.groups.map(g => ({
+                      ...g,
+                      budget_lines: g.budget_lines.map(l =>
+                        l.id === lineId ? { ...l, ...patch } : l
+                      ),
+                    })),
+                  };
+                });
+              }}
             />
           ) : (
             <>
@@ -981,28 +1027,40 @@ export function BudgetPageClient() {
                     />
                   </div>
 
-                  <div className="txnlist__filters" role="tablist" aria-label="Filter by tag">
-                    {(
-                      [
-                        ["all", "All"],
-                        ["unset", "Untagged"],
-                        ["business", "Business"],
-                        ["personal", "Personal"],
-                        ["partial", "Partial"],
-                      ] as const
-                    ).map(([key, label]) => (
-                      <button
-                        key={key}
-                        type="button"
-                        role="tab"
-                        aria-selected={txnMarkerFilter === key}
-                        className={`txnlist__filter${txnMarkerFilter === key ? " is-active" : ""}`}
-                        onClick={() => setTxnMarkerFilter(key)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                  {txnMarkerFilter === "partial" && (
+                    <button
+                      type="button"
+                      className="txnlist__filter-back"
+                      onClick={() => setTxnMarkerFilter("all")}
+                    >
+                      ← All transactions
+                    </button>
+                  )}
+
+                  {txnMarkerFilter !== "partial" && (
+                    <div className="txnlist__filters" role="tablist" aria-label="Filter by tag">
+                      {(
+                        [
+                          ["all", "All"],
+                          ["unset", "Untagged"],
+                          ["business", "Business"],
+                          ["personal", "Personal"],
+                          ["partial", "Partial"],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          role="tab"
+                          aria-selected={txnMarkerFilter === key}
+                          className={`txnlist__filter${txnMarkerFilter === key ? " is-active" : ""}`}
+                          onClick={() => setTxnMarkerFilter(key)}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="txnlist__items">
                     {filteredTxns.length === 0 ? (
@@ -1199,13 +1257,19 @@ function LineDetailRail({
   group,
   activity,
   activityLoading,
+  month,
   onClose,
+  onDelete,
+  onUpdateLine,
 }: {
   line: BudgetLineData;
   group: BudgetGroupData;
   activity: Txn[];
   activityLoading: boolean;
+  month: string;
   onClose: () => void;
+  onDelete: () => void;
+  onUpdateLine: (lineId: string, patch: Partial<BudgetLineData>) => void;
 }) {
   const isIncome = group.kind === "income";
   const planned = line.allocated ?? 0;
@@ -1214,6 +1278,71 @@ function LineDetailRail({
   const hasPlanned = line.allocated != null && planned > 0;
 
   const [activityFilter, setActivityFilter] = useState<ActivityMarkerFilter>("all");
+  const [defaultMarker, setDefaultMarker] = useState<"Business" | "Personal" | "Partial" | null>(
+    line.default_marker ?? null
+  );
+  const [defaultPct, setDefaultPct] = useState<number>(line.default_business_pct ?? 50);
+  const [savingMarker, setSavingMarker] = useState(false);
+  const [showPartialPop, setShowPartialPop] = useState(false);
+  const partialPopRef = useRef<HTMLDivElement>(null);
+
+  // Reset local state when the selected line changes
+  useEffect(() => {
+    setDefaultMarker(line.default_marker ?? null);
+    setDefaultPct(line.default_business_pct ?? 50);
+    setShowPartialPop(false);
+  }, [line.id, line.default_marker, line.default_business_pct]);
+
+  // Close partial popup on outside click
+  useEffect(() => {
+    if (!showPartialPop) return;
+    function handleOutside(e: MouseEvent) {
+      if (partialPopRef.current && !partialPopRef.current.contains(e.target as Node)) {
+        setShowPartialPop(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [showPartialPop]);
+
+  async function saveDefaultMarker(marker: "Business" | "Personal" | "Partial" | null) {
+    // For Partial, open the dial popup instead of saving immediately
+    if (marker === "Partial" && defaultMarker !== "Partial") {
+      setDefaultMarker("Partial");
+      setShowPartialPop(true);
+      return;
+    }
+    setSavingMarker(true);
+    const pct = marker === "Business" ? 100 : marker === "Personal" ? 0 : defaultPct;
+    setDefaultMarker(marker);
+    setShowPartialPop(false);
+    try {
+      await fetch("/api/budget/lines", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: line.id, default_marker: marker, default_business_pct: pct }),
+      });
+      onUpdateLine(line.id, { default_marker: marker, default_business_pct: pct });
+    } finally {
+      setSavingMarker(false);
+    }
+  }
+
+  async function confirmPartialPct(pct: number) {
+    setDefaultPct(pct);
+    setShowPartialPop(false);
+    setSavingMarker(true);
+    try {
+      await fetch("/api/budget/lines", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: line.id, default_marker: "Partial", default_business_pct: pct }),
+      });
+      onUpdateLine(line.id, { default_marker: "Partial", default_business_pct: pct });
+    } finally {
+      setSavingMarker(false);
+    }
+  }
 
   useEffect(() => {
     setActivityFilter("all");
@@ -1245,16 +1374,15 @@ function LineDetailRail({
   return (
     <div className="line-rail">
       <div className={`line-rail__hero${isIncome ? " line-rail__hero--income" : " line-rail__hero--expense"}`}>
+        <button type="button" className="line-rail__delete" onClick={onDelete} aria-label="Delete line">
+          <ITrash size={15} />
+        </button>
         <button type="button" className="line-rail__close" onClick={onClose} aria-label="Close">
           <IClose size={16} />
         </button>
       </div>
 
       <div className="line-rail__scroll">
-        <div className="line-rail__avatar" aria-hidden>
-          <span>{line.name.charAt(0).toUpperCase()}</span>
-        </div>
-
         <h2 className="line-rail__title">{line.name}</h2>
         <p className={`line-rail__progress${isIncome ? " line-rail__progress--income" : " line-rail__progress--expense"}`}>
           {actual > 0 || hasPlanned ? progressLabel : "No activity this month"}
@@ -1265,6 +1393,80 @@ function LineDetailRail({
           <span className="line-rail__stat-value" style={{ color: remainingColor }}>
             {remainingValue != null ? fmtMoney(remainingValue) : "—"}
           </span>
+        </div>
+
+        {/* Default marker rule */}
+        <div className="line-rail__rule">
+          <div className="line-rail__rule-label">
+            Auto-tag transactions
+            {defaultMarker && (
+              <span className="line-rail__rule-badge">
+                {defaultMarker === "Partial" ? `${defaultPct}% biz` : defaultMarker}
+              </span>
+            )}
+          </div>
+          <p className="line-rail__rule-hint">
+            Transactions dropped here are automatically tagged.
+          </p>
+          <div style={{ position: "relative" }}>
+            <div className="line-rail__rule-btns">
+              {(["Business", "Personal", "Partial"] as const).map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  disabled={savingMarker}
+                  className={`line-rail__rule-btn line-rail__rule-btn--${m.toLowerCase()}${defaultMarker === m ? " is-active" : ""}`}
+                  onClick={() => saveDefaultMarker(defaultMarker === m ? null : m)}
+                >
+                  {m === "Partial" && defaultMarker === "Partial"
+                    ? `${defaultPct}% biz`
+                    : m}
+                </button>
+              ))}
+              {defaultMarker && (
+                <button
+                  type="button"
+                  className="line-rail__rule-btn line-rail__rule-btn--clear"
+                  disabled={savingMarker}
+                  onClick={() => saveDefaultMarker(null)}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {/* Partial dial popup */}
+            {showPartialPop && (
+              <div className="line-rail__rule-pop" ref={partialPopRef}>
+                <PartialDial
+                  value={defaultPct}
+                  onChange={pct => setDefaultPct(pct)}
+                  compact
+                />
+                <div className="marker-editor__foot" style={{ paddingTop: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    style={{ fontSize: 12.5 }}
+                    onClick={() => {
+                      setShowPartialPop(false);
+                      if (line.default_marker !== "Partial") setDefaultMarker(line.default_marker ?? null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    style={{ fontSize: 12.5 }}
+                    onClick={() => confirmPartialPct(defaultPct)}
+                  >
+                    Accept ↵
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <section className="line-rail__activity">
@@ -1307,11 +1509,16 @@ function LineDetailRail({
               {filteredActivity.map(tx => {
                 const d = fmtDate(tx.date);
                 const label = tx.description?.trim() || tx.vendor;
+                const isOtherMonth = tx.date.slice(0, 7) !== month;
+                const yearLabel = isOtherMonth
+                  ? new Date(tx.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })
+                  : null;
                 return (
-                  <li key={tx.id} className="line-rail__activity-item">
+                  <li key={tx.id} className={`line-rail__activity-item${isOtherMonth ? " line-rail__activity-item--other-month" : ""}`}>
                     <div className="line-rail__activity-date">
                       <span>{d.mon}</span>
                       <strong>{d.day}</strong>
+                      {isOtherMonth && <span className="line-rail__activity-year">{yearLabel}</span>}
                     </div>
                     <div className="line-rail__activity-body">
                       <div className="line-rail__activity-vendor">{label}</div>
@@ -1371,7 +1578,6 @@ interface BudgetGroupProps {
   onChangeLineName: (value: string) => void;
   onSaveLineName: (lineId: string, name: string) => void;
   onCancelEditLineName: () => void;
-  onDeleteLine: (lineId: string) => void;
   editingGroupName: { groupId: string; value: string } | null;
   onStartEditGroupName: () => void;
   onChangeGroupName: (value: string) => void;
@@ -1388,12 +1594,7 @@ interface BudgetGroupProps {
   onLineDragEnd: () => void;
   onLineDragOverGroup: (e: React.DragEvent, groupId: string, index: number, groupKind?: string) => void;
   onLineDrop: (e: React.DragEvent, groupId: string, index: number, groupKind?: string) => void;
-  addingLineTo: string | null;
-  newLineValue: string;
   onStartAddLine: () => void;
-  onChangeNewLine: (v: string) => void;
-  onConfirmAddLine: () => void;
-  onCancelAddLine: () => void;
 }
 
 function BudgetGroup({
@@ -1401,13 +1602,12 @@ function BudgetGroup({
   selectedLineId, onSelectLine,
   editingPlanned, onStartEditPlanned, onChangePlanned, onSavePlanned,
   editingLineName, onStartEditLineName, onChangeLineName, onSaveLineName, onCancelEditLineName,
-  onDeleteLine,
   editingGroupName, onStartEditGroupName, onChangeGroupName, onSaveGroupName, onCancelEditGroupName,
   onRequestDeleteGroup,
   dropTargetLineId, onDragOverLine, onDropOnLine,
   draggingLineId, draggingLineKind, lineDropTarget,
   onLineDragStart, onLineDragEnd, onLineDragOverGroup, onLineDrop,
-  addingLineTo, newLineValue, onStartAddLine, onChangeNewLine, onConfirmAddLine, onCancelAddLine,
+  onStartAddLine,
 }: BudgetGroupProps) {
   const isEditingThisGroup = editingGroupName?.groupId === group.id;
   const totalAllocated = group.budget_lines.reduce((s, l) => s + (l.allocated ?? 0), 0);
@@ -1493,7 +1693,6 @@ function BudgetGroup({
               onChangeLineName={onChangeLineName}
               onSaveLineName={(name) => onSaveLineName(line.id, name)}
               onCancelEditLineName={onCancelEditLineName}
-              onDeleteLine={() => onDeleteLine(line.id)}
             />
           ))}
 
@@ -1507,30 +1706,11 @@ function BudgetGroup({
             </div>
           )}
 
-          {/* Add line — same grid as line rows */}
+          {/* Add line */}
           <div className="group__add-row">
-            <span aria-hidden="true" />
-            {addingLineTo === group.id ? (
-              <div className="group__add-row--form">
-                <input
-                  autoFocus
-                  className="settings__input"
-                  placeholder="Line name…"
-                  value={newLineValue}
-                  onChange={e => onChangeNewLine(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") onConfirmAddLine();
-                    if (e.key === "Escape") onCancelAddLine();
-                  }}
-                />
-                <button className="btn btn--primary btn--mini" onClick={onConfirmAddLine}>Add</button>
-                <button className="btn btn--ghost btn--mini" onClick={onCancelAddLine}>Cancel</button>
-              </div>
-            ) : (
-              <button type="button" className="group__additem" onClick={onStartAddLine}>
-                <IPlus size={12} /> Add line
-              </button>
-            )}
+            <button type="button" className="group__additem" onClick={onStartAddLine}>
+              <IPlus size={12} /> Add line
+            </button>
           </div>
 
           {/* Group footer totals */}
@@ -1574,7 +1754,6 @@ interface BudgetLineProps {
   onChangeLineName: (v: string) => void;
   onSaveLineName: (name: string) => void;
   onCancelEditLineName: () => void;
-  onDeleteLine: () => void;
 }
 
 function BudgetLine({
@@ -1583,7 +1762,6 @@ function BudgetLine({
   onDragOver, onDrop, onLineDragStart, onLineDragEnd,
   editingPlanned, onStartEditPlanned, onChangePlanned, onSavePlanned,
   editingLineName, onStartEditLineName, onChangeLineName, onSaveLineName, onCancelEditLineName,
-  onDeleteLine,
 }: BudgetLineProps) {
   const actual = line.actual ?? 0;
   const remaining = (line.allocated ?? 0) - actual;
@@ -1629,14 +1807,6 @@ function BudgetLine({
             onSave={() => onSaveLineName(editingLineName!.value)}
             onCancel={onCancelEditLineName}
           />
-          <button
-            type="button"
-            className="line__marker-add"
-            onClick={(e) => { e.stopPropagation(); onDeleteLine(); }}
-            title="Delete line"
-          >
-            ×
-          </button>
         </div>
 
         {/* Planned */}

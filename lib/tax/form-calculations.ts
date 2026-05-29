@@ -30,6 +30,8 @@ interface Transaction {
   status?: string | null;
   quick_label?: string | null;
   business_purpose?: string | null;
+  marker?: string | null;
+  business_pct?: number | null;
 }
 
 interface Deduction {
@@ -38,18 +40,25 @@ interface Deduction {
 }
 
 /**
- * Calculate deductible amount considering meal rule and deduction percent.
+ * Calculate deductible amount considering meal rule, deduction percent, and business_pct for Partial.
  */
 function deductibleAmount(t: Transaction): number {
   const amt = Math.abs(Number(t.amount));
-  const pct = (t.deduction_percent ?? 100) / 100;
-  if (t.is_meal) return amt * 0.5 * pct;
-  return amt * pct;
+  // Partial marker: apply business_pct first, then any other deduction rules
+  const markerPct = t.marker === "Partial" ? (t.business_pct ?? 50) / 100 : 1;
+  const deductPct = (t.deduction_percent ?? 100) / 100;
+  const effectivePct = markerPct * deductPct;
+  if (t.is_meal) return amt * 0.5 * effectivePct;
+  return amt * effectivePct;
 }
 
 export function filterDeductibleTransactions(transactions: Transaction[]): Transaction[] {
   return transactions.filter((t) => {
     if (!(t.transaction_type === "expense" || !t.transaction_type)) return false;
+
+    // Respect marker: Personal-marked expenses are not deductible
+    const marker = t.marker ?? null;
+    if (marker === "Personal") return false;
 
     const pct = t.deduction_percent ?? 100;
     if (pct <= 0) return false;
@@ -99,9 +108,21 @@ export function calculateTaxSummary(
   taxRate: number = 0.24
 ): TaxSummary {
   const expenses = filterDeductibleTransactions(transactions);
-  const income = transactions.filter((t) => t.transaction_type === "income");
 
-  const grossIncome = income.reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
+  // Income: exclude Personal-marked transactions; apply business_pct for Partial
+  const income = transactions.filter((t) => {
+    if (t.transaction_type !== "income") return false;
+    const m = t.marker ?? null;
+    return m !== "Personal"; // null/unset and Business count fully; Partial counts proportionally
+  });
+
+  const grossIncome = income.reduce((sum, t) => {
+    const amt = Math.abs(Number(t.amount));
+    if (t.marker === "Partial") {
+      return sum + amt * ((t.business_pct ?? 50) / 100);
+    }
+    return sum + amt;
+  }, 0);
 
   // Line breakdown
   const lineBreakdown: Record<string, number> = {};

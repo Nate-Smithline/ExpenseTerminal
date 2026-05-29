@@ -45,7 +45,7 @@ export async function PUT(req: NextRequest) {
   if (!auth.authorized) return NextResponse.json(auth.body, { status: auth.status });
   const userId = auth.userId;
 
-  const { id, name, allocated, position, notes } = await req.json();
+  const { id, name, allocated, position, notes, default_marker, default_business_pct } = await req.json();
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
   const update: Record<string, unknown> = {};
@@ -53,6 +53,8 @@ export async function PUT(req: NextRequest) {
   if (allocated !== undefined) update.allocated = allocated; // null = unbudgeted
   if (position !== undefined) update.position = position;
   if (notes !== undefined) update.notes = notes || null;
+  if (default_marker !== undefined) update.default_marker = default_marker || null;
+  if (default_business_pct !== undefined) update.default_business_pct = default_business_pct;
 
   const db = supabase as Supa;
   const { error } = await db

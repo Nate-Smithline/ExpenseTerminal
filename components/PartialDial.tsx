@@ -96,9 +96,6 @@ export function PartialDial({ value, onChange, compact = false, disabled = false
           <span>Personal</span>
           <span className="dial__num">{personalPct}%</span>
         </div>
-        <div className={`dial__state ${stateClass(value)}`}>
-          {stateLabel(value)}
-        </div>
         <div className="dial__lbl">
           <span className="dial__num">{businessPct}%</span>
           <span>Business</span>

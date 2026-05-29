@@ -100,6 +100,58 @@ export function TaxPageClient() {
   const [openParts, setOpenParts] = useState<Set<string>>(new Set(["income", "expenses"]));
   const [openLines, setOpenLines] = useState<Set<string>>(new Set());
 
+  function exportCsv() {
+    const rows: string[][] = [
+      ["Type", "Line / Category", "Amount"],
+    ];
+    const incomeLines = summary?.scheduleC?.income ?? [];
+    const expenseLines = summary?.scheduleC?.expenses ?? [];
+    if (incomeLines.length > 0) {
+      for (const l of incomeLines) rows.push(["Income", l.label, l.amount.toFixed(2)]);
+    } else {
+      rows.push(["Income", "Total gross income", String((summary?.totalIncome ?? 0).toFixed(2))]);
+    }
+    if (expenseLines.length > 0) {
+      for (const l of expenseLines) rows.push(["Expense", l.label, l.amount.toFixed(2)]);
+    } else {
+      rows.push(["Expense", "Total expenses", String((summary?.totalExpenses ?? 0).toFixed(2))]);
+    }
+    rows.push(["", "Net Profit (Line 31)", String((summary?.netProfit ?? 0).toFixed(2))]);
+    rows.push(["", "Self-employment tax", String((summary?.selfEmploymentTax ?? 0).toFixed(2))]);
+    rows.push(["", "Estimated federal tax", String((summary?.estimatedFederalTax ?? 0).toFixed(2))]);
+    rows.push(["", "Total tax to set aside", String((summary?.totalTaxDue ?? 0).toFixed(2))]);
+
+    const csv = rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `schedule-c-${year}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function open1040Es() {
+    window.open("https://www.irs.gov/pub/irs-pdf/f1040es.pdf", "_blank", "noopener,noreferrer");
+  }
+
+  function sendToAccountant() {
+    const net = fmtMoney(summary?.netProfit ?? 0);
+    const tax = fmtMoney(summary?.totalTaxDue ?? 0);
+    const subject = encodeURIComponent(`Schedule C Summary — ${year}`);
+    const body = encodeURIComponent(
+      `Hi,\n\nHere is my Schedule C summary for ${year} from ExpenseTerminal:\n\n` +
+      `  Gross income:       ${fmtMoney(summary?.totalIncome ?? 0)}\n` +
+      `  Total expenses:     ${fmtMoney(summary?.totalExpenses ?? 0)}\n` +
+      `  Net profit:         ${net}\n` +
+      `  Self-employment tax: ${fmtMoney(summary?.selfEmploymentTax ?? 0)}\n` +
+      `  Estimated federal:  ${fmtMoney(summary?.estimatedFederalTax ?? 0)}\n` +
+      `  Total tax due:      ${tax}\n\n` +
+      `Please let me know if you need the full transaction detail or a CSV export.\n\nThanks`
+    );
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  }
+
   const loadQuarterly = useCallback(async (y: number, estimatedPerQuarter: number) => {
     const res = await fetch(
       `/api/tax/quarterly-payments?tax_year=${y}&estimated_per_quarter=${estimatedPerQuarter}`
@@ -120,7 +172,7 @@ export function TaxPageClient() {
   const load = useCallback(async (y: number) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/tax-details/summary?tax_year=${y}`);
+      const res = await fetch(`/api/tax-details/summary?tax_year=${y}`, { cache: "no-store" });
       const raw = await res.json();
       if (!res.ok) {
         setSummary(null);
@@ -204,10 +256,10 @@ export function TaxPageClient() {
             <div className="period__label">{year}</div>
             <button className="period__btn" onClick={() => setYear(y => y + 1)}>›</button>
           </div>
-          <button className="btn btn--ghost">
-            <IExport size={14} /> Export PDF
+          <button className="btn btn--ghost" onClick={exportCsv} disabled={loading || !summary}>
+            <IExport size={14} /> Export CSV
           </button>
-          <button className="btn btn--primary">Send to accountant</button>
+          <button className="btn btn--primary" onClick={sendToAccountant} disabled={loading || !summary}>Send to accountant</button>
         </div>
       </header>
 
@@ -418,9 +470,9 @@ export function TaxPageClient() {
             </div>
           </div>
           <div className="tax__foot-actions">
-            <button className="btn btn--ghost"><IExport size={14} /> Export CSV</button>
-            <button className="btn btn--ghost">Form 1040-ES</button>
-            <button className="btn btn--primary">Send to accountant</button>
+            <button className="btn btn--ghost" onClick={exportCsv} disabled={loading || !summary}><IExport size={14} /> Export CSV</button>
+            <button className="btn btn--ghost" onClick={open1040Es}>Form 1040-ES</button>
+            <button className="btn btn--primary" onClick={sendToAccountant} disabled={loading || !summary}>Send to accountant</button>
           </div>
         </div>
       </div>

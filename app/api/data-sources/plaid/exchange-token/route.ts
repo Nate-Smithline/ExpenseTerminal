@@ -30,9 +30,10 @@ export async function POST(req: Request) {
 
   let body: {
     public_token?: string;
+    start_date?: string | null;
     metadata?: {
       institution?: { institution_id?: string; name?: string };
-      accounts?: Array<{ id?: string; name?: string; type?: string; subtype?: string }>;
+      accounts?: Array<{ id?: string; name?: string; type?: string; subtype?: string; mask?: string }>;
     };
   };
   try {
@@ -78,6 +79,7 @@ export async function POST(req: Request) {
     const institutionName = body.metadata?.institution?.name ?? null;
     const institutionId = body.metadata?.institution?.institution_id ?? null;
     const accounts = body.metadata?.accounts ?? [];
+    const startDate = body.start_date ?? null;
 
     const now = new Date().toISOString();
     const createdIds: string[] = [];
@@ -111,23 +113,32 @@ export async function POST(req: Request) {
         }
       }
     } else {
-      // New connection — create a data source per account (or one for the item)
-      if (accounts.length > 0) {
-        for (const acc of accounts) {
-          const displayName = acc.name ?? institutionName ?? "Bank account";
-          const accountType =
-            acc.subtype === "credit card" ? "credit"
-            : acc.type === "depository" ? "checking"
-            : "other";
+      // New connection — create a data source per account (or one for the item).
+      // Core insert uses only columns guaranteed to exist in the base schema.
+      // New columns (plaid_account_id, mask, plaid_sync_start_date, institution_name)
+      // are applied in a separate update so a missing migration never blocks account creation.
+      const accountsToInsert = accounts.length > 0
+        ? accounts.map(acc => ({
+            plaidAccountId: acc.id ?? null,
+            mask: acc.mask ?? null,
+            displayName: acc.name ?? institutionName ?? "Bank account",
+            accountType:
+              acc.subtype === "credit card" ? "credit"
+              : acc.type === "depository" ? "checking"
+              : "other",
+          }))
+        : [{ plaidAccountId: null, mask: null, displayName: institutionName ?? "Bank account", accountType: "checking" }];
 
-          const { data: inserted, error: insertErr } = await (supabase as any)
-            .from("data_sources")
-            .insert({
+      for (const acc of accountsToInsert) {
+        const { data: inserted, error: insertErr } = await (supabase as any)
+          .from("data_sources")
+          .insert({
               user_id: userId,
-              name: displayName,
-              account_type: accountType,
+              name: acc.displayName,
+              account_type: acc.accountType,
               institution: institutionName,
               source_type: "plaid",
+              pull_transactions: true,
               plaid_access_token: encryptedToken,
               plaid_item_id: itemId,
               plaid_institution_id: institutionId,
@@ -138,42 +149,35 @@ export async function POST(req: Request) {
               last_error_summary: null,
               transaction_count: 0,
             })
-            .select("id")
-            .single();
-          if (insertErr) {
-            console.error("[plaid/exchange-token] Insert error", insertErr.message);
-            firstSaveError = firstSaveError ?? insertErr.message ?? String(insertErr);
-          } else if (inserted?.id) {
-            createdIds.push(inserted.id);
-          }
-        }
-      } else {
-        // No account metadata — create a single data source for the item
-        const { data: inserted, error: insertErr } = await (supabase as any)
-          .from("data_sources")
-          .insert({
-            user_id: userId,
-            name: institutionName ?? "Bank account",
-            account_type: "checking",
-            institution: institutionName,
-            source_type: "plaid",
-            plaid_access_token: encryptedToken,
-            plaid_item_id: itemId,
-            plaid_institution_id: institutionId,
-            plaid_cursor: null,
-            connected_at: now,
-            last_successful_sync_at: null,
-            last_failed_sync_at: null,
-            last_error_summary: null,
-            transaction_count: 0,
-          })
           .select("id")
           .single();
+
         if (insertErr) {
           console.error("[plaid/exchange-token] Insert error", insertErr.message);
           firstSaveError = firstSaveError ?? insertErr.message ?? String(insertErr);
-        } else if (inserted?.id) {
+          continue;
+        }
+
+        if (inserted?.id) {
           createdIds.push(inserted.id);
+
+          // Apply new-schema columns as a non-fatal update (requires migration to have run)
+          const extras: Record<string, unknown> = {};
+          if (acc.plaidAccountId) extras.plaid_account_id = acc.plaidAccountId;
+          if (acc.mask) extras.mask = acc.mask;
+          if (startDate) extras.plaid_sync_start_date = startDate;
+          if (institutionName) extras.institution_name = institutionName;
+
+          if (Object.keys(extras).length > 0) {
+            const { error: extErr } = await (supabase as any)
+              .from("data_sources")
+              .update(extras)
+              .eq("id", inserted.id)
+              .eq("user_id", userId);
+            if (extErr) {
+              console.warn("[plaid/exchange-token] Extra columns update skipped (run migration):", extErr.message);
+            }
+          }
         }
       }
     }
@@ -182,6 +186,46 @@ export async function POST(req: Request) {
       const detail = firstSaveError ?? "Unknown insert error";
       console.error("[plaid/exchange-token] All inserts failed:", detail);
       return NextResponse.json({ error: detail }, { status: 500 });
+    }
+
+    // Fetch live balances from Plaid and persist them (non-fatal — requires balance+mask columns)
+    try {
+      const balanceRes = await plaid.accountsGet({ access_token: accessToken });
+      const plaidAccounts = balanceRes.data.accounts;
+      const now2 = new Date().toISOString();
+
+      type PlaidAccount = { account_id: string; mask?: string | null; balances?: { current?: number | null } };
+      // Build a lookup by account_id so we can match multi-account items
+      const byPlaidId = new Map(
+        plaidAccounts.map((a: PlaidAccount) => [a.account_id, a])
+      );
+
+      const { data: createdRows } = await (supabase as any)
+        .from("data_sources")
+        .select("id, plaid_account_id")
+        .in("id", createdIds);
+
+      for (const row of createdRows ?? []) {
+        const match: PlaidAccount | undefined =
+          (row.plaid_account_id ? byPlaidId.get(row.plaid_account_id) : undefined) ??
+          (plaidAccounts.length === 1 ? (plaidAccounts[0] as PlaidAccount) : undefined);
+        if (!match) continue;
+
+        const { error: balErr } = await (supabase as any)
+          .from("data_sources")
+          .update({
+            balance: match.balances?.current ?? null,
+            balance_updated_at: now2,
+            mask: match.mask ?? null,
+          })
+          .eq("id", row.id)
+          .eq("user_id", userId);
+        if (balErr) {
+          console.warn("[plaid/exchange-token] Balance update skipped (run migration):", balErr.message);
+        }
+      }
+    } catch (balanceErr) {
+      console.warn("[plaid/exchange-token] Balance fetch failed:", balanceErr instanceof Error ? balanceErr.message : String(balanceErr));
     }
 
     return NextResponse.json({
