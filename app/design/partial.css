@@ -1,0 +1,258 @@
+/* ──────────────────────────────────────────────────────────────
+   Partial Dial + markers
+   ────────────────────────────────────────────────────────────── */
+
+.dial {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  user-select: none;
+}
+
+.dial--compact { gap: 4px; }
+
+.dial__labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.dial__lbl { display: flex; align-items: center; gap: 6px; font-weight: 500; }
+.dial__num { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.dial__dot {
+  width: 8px; height: 8px; border-radius: 999px;
+}
+.dial__dot--clay   { background: var(--clay); }
+.dial__dot--forest { background: var(--forest); }
+
+.dial__state {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bone-2);
+  color: var(--ink-2);
+}
+.dial__state--personal { background: var(--clay-tint);   color: var(--clay-deep); }
+.dial__state--business { background: var(--forest-tint); color: var(--forest-deep); }
+.dial__state--partial  { background: var(--bone-3);      color: var(--ink-2); }
+
+.dial__track {
+  position: relative;
+  height: 44px;
+  border-radius: 999px;
+  background: var(--bone-3);
+  border: 1px solid var(--border);
+  cursor: ew-resize;
+  overflow: hidden;
+  touch-action: none;
+}
+.dial--compact .dial__track { height: 28px; }
+
+.dial__track.is-drag { box-shadow: inset 0 0 0 1px var(--ink); }
+
+.dial__fill {
+  position: absolute;
+  top: 0; bottom: 0;
+  transition: width .12s var(--ease), left .12s var(--ease);
+}
+.dial__fill--clay   { left: 0; background: linear-gradient(90deg, var(--clay-tint), var(--clay-soft)); }
+.dial__fill--forest { background: linear-gradient(90deg, var(--forest-soft), var(--forest-tint)); }
+
+.dial__tick {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 1px;
+  height: 8px;
+  background: rgba(32,32,32,.18);
+  pointer-events: none;
+}
+.dial__tick:first-of-type, .dial__tick:last-of-type { display: none; }
+
+.dial__center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+.dial--compact .dial__center { font-size: 10px; letter-spacing: .08em; }
+
+.dial__handle {
+  position: absolute;
+  top: 50%;
+  width: 26px; height: 26px;
+  transform: translate(-50%, -50%);
+  background: var(--ink);
+  border-radius: 999px;
+  box-shadow: 0 4px 12px -2px rgba(32,32,32,.4), inset 0 0 0 3px var(--bone);
+  transition: left .12s var(--ease);
+  pointer-events: none;
+}
+.dial--compact .dial__handle { width: 18px; height: 18px; box-shadow: 0 2px 6px -1px rgba(32,32,32,.4), inset 0 0 0 2px var(--bone); }
+
+.dial__handle-grip {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.dial__handle-grip::before,
+.dial__handle-grip::after {
+  content: "";
+  width: 2px;
+  height: 8px;
+  background: var(--bone);
+  border-radius: 1px;
+  position: absolute;
+}
+.dial__handle-grip::before { transform: translateX(-3px); }
+.dial__handle-grip::after  { transform: translateX( 3px); }
+
+.dial__presets {
+  display: flex; gap: 6px;
+  flex-wrap: wrap;
+}
+.dial__preset {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: -.005em;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+  transition: all .15s var(--ease);
+}
+.dial__preset:hover { background: var(--bone-2); }
+.dial__preset.is-active {
+  background: var(--ink);
+  color: var(--bone);
+  border-color: var(--ink);
+}
+
+/* Marker pills ----------------------------------------- */
+
+.marker {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px;
+  padding: 0 8px 0 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: -.005em;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bone-2);
+  color: var(--ink-2);
+}
+.marker__dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+
+.marker--unset    { color: var(--ink-3); }
+.marker--personal { background: var(--clay-tint);   color: var(--clay-deep);          border-color: var(--clay-soft); }
+.marker--business { background: var(--forest-tint); color: var(--forest-deep); border-color: var(--forest-soft); }
+.marker--partial  { background: var(--bone);        color: var(--ink-2);     border-color: var(--border); }
+
+.marker__split {
+  width: 18px; height: 8px;
+  display: flex;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.marker__split-l { background: var(--clay); }
+.marker__split-r { background: var(--forest); }
+
+/* Marker editor popover ----------------------------------- */
+.marker-editor {
+  width: 280px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-pop);
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: pageIn .18s var(--ease-out);
+}
+
+.marker-editor__title {
+  font-size: 10.5px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  font-weight: 700;
+}
+
+.marker-editor__seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bone-2);
+  border-radius: var(--r-2);
+}
+.marker-editor__btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px;
+  height: 32px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  letter-spacing: -.005em;
+  background: transparent;
+  transition: all .12s var(--ease);
+}
+.marker-editor__btn:hover { color: var(--ink); background: rgba(255,255,255,.4); }
+.marker-editor__btn.is-active.is-personal {
+  background: var(--clay-tint); color: var(--clay-deep); box-shadow: inset 0 0 0 1px var(--clay-soft);
+}
+.marker-editor__btn.is-active.is-partial {
+  background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink);
+}
+.marker-editor__btn.is-active.is-business {
+  background: var(--forest-tint); color: var(--forest-deep); box-shadow: inset 0 0 0 1px var(--forest-soft);
+}
+
+.marker-editor__btn-dot { width: 7px; height: 7px; border-radius: 999px; display: inline-block; }
+.marker-editor__btn-split {
+  width: 16px; height: 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,.06);
+}
+.marker-editor__btn-split > span { flex: 1; }
+
+.marker-editor__dial {
+  background: var(--bone);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-2);
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 8px;
+  animation: pageIn .2s var(--ease-out);
+}
+.marker-editor__dial-help {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.marker-editor__foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px;
+}
+.marker-editor__done { margin-left: auto; }

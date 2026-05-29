@@ -52,7 +52,6 @@ export async function POST(req: Request) {
 
   try {
     // Preflight: ensure DB has Plaid columns (migration applied).
-    // If these columns don't exist, inserts will fail and the UI will show a generic error.
     const preflight = await (supabase as any)
       .from("data_sources")
       .select("plaid_access_token")
@@ -61,8 +60,7 @@ export async function POST(req: Request) {
       const msg = preflight.error.message ?? "Database is missing Plaid columns";
       return NextResponse.json(
         {
-          error:
-            "Database schema is missing Plaid columns. Apply the Plaid migration, then try again.",
+          error: "Database schema is missing Plaid columns. Apply the migration, then try again.",
           debug: process.env.NODE_ENV !== "production" ? { detail: msg } : undefined,
         },
         { status: 503 },
@@ -94,7 +92,7 @@ export async function POST(req: Request) {
       .limit(1);
 
     if (existingByItem && existingByItem.length > 0) {
-      // Reconnecting an existing item -- update the access token
+      // Reconnecting an existing item — update the access token
       for (const existing of existingByItem) {
         const { error: updateErr } = await (supabase as any)
           .from("data_sources")
@@ -113,11 +111,12 @@ export async function POST(req: Request) {
         }
       }
     } else {
-      // New connection -- create a data source per account (or one for the item)
+      // New connection — create a data source per account (or one for the item)
       if (accounts.length > 0) {
         for (const acc of accounts) {
           const displayName = acc.name ?? institutionName ?? "Bank account";
-          const accountType = acc.subtype === "credit card" ? "credit"
+          const accountType =
+            acc.subtype === "credit card" ? "credit"
             : acc.type === "depository" ? "checking"
             : "other";
 
@@ -149,7 +148,7 @@ export async function POST(req: Request) {
           }
         }
       } else {
-        // No account metadata -- create a single data source for the item
+        // No account metadata — create a single data source for the item
         const { data: inserted, error: insertErr } = await (supabase as any)
           .from("data_sources")
           .insert({
@@ -180,15 +179,9 @@ export async function POST(req: Request) {
     }
 
     if (createdIds.length === 0) {
-      return NextResponse.json(
-        {
-          error: "Could not save linked account. Please try again.",
-          ...(process.env.NODE_ENV !== "production" && firstSaveError
-            ? { debug: { detail: firstSaveError } }
-            : {}),
-        },
-        { status: 500 },
-      );
+      const detail = firstSaveError ?? "Unknown insert error";
+      console.error("[plaid/exchange-token] All inserts failed:", detail);
+      return NextResponse.json({ error: detail }, { status: 500 });
     }
 
     return NextResponse.json({

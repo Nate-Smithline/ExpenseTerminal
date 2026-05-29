@@ -14,7 +14,12 @@ vi.mock("@/lib/middleware/auth", () => ({
 
 vi.mock("@/lib/stripe", () => ({
   getStripeClient: vi.fn(),
-  assertStripeProductEnv: vi.fn(),
+  getStripeMode: vi.fn(() => "test"),
+}));
+
+vi.mock("@/lib/billing/stripe-prices", () => ({
+  assertStripePriceEnv: vi.fn(),
+  getStripePriceId: vi.fn(() => "price_test_123"),
 }));
 
 describe("POST /api/billing/checkout error paths", () => {
@@ -44,10 +49,10 @@ describe("POST /api/billing/checkout error paths", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 500 when assertStripeProductEnv throws", async () => {
-    const stripe = await import("@/lib/stripe");
-    vi.mocked(stripe.assertStripeProductEnv).mockImplementationOnce(() => {
-      throw new Error("Starter product is not configured.");
+  it("returns 500 when assertStripePriceEnv throws", async () => {
+    const prices = await import("@/lib/billing/stripe-prices");
+    vi.mocked(prices.assertStripePriceEnv).mockImplementationOnce(() => {
+      throw new Error("Stripe price is not configured for test mode.");
     });
 
     const { POST } = await import("@/app/api/billing/checkout/route");
@@ -55,11 +60,11 @@ describe("POST /api/billing/checkout error paths", () => {
       new Request("http://localhost/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: "starter" }),
+        body: JSON.stringify({ plan: "plus", interval: "year" }),
       })
     );
     expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.code).toBe("STRIPE_PRODUCT_MISSING");
+    expect(body.code).toBe("STRIPE_PRICE_MISSING");
   });
 });

@@ -5,6 +5,7 @@ import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { parseQueryLimit, parseQueryOffset } from "@/lib/validation/schemas";
+import { deleteDataSourceForUser } from "@/lib/data-sources/delete-data-source";
 export async function GET(req: Request) {
   const authClient = await createSupabaseRouteClient();
   const auth = await requireAuth(authClient);
@@ -45,7 +46,7 @@ export async function GET(req: Request) {
   return new Response(JSON.stringify({ data: data ?? [], count: count ?? (data?.length ?? 0) }), {
     headers: {
       "Content-Type": "application/json",
-      "Cache-Control": "private, max-age=300",
+      "Cache-Control": "no-store, max-age=0",
     },
   });
 }
@@ -69,7 +70,7 @@ export async function POST(req: Request) {
   }
   const supabase = authClient;
 
-  let body: { name?: string; account_type?: string; institution?: string; source_type?: string };
+  let body: { name?: string; account_type?: string; institution?: string; source_type?: string; is_mixed_account?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -89,7 +90,7 @@ export async function POST(req: Request) {
   const sourceType = body.source_type === "stripe" ? "stripe" : "manual";
 
   // Only insert columns that exist in minimal schema (omit source_type, connected_at, etc. if missing from schema cache).
-  const insertCols = "id,user_id,name,account_type,institution,created_at";
+  const insertCols = "id,user_id,name,account_type,institution,is_mixed_account,created_at";
   const { data, error } = await (supabase as any)
     .from("data_sources")
     .insert({
@@ -97,6 +98,7 @@ export async function POST(req: Request) {
       name: body.name,
       account_type: body.account_type || "other",
       institution: body.institution || null,
+      is_mixed_account: body.is_mixed_account === true,
     })
     .select(insertCols)
     .single();
@@ -133,7 +135,7 @@ export async function PATCH(req: Request) {
   }
   const supabase = authClient;
 
-  let body: { id: string; name?: string; account_type?: string; institution?: string; stripe_sync_start_date?: string | null };
+  let body: { id: string; name?: string; account_type?: string; institution?: string; stripe_sync_start_date?: string | null; is_mixed_account?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -154,6 +156,7 @@ export async function PATCH(req: Request) {
   if (body.account_type !== undefined) update.account_type = body.account_type;
   if (body.institution !== undefined) update.institution = body.institution || null;
   if (body.stripe_sync_start_date !== undefined) update.stripe_sync_start_date = body.stripe_sync_start_date;
+  if (body.is_mixed_account !== undefined) update.is_mixed_account = Boolean(body.is_mixed_account);
   if (Object.keys(update).length === 0) {
     return new Response(JSON.stringify({ error: "No fields to update" }), {
       status: 400,
@@ -200,7 +203,7 @@ export async function DELETE(req: Request) {
   }
   const supabase = authClient;
 
-  let body: { id: string; delete_transactions?: boolean };
+  let body: { id: string };
   try {
     body = await req.json();
   } catch {
@@ -216,60 +219,16 @@ export async function DELETE(req: Request) {
     });
   }
 
-  const { data: row, error: fetchError } = await (supabase as any)
-    .from("data_sources")
-    .select("id")
-    .eq("id", body.id)
-    .eq("user_id", userId)
-    .single();
-
-  if (fetchError || !row) {
-    return new Response(JSON.stringify({ error: "Data source not found" }), {
-      status: 404,
+  const result = await deleteDataSourceForUser(supabase, userId, body.id);
+  if (!result.ok) {
+    return new Response(JSON.stringify({ error: safeErrorMessage(result.error, "Failed to delete account") }), {
+      status: result.status,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  if (body.delete_transactions) {
-    const { error: delTxError } = await (supabase as any)
-      .from("transactions")
-      .delete()
-      .eq("data_source_id", body.id)
-      .eq("user_id", userId);
-    if (delTxError) {
-      return new Response(JSON.stringify({ error: safeErrorMessage(delTxError.message, "Failed to delete transactions") }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-  } else {
-    const { error: unlinkError } = await (supabase as any)
-      .from("transactions")
-      .update({ data_source_id: null })
-      .eq("data_source_id", body.id)
-      .eq("user_id", userId);
-    if (unlinkError) {
-      return new Response(JSON.stringify({ error: safeErrorMessage(unlinkError.message, "Failed to unlink transactions") }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-  }
-
-  const { error: delError } = await (supabase as any)
-    .from("data_sources")
-    .delete()
-    .eq("id", body.id)
-    .eq("user_id", userId);
-
-  if (delError) {
-    return new Response(JSON.stringify({ error: safeErrorMessage(delError.message, "Failed to delete account") }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  return new Response(JSON.stringify({ ok: true }), {
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ ok: true, transactionsDeleted: result.transactionsDeleted }),
+    { headers: { "Content-Type": "application/json" } }
+  );
 }

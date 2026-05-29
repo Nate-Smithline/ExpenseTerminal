@@ -3,8 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getPlanDefinition } from "@/lib/billing/plans";
-import { PreferencesTabs } from "@/app/preferences/PreferencesTabs";
+import { ICheck } from "@/components/ui/icons";
+import {
+  formatProPrice,
+  getPlanDefinition,
+  type BillingInterval,
+} from "@/lib/billing/plans";
+import { startProCheckout } from "@/lib/billing/start-checkout";
 
 type Usage = {
   plan: string;
@@ -30,11 +35,6 @@ type InvoiceItem = {
   number: string | null;
 };
 
-const PREF_TABS = [
-  { href: "/preferences/automations", label: "Automations" },
-  { href: "/preferences/profile", label: "Profile" },
-] as const;
-
 export function BillingClient({
   checkoutSessionId,
 }: {
@@ -45,6 +45,7 @@ export function BillingClient({
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>("year");
   const [error, setError] = useState<string | null>(null);
   const [successPlan, setSuccessPlan] = useState<string | null>(null);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
@@ -72,8 +73,6 @@ export function BillingClient({
     fetchUsage();
   }, []);
 
-  // When user has a paid plan, sync subscription from Stripe so we pick up cancellations
-  // (e.g. after they return from the billing portal).
   useEffect(() => {
     if (!usage?.plan || usage.plan === "free") return;
     (async () => {
@@ -103,11 +102,15 @@ export function BillingClient({
       });
 
       setSyncing(false);
-
       const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
-        const planName = (data.plan === "plus" || data.plan === "starter") ? "Pro" : (data.plan ? String(data.plan).charAt(0).toUpperCase() + String(data.plan).slice(1) : "paid");
+        const planName =
+          data.plan === "plus" || data.plan === "starter"
+            ? "Pro"
+            : data.plan
+              ? String(data.plan).charAt(0).toUpperCase() + String(data.plan).slice(1)
+              : "paid";
         setSuccessPlan(planName);
         setError(null);
         await fetchUsage();
@@ -115,7 +118,9 @@ export function BillingClient({
         return;
       }
 
-      const msg = [data.error, data.details].filter(Boolean).join(" — ") || "Failed to sync subscription";
+      const msg =
+        [data.error, data.details].filter(Boolean).join(" — ") ||
+        "Failed to sync subscription";
       setError(msg);
     })();
   }, [checkoutSessionId, router]);
@@ -123,18 +128,11 @@ export function BillingClient({
   const startCheckout = async () => {
     setCheckoutLoading("plus");
     setError(null);
-    const res = await fetch("/api/billing/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan: "plus" }),
-    });
-    const data = await res.json().catch(() => ({}));
+    const result = await startProCheckout(billingInterval);
     setCheckoutLoading(null);
-    if (res.ok && data.url) {
-      window.location.href = data.url;
-      return;
+    if (!result.ok) {
+      setError(result.error ?? "Checkout failed");
     }
-    setError(data.error ?? "Checkout failed");
   };
 
   const openPortal = async () => {
@@ -153,8 +151,7 @@ export function BillingClient({
   const formatNextPayment = (iso: string | null) => {
     if (!iso) return null;
     try {
-      const d = new Date(iso);
-      return d.toLocaleDateString("en-US", {
+      return new Date(iso).toLocaleDateString("en-US", {
         year: "numeric",
         month: "long",
         day: "numeric",
@@ -173,214 +170,219 @@ export function BillingClient({
 
   if (loading && !usage) {
     return (
-      <div className="p-6">
-        <p className="text-neutral-500">Loading billing…</p>
+      <div className="settings-panel">
+        <p style={{ fontSize: 14, color: "var(--ink-3)" }}>Loading billing…</p>
       </div>
     );
   }
 
   const isPro = usage?.plan === "plus" || usage?.plan === "starter";
   const isFreeUi = !isPro;
+  const freePlan = getPlanDefinition("free");
+  const proPlan = getPlanDefinition("plus");
+  const planLabel = isFreeUi ? "Free" : isPro ? "Pro" : (usage?.plan ?? "—");
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-3">
-        <div>
-          <div
-            role="heading"
-            aria-level={1}
-            className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
-          >
-            Billing
-          </div>
-          <p className="text-base text-mono-medium mt-1 font-sans">
-            Manage your subscription, invoices, and receipts
+    <div className="settings-panel">
+      {(syncing || successPlan || error) && (
+        <div style={{ marginBottom: 16 }}>
+          {syncing && (
+            <p style={{ fontSize: 13, color: "var(--wheat-deep, #b45309)" }}>
+              Processing your subscription…
+            </p>
+          )}
+          {successPlan && (
+            <p style={{ fontSize: 13, color: "var(--forest-deep)" }}>
+              You&apos;re now on the {successPlan} plan.
+            </p>
+          )}
+          {error && (
+            <p style={{ fontSize: 13, color: "var(--ember)" }}>{error}</p>
+          )}
+        </div>
+      )}
+
+      <div className="setting-section">
+        <div className="setting-section__head">
+          <h2 className="setting-section__title">Plan</h2>
+          <p className="setting-section__sub">
+            {isFreeUi
+              ? "You're on the free plan. Upgrade for live bank sync and unlimited AI review."
+              : "Your active subscription and renewal dates."}
           </p>
         </div>
-        <PreferencesTabs tabs={PREF_TABS} />
+        <div className="setting-section__body">
+          <div className="plan">
+            <div className="plan__main">
+              <div className="plan__name">
+                ExpenseTerminal · {planLabel}
+                {usage?.subscriptionStatus && usage.plan !== "free"
+                  ? ` (${usage.subscriptionStatus})`
+                  : ""}
+              </div>
+              <div className="plan__sub">
+                {isFreeUi
+                  ? freePlan.description
+                  : "Manage payment method and cancellation in the Stripe portal."}
+              </div>
+              <ul className="plan__perks">
+                {(isFreeUi ? freePlan : proPlan).highlights.map((h) => (
+                  <li key={h}>
+                    <ICheck size={14} />
+                    {h}
+                  </li>
+                ))}
+              </ul>
+              {!isFreeUi && usage?.currentPeriodEnd && !usage?.cancelAtPeriodEnd && (
+                <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 14 }}>
+                  Next payment:{" "}
+                  <strong style={{ color: "var(--ink)" }}>
+                    {formatNextPayment(usage.currentPeriodEnd) ?? usage.currentPeriodEnd}
+                  </strong>
+                </p>
+              )}
+              {!isFreeUi && usage?.cancelAtPeriodEnd && usage?.currentPeriodEnd && (
+                <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 14 }}>
+                  Ends{" "}
+                  <strong style={{ color: "var(--ink)" }}>
+                    {formatNextPayment(usage.currentPeriodEnd) ?? usage.currentPeriodEnd}
+                  </strong>
+                  {" "}— then you&apos;ll switch to Free.
+                </p>
+              )}
+              {usage?.subscriptionStatus === "canceled" && (
+                <p style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 14 }}>
+                  No longer recurring — you&apos;re on the Free plan.
+                </p>
+              )}
+            </div>
+            <div className="plan__price">
+              <div className="money money--xl">
+                {isFreeUi
+                  ? freePlan.priceHuman
+                  : formatProPrice(billingInterval)}
+              </div>
+              <div style={{ color: "var(--ink-3)", fontSize: 13 }}>
+                {isFreeUi
+                  ? "per year"
+                  : billingInterval === "month"
+                    ? "per month"
+                    : "per year"}
+              </div>
+              {isPro ? (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  style={{ marginTop: 14 }}
+                  disabled={portalLoading}
+                  onClick={openPortal}
+                >
+                  {portalLoading ? "Opening…" : "Manage subscription"}
+                </button>
+              ) : (
+                <>
+                  <div
+                    className="billing-interval-toggle"
+                    style={{
+                      display: "flex",
+                      gap: 6,
+                      marginTop: 14,
+                      fontSize: 12,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className={`btn btn--ghost btn--mini${billingInterval === "month" ? " btn--active" : ""}`}
+                      onClick={() => setBillingInterval("month")}
+                    >
+                      Monthly
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn--ghost btn--mini${billingInterval === "year" ? " btn--active" : ""}`}
+                      onClick={() => setBillingInterval("year")}
+                    >
+                      Annual
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    style={{ marginTop: 10 }}
+                    disabled={!!checkoutLoading}
+                    onClick={startCheckout}
+                  >
+                    {checkoutLoading
+                      ? "Redirecting…"
+                      : `Upgrade to Pro (${formatProPrice(billingInterval)})`}
+                  </button>
+                  <p style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 8 }}>
+                    {proPlan.priceMonthlyHuman}/mo or {proPlan.priceYearlyHuman}/yr
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {syncing && (
-        <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-          Processing your subscription…
-        </p>
-      )}
-      {successPlan && (
-        <p className="mt-2 text-sm text-green-600 dark:text-green-400">
-          You’re now on the {successPlan} plan.
-        </p>
-      )}
-      {error && (
-        <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
-      )}
-
-      {/* Current plan summary in flat card */}
-      <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
-        <div className="px-4 py-3">
-          <div
-            role="heading"
-            aria-level={2}
-            className="text-base md:text-lg font-normal font-sans text-mono-dark"
-          >
-            Current plan
-          </div>
-          <p className="mt-1 text-xs text-mono-medium font-sans">
-            Your active subscription and renewal dates.
-          </p>
-        </div>
-        <div className="px-4 py-3 space-y-2 text-xs font-sans text-mono-medium">
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <span className="font-semibold text-mono-dark min-w-[110px]">Plan</span>
-            <span className="capitalize">
-              {isFreeUi ? "Free plan" : isPro ? "Pro" : usage?.plan ?? "—"}
-              {usage?.subscriptionStatus && usage.plan !== "free" ? ` (${usage.subscriptionStatus})` : ""}
-            </span>
-          </div>
-          {!isFreeUi && usage?.currentPeriodEnd && (usage.plan === "starter" || usage.plan === "plus") && !usage?.cancelAtPeriodEnd && (
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              <span className="font-semibold text-mono-dark min-w-[110px]">Next payment</span>
-              <span>
-                {formatNextPayment(usage.currentPeriodEnd) ?? usage.currentPeriodEnd}
-              </span>
-            </div>
-          )}
-          {!isFreeUi && usage?.cancelAtPeriodEnd && (usage.plan === "starter" || usage.plan === "plus") && usage?.currentPeriodEnd && (
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              <span className="font-semibold text-mono-dark min-w-[110px]">Ends</span>
-              <span>
-                {formatNextPayment(usage.currentPeriodEnd) ?? usage.currentPeriodEnd} — then you’ll switch to Free.
-              </span>
-            </div>
-          )}
-          {usage?.subscriptionStatus === "canceled" && (
-            <p className="text-xs text-mono-medium">
-              No longer recurring — you’re on the Free plan.
-            </p>
-          )}
-        </div>
-      </section>
-
-      {/* Subscription management in flat card */}
-      {usage && isPro && (
-        <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
-          <div className="px-4 py-3">
-            <div
-              role="heading"
-              aria-level={2}
-              className="text-base md:text-lg font-normal font-sans text-mono-dark"
-            >
-              Subscription
-            </div>
-            <p className="mt-1 text-xs text-mono-medium font-sans">
-              Cancel or change your plan. You’ll keep access until the end of your billing period, then switch to Free.
+      {usage && isFreeUi && usage.maxCsvTransactionsForAi != null && (
+        <div className="setting-section">
+          <div className="setting-section__head">
+            <h2 className="setting-section__title">AI usage</h2>
+            <p className="setting-section__sub">
+              CSV transactions eligible for automated review.
             </p>
           </div>
-          <div className="px-4 py-3">
-            <button
-              type="button"
-              onClick={openPortal}
-              disabled={portalLoading}
-              className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 disabled:opacity-50 transition-colors"
-            >
-              {portalLoading ? "Opening…" : "Manage subscription / Downgrade"}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* Usage summary in flat card */}
-      {usage && isFreeUi && (
-        <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
-          <div className="px-4 py-3">
-            <div
-              role="heading"
-              aria-level={2}
-              className="text-base md:text-lg font-normal font-sans text-mono-dark"
-            >
-              AI usage
-            </div>
-            <p className="mt-1 text-xs text-mono-medium font-sans">
-              How many CSV transactions are eligible for automated review.
+          <div className="setting-section__body">
+            <p style={{ fontSize: 14, color: "var(--ink-2)", margin: 0 }}>
+              {usage.csvTransactions.eligibleForAi} of {usage.maxCsvTransactionsForAi}{" "}
+              transactions
             </p>
-          </div>
-          <div className="px-4 py-3 space-y-3 text-xs font-sans text-mono-medium">
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              <span className="font-semibold text-mono-dark min-w-[110px]">Eligible</span>
-              <span>
-                {usage.csvTransactions.eligibleForAi} of{" "}
-                {usage.maxCsvTransactionsForAi == null ? "unlimited" : usage.maxCsvTransactionsForAi}{" "}
-                transactions
-              </span>
-            </div>
             {usage.overLimit && (
-              <p className="text-amber-600 text-xs">
+              <p style={{ fontSize: 13, color: "var(--ember)", marginTop: 8 }}>
                 Over limit by {usage.csvTransactions.overLimitCount}. Upgrade for unlimited.
               </p>
             )}
-            <div>
-              <button
-                type="button"
-                onClick={() => startCheckout()}
-                disabled={!!checkoutLoading}
-                className="mt-1 px-4 py-2.5 bg-black text-white rounded-none text-sm font-medium font-sans hover:bg-black/85 disabled:opacity-50 transition-colors"
-              >
-                {checkoutLoading === "plus"
-                  ? "Redirecting…"
-                  : `Upgrade to Pro (${getPlanDefinition("plus").priceHuman}/year)`}
-              </button>
-            </div>
           </div>
-        </section>
+        </div>
       )}
 
-      {/* Past receipts in flat card */}
       {invoices.length > 0 && (
-        <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
-          <div className="px-4 py-3">
-            <div
-              role="heading"
-              aria-level={2}
-              className="text-base md:text-lg font-normal font-sans text-mono-dark"
-            >
-              Past receipts
-            </div>
-            <p className="mt-1 text-xs text-mono-medium font-sans">
-              Download invoices for your records.
-            </p>
+        <div className="setting-section">
+          <div className="setting-section__head">
+            <h2 className="setting-section__title">Invoice history</h2>
+            <p className="setting-section__sub">Download receipts for your records.</p>
           </div>
-          <div className="px-4 py-3">
-            <ul className="space-y-2 text-xs font-sans text-mono-medium">
+          <div className="setting-section__body">
+            <div className="invoices">
               {invoices.map((inv) => (
-                <li
-                  key={inv.id}
-                  className="flex flex-wrap items-center justify-between gap-2"
-                >
-                  <span>
-                    {inv.date}
-                    {inv.number ? ` · ${inv.number}` : ""}
-                    {" — "}
-                    {formatCurrency(inv.amountPaid, inv.currency)}
-                  </span>
+                <div key={inv.id} className="invoices__row">
+                  <span>{inv.date}</span>
+                  <span>{inv.number ?? "—"}</span>
+                  <span>{formatCurrency(inv.amountPaid, inv.currency)}</span>
                   {inv.hostedInvoiceUrl ? (
                     <a
                       href={inv.hostedInvoiceUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-mono-dark underline hover:no-underline"
+                      className="btn btn--ghost btn--mini"
                     >
                       View receipt
                     </a>
-                  ) : null}
-                </li>
+                  ) : (
+                    <span />
+                  )}
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
-        </section>
+        </div>
       )}
 
       {isFreeUi && (
-        <p className="text-sm text-neutral-500">
-          <Link href="/pricing" className="underline hover:no-underline">
+        <p style={{ fontSize: 13, color: "var(--ink-3)" }}>
+          <Link href="/pricing" style={{ color: "var(--ink-2)", textDecoration: "underline" }}>
             View plans and pricing
           </Link>
         </p>

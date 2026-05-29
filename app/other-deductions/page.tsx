@@ -36,7 +36,7 @@ export default async function OtherDeductionsPage() {
               <li key={item.typeKey}>
                 <Link
                   href={item.href}
-                  className="flex items-center gap-4 py-6 first:pt-0 last:pb-0 -mx-3 px-3 rounded-lg hover:bg-bg-tertiary/40 transition-all duration-300 ease-in-out group"
+                  className="flex items-center gap-4 py-5 first:pt-0 last:pb-0 -mx-6 px-6 hover:bg-[#F0F1F7] transition-colors group"
                 >
                   <span className="material-symbols-rounded text-[22px] text-accent-sage shrink-0 group-hover:text-mono-dark transition-colors duration-300 ease-in-out">
                     {item.icon}

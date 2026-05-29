@@ -5,6 +5,13 @@ import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
 import { safeErrorMessage } from "@/lib/api/safe-error";
 import { taxYearSettingsPostSchema } from "@/lib/validation/schemas";
+import { z } from "zod";
+
+const taxYearSettingsPatchSchema = z.object({
+  tax_year: z.number().int().min(2020).max(2030),
+  w2_gross_income: z.number().min(0).max(99_999_999).nullable().optional(),
+  w2_withholding_ytd: z.number().min(0).max(99_999_999).nullable().optional(),
+});
 
 export async function GET(req: Request) {
   const authClient = await createSupabaseRouteClient();
@@ -105,6 +112,74 @@ export async function POST(req: Request) {
 
   if (error) {
     return new Response(JSON.stringify({ error: safeErrorMessage(error.message, "Failed to save tax year settings") }), {
+      status: 500, headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return new Response(JSON.stringify({ data }), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+export async function PATCH(req: Request) {
+  const authClient = await createSupabaseRouteClient();
+  const auth = await requireAuth(authClient);
+  if (!auth.authorized) {
+    return new Response(JSON.stringify(auth.body), {
+      status: auth.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const userId = auth.userId;
+  const { success: rlOk } = await rateLimitForRequest(req, userId, generalApiLimit);
+  if (!rlOk) {
+    return new Response(JSON.stringify({ error: "Too many requests" }), {
+      status: 429,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const supabase = authClient;
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid request body" }), {
+      status: 400, headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const parsed = taxYearSettingsPatchSchema.safeParse(body);
+  if (!parsed.success) {
+    const msg = parsed.error.flatten().formErrors[0] ?? "Invalid request body";
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 400, headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const { tax_year, w2_gross_income, w2_withholding_ytd } = parsed.data;
+  const update: Record<string, unknown> = {};
+  if (w2_gross_income !== undefined) update.w2_gross_income = w2_gross_income;
+  if (w2_withholding_ytd !== undefined) update.w2_withholding_ytd = w2_withholding_ytd;
+
+  if (Object.keys(update).length === 0) {
+    return new Response(JSON.stringify({ error: "No fields to update" }), {
+      status: 400, headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const cols = "id,user_id,tax_year,tax_rate,expected_income_range,w2_gross_income,w2_withholding_ytd,created_at";
+  const { data, error } = await (supabase as any)
+    .from("tax_year_settings")
+    .upsert(
+      { user_id: userId, tax_year, ...update },
+      { onConflict: "user_id,tax_year" }
+    )
+    .select(cols)
+    .single();
+
+  if (error) {
+    return new Response(JSON.stringify({ error: safeErrorMessage(error.message, "Failed to update W-2 data") }), {
       status: 500, headers: { "Content-Type": "application/json" },
     });
   }

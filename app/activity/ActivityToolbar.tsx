@@ -43,6 +43,7 @@ interface ActivityToolbarProps {
   onNewTransaction: () => void;
   totalCount: number;
   loading?: boolean;
+  dataSources?: { id: string; name: string; institution: string | null; source_type: string }[];
 }
 
 const STATUS_OPTIONS = [
@@ -158,6 +159,16 @@ function ActivityModal({
 const ICON_CLASS = "material-symbols-rounded text-[16px]";
 const ICON_STYLE = { fontSize: "16px" };
 
+function defaultDateRange() {
+  const y = new Date().getFullYear();
+  return { date_from: `${y}-01-01`, date_to: `${y}-12-31` };
+}
+
+function allTimeDateRange() {
+  const today = new Date().toISOString().slice(0, 10);
+  return { date_from: "1970-01-01", date_to: today };
+}
+
 export function ActivityToolbar({
   viewState,
   onViewStateChange,
@@ -166,6 +177,7 @@ export function ActivityToolbar({
   onNewTransaction,
   totalCount,
   loading = false,
+  dataSources = [],
 }: ActivityToolbarProps) {
   const [searchInput, setSearchInput] = useState(viewState.filters.search);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -210,6 +222,8 @@ export function ActivityToolbar({
 
   const iconBtnClass = "flex h-7 w-7 items-center justify-center rounded text-mono-light transition-colors hover:bg-bg-tertiary/40 hover:text-mono-dark";
 
+  const activeAccount = dataSources.find((s) => s.id === viewState.filters.data_source_id);
+
   return (
     <div className="space-y-4">
       {/* Header: title + count only */}
@@ -223,6 +237,12 @@ export function ActivityToolbar({
         </div>
         <p className="text-sm text-mono-medium mt-1 font-sans">
           {totalCount} transaction{totalCount === 1 ? "" : "s"}
+          {activeAccount ? (
+            <>
+              {" · "}
+              <span className="text-mono-dark">{activeAccount.name}</span>
+            </>
+          ) : null}
         </p>
       </div>
 
@@ -372,6 +392,46 @@ export function ActivityToolbar({
                   className="rounded-md border border-bg-tertiary/60 px-3 py-1.5 text-xs text-mono-dark hover:bg-bg-secondary/80 transition"
                 >
                   {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] font-medium text-mono-light uppercase tracking-wider mb-2">Account</p>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  onViewStateChange({
+                    filters: {
+                      ...viewState.filters,
+                      data_source_id: null,
+                      ...defaultDateRange(),
+                    },
+                  });
+                  setFilterOpen(false);
+                }}
+                className="rounded-md border border-bg-tertiary/60 px-3 py-1.5 text-xs text-mono-dark hover:bg-bg-secondary/80 transition"
+              >
+                All accounts
+              </button>
+              {dataSources.map((account) => (
+                <button
+                  key={account.id}
+                  type="button"
+                  onClick={() => {
+                    onViewStateChange({
+                      filters: {
+                        ...viewState.filters,
+                        data_source_id: account.id,
+                        ...allTimeDateRange(),
+                      },
+                    });
+                    setFilterOpen(false);
+                  }}
+                  className="rounded-md border border-bg-tertiary/60 px-3 py-1.5 text-xs text-mono-dark hover:bg-bg-secondary/80 transition"
+                >
+                  {account.name}
                 </button>
               ))}
             </div>
@@ -571,6 +631,7 @@ export function ActivityToolbar({
                 });
                 if (viewState.filters.status) params.set("status", viewState.filters.status);
                 if (viewState.filters.transaction_type) params.set("transaction_type", viewState.filters.transaction_type);
+                if (viewState.filters.data_source_id) params.set("data_source_id", viewState.filters.data_source_id);
                 if (viewState.filters.search) params.set("search", viewState.filters.search);
                 window.open(`/api/transactions/export?${params.toString()}`, "_blank");
                 setExportOpen(false);
@@ -592,6 +653,7 @@ export function ActivityToolbar({
                 });
                 if (viewState.filters.status) params.set("status", viewState.filters.status);
                 if (viewState.filters.transaction_type) params.set("transaction_type", viewState.filters.transaction_type);
+                if (viewState.filters.data_source_id) params.set("data_source_id", viewState.filters.data_source_id);
                 if (viewState.filters.search) params.set("search", viewState.filters.search);
                 window.open(`/api/transactions/export?${params.toString()}`, "_blank");
                 setExportOpen(false);

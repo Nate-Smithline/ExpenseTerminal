@@ -18,16 +18,14 @@ export interface TransactionUpdate {
 
 interface TransactionCardProps {
   transaction: Transaction;
-  onSave: (data: TransactionUpdate, opts?: { applyToSimilar?: boolean }) => void | Promise<void>;
+  onSave: (data: TransactionUpdate) => void | Promise<void>;
   onMarkPersonal: () => Promise<void>;
   onDelete?: () => Promise<void>;
-  onCheckSimilar: (vendor: string, excludeId: string) => Promise<Transaction[]>;
-  onApplyToAllSimilar: (transaction: Transaction, data: TransactionUpdate) => Promise<void>;
   onOpenManage?: (transaction: Transaction) => void;
   isActive?: boolean;
   onFocus?: () => void;
   taxRate?: number;
-  /** When true, card does not handle 'o' or 'y' so Similar Transactions popup can use them */
+  /** When true, card does not handle o / y so Similar Transactions popup can use them */
   similarPopupOpen?: boolean;
   hasPrevious?: boolean;
   hasNext?: boolean;
@@ -44,7 +42,6 @@ export interface TransactionCardRef {
   expand: () => void;
   nextStep: () => void;
   setDeductionPercent: (pct: number) => void;
-  toggleApplyToSimilar: () => void;
   deleteTransaction: () => void;
 }
 
@@ -83,8 +80,6 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
       onSave,
       onMarkPersonal,
       onDelete,
-      onCheckSimilar,
-      onApplyToAllSimilar,
       onOpenManage,
       isActive,
       onFocus,
@@ -105,8 +100,6 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     );
     const [saving, setSaving] = useState(false);
     const [showWriteIn, setShowWriteIn] = useState(false);
-    const [similarTransactions, setSimilarTransactions] = useState<Transaction[]>([]);
-    const [autoSort, setAutoSort] = useState(false);
     const [showDeductionControls, setShowDeductionControls] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(transaction.category ?? null);
     const [selectedScheduleLine, setSelectedScheduleLine] = useState<string | null>(transaction.schedule_c_line ?? null);
@@ -131,13 +124,6 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
     const isIncomeLike = transaction.transaction_type === "income";
     const deductibleAmount = (amount * deductionPct / 100);
     const recommendedPct = transaction.deduction_percent ?? (isMeal && !isTravel ? 50 : 100);
-
-    useEffect(() => {
-      onCheckSimilar(transaction.vendor, transaction.id).then((list) => {
-        setSimilarTransactions(list ?? []);
-      });
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
 
     useEffect(() => {
       if (isMeal && !isTravel && transaction.deduction_percent === null) {
@@ -172,9 +158,6 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
       },
       setDeductionPercent(pct: number) {
         if (SNAP_POINTS.includes(pct)) setDeductionPct(pct);
-      },
-      toggleApplyToSimilar() {
-        setAutoSort((prev) => !prev);
       },
       deleteTransaction() {
         if (onDelete) onDelete();
@@ -259,7 +242,7 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
         return;
       }
 
-      onSave(saveData, { applyToSimilar: autoSort && similarTransactions.length > 0 });
+      onSave(saveData);
     }
 
     async function handleMarkPersonalClick() {
@@ -354,26 +337,19 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
       return () => document.removeEventListener("mousedown", handleClick);
     }, [categoryPickerOpen]);
 
-    // Step 1 keyboard shortcuts: 0,1,2,5,7 = %, a = apply to similar, c = category, Backspace/Delete = delete
+    // Step 1 keyboard shortcuts: c = category, Backspace/Delete = delete
     useEffect(() => {
       if (!isActive || categoryPickerOpen) return;
       function handleKey(e: KeyboardEvent) {
         const tag = (e.target as HTMLElement)?.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
         const key = e.key;
-        // Let Similar Transactions popup handle o / y when it is open
         if (similarPopupOpen && (key === "o" || key === "O" || key === "y" || key === "Y")) return;
         if (key === "c" || key === "C") {
           e.preventDefault();
           e.stopImmediatePropagation();
           setCategoryPickerOpen(true);
           setCategoryHighlightIdx(EXPENSE_CATEGORIES.findIndex((c) => c.line === (selectedScheduleLine ?? transaction.schedule_c_line ?? "")) >= 0 ? EXPENSE_CATEGORIES.findIndex((c) => c.line === (selectedScheduleLine ?? transaction.schedule_c_line ?? "")) : 0);
-          return;
-        }
-        if (key === "a" || key === "A") {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          setAutoSort((prev) => !prev);
           return;
         }
         if (key === "y" || key === "Y" || key === "u" || key === "U") {
@@ -702,21 +678,6 @@ export const TransactionCard = forwardRef<TransactionCardRef, TransactionCardPro
                       rows={2}
                     />
                   </div>
-                )}
-
-                {/* Auto-sort checkbox */}
-                {similarTransactions.length > 0 && (
-                  <label className="flex items-center gap-2.5 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={autoSort}
-                      onChange={(e) => setAutoSort(e.target.checked)}
-                      className="h-4 w-4 rounded border-bg-tertiary text-accent-sage focus:ring-accent-sage/30"
-                    />
-                    <span className="text-xs text-mono-medium group-hover:text-mono-dark transition">
-                      Also apply to {similarTransactions.length} other{similarTransactions.length === 1 ? "" : "s"} from {transaction.vendor}
-                    </span>
-                  </label>
                 )}
 
                 {/* Action row */}

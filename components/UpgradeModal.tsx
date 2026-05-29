@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useCallback } from "react";
-
-const PRO_PRICE = "$400/year";
+import { formatProPrice, type BillingInterval } from "@/lib/billing/plans";
+import { startProCheckout } from "@/lib/billing/start-checkout";
 
 const PRO_BENEFITS = [
   "Unlimited AI categorization",
@@ -19,25 +19,17 @@ export function UpgradeModal({
   onClose: () => void;
 }) {
   const [loading, setLoading] = useState(false);
+  const [interval, setInterval] = useState<BillingInterval>("year");
 
   const handleUpgrade = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/billing/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: "plus" }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.url) {
-        window.location.href = data.url;
-        return;
-      }
-      setLoading(false);
+      const result = await startProCheckout(interval);
+      if (!result.ok) setLoading(false);
     } catch {
       setLoading(false);
     }
-  }, []);
+  }, [interval]);
 
   if (!open) return null;
 
@@ -59,10 +51,26 @@ export function UpgradeModal({
             Upgrade to Pro
           </div>
           <p className="text-sm text-mono-medium mt-1.5 font-sans">
-            Your Free plan has limits. Pro is {PRO_PRICE} and unlocks the full power of ExpenseTerminal.
+            Your Free plan has limits. Pro is {formatProPrice(interval)} and unlocks the full power of ExpenseTerminal.
           </p>
         </div>
         <div className="px-6 pb-4 pt-2 space-y-4">
+          <div className="flex gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => setInterval("month")}
+              className={`px-2 py-1 border ${interval === "month" ? "border-black text-mono-dark" : "border-bg-tertiary/40 text-mono-medium"}`}
+            >
+              $18/mo
+            </button>
+            <button
+              type="button"
+              onClick={() => setInterval("year")}
+              className={`px-2 py-1 border ${interval === "year" ? "border-black text-mono-dark" : "border-bg-tertiary/40 text-mono-medium"}`}
+            >
+              $180/yr
+            </button>
+          </div>
           <p className="text-sm text-mono-medium">
             On average, organized businesses save time and avoid missed deductions at tax time. Pro helps you stay on top of expenses year-round.
           </p>
@@ -89,7 +97,7 @@ export function UpgradeModal({
             disabled={loading}
             className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/80 transition disabled:opacity-60"
           >
-            {loading ? "Redirecting…" : "Upgrade to Pro"}
+            {loading ? "Redirecting…" : `Upgrade to Pro (${formatProPrice(interval)})`}
           </button>
         </div>
       </div>

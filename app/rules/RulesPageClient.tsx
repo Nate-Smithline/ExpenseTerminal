@@ -5,6 +5,7 @@ import type { Database } from "@/lib/types/database";
 import type { NormalizedRule, RuleConditions, RuleAction } from "@/lib/rules/types";
 import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
 import { PreferencesTabs } from "@/app/preferences/PreferencesTabs";
+import type { RuleSuggestion } from "@/app/api/rules/suggestions/route";
 
 type NotificationPrefs = {
   user_id: string;
@@ -34,6 +35,7 @@ function formatConditionSummary(c: RuleConditions): string {
 
 function formatActionSummary(a: RuleAction): string {
   if (a.type === "exclude") return "Then exclude (delete)";
+  if (a.type === "skip_similar_prompt") return "Then skip similar-transaction prompts";
   return a.category ? `Then auto-categorize as ${a.category}` : "Then auto-categorize";
 }
 
@@ -53,6 +55,9 @@ interface RulesPageClientProps {
   initialRules: NormalizedRule[];
   initialNotificationPreferences: NotificationPrefs;
   initialTaxSettings: TaxYearSetting[];
+  initialSuggestions?: RuleSuggestion[];
+  /** When "rules", show only vendor rules (for /rules nav). Default: full automations page. */
+  pageMode?: "automations" | "rules";
 }
 
 const PREF_TABS = [
@@ -64,12 +69,19 @@ export function RulesPageClient({
   initialRules,
   initialNotificationPreferences,
   initialTaxSettings,
+  initialSuggestions = [],
+  pageMode = "automations",
 }: RulesPageClientProps) {
   const [rules, setRules] = useState<NormalizedRule[]>(initialRules);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPrefs>(initialNotificationPreferences);
+  const [suggestions, setSuggestions] = useState<RuleSuggestion[]>(initialSuggestions);
+  const [acceptingVendor, setAcceptingVendor] = useState<string | null>(null);
   // Only show rules that have a match pattern (hide empty/placeholder rows)
   const visibleRules = rules.filter(
-    (r) => typeof r.conditions?.match?.pattern === "string" && r.conditions.match.pattern.trim() !== "",
+    (r) =>
+      r.action.type !== "skip_similar_prompt" &&
+      typeof r.conditions?.match?.pattern === "string" &&
+      r.conditions.match.pattern.trim() !== "",
   );
   const [notificationModalOpen, setNotificationModalOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -88,6 +100,40 @@ export function RulesPageClient({
     setRules(data.rules ?? []);
     setNotificationPreferences(data.notificationPreferences ?? null);
   }, []);
+
+  async function handleAcceptSuggestion(s: RuleSuggestion) {
+    setAcceptingVendor(s.vendorNormalized);
+    try {
+      const res = await fetch("/api/rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: s.vendorNormalized,
+          enabled: true,
+          conditions: {
+            match: { pattern: s.vendorNormalized, use_regex: false },
+          },
+          action: {
+            type: "auto_categorize",
+            category: s.category,
+            schedule_c_line: s.scheduleCLine,
+            ...(s.deductionPercent != null ? { deduction_percent: s.deductionPercent } : {}),
+          },
+        }),
+      });
+      if (res.ok) {
+        setSuggestions((prev) => prev.filter((x) => x.vendorNormalized !== s.vendorNormalized));
+        await reload();
+        setToast(`Rule added for "${s.vendorNormalized}"`);
+      }
+    } finally {
+      setAcceptingVendor(null);
+    }
+  }
+
+  function handleDismissSuggestion(vendorNormalized: string) {
+    setSuggestions((prev) => prev.filter((x) => x.vendorNormalized !== vendorNormalized));
+  }
 
   async function handleAddTaxYear() {
     const rate = parseFloat(newRate);
@@ -130,8 +176,10 @@ export function RulesPageClient({
     return () => clearTimeout(t);
   }, [toast]);
 
+  const isRulesPage = pageMode === "rules";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-4 py-6 md:px-9 md:py-8">
       <div className="space-y-3">
         <div>
           <div
@@ -139,15 +187,19 @@ export function RulesPageClient({
             aria-level={1}
             className="text-[32px] leading-tight font-sans font-normal text-mono-dark"
           >
-            Automations
+            {isRulesPage ? "Rules & Automations" : "Automations"}
           </div>
           <p className="text-base text-mono-medium mt-1 font-sans">
-            Set policies to help automate decisions and save even more time.
+            {isRulesPage
+              ? "Vendor rules you've set while sorting transactions, plus suggested automations."
+              : "Set policies to help automate decisions and save even more time."}
           </p>
         </div>
-        <PreferencesTabs tabs={PREF_TABS} />
+        {!isRulesPage && <PreferencesTabs tabs={PREF_TABS} />}
       </div>
 
+      {!isRulesPage && (
+      <>
       {/* Notifications header + summary in flat card */}
       <section className="border border-[#F0F1F7] divide-y divide-[#F0F1F7] bg-white">
         <div className="px-4 py-3 flex items-center justify-between gap-4">
@@ -233,6 +285,68 @@ export function RulesPageClient({
           )}
         </div>
       </section>
+      </>
+      )}
+
+      {/* Suggested Rules — surfaces vendor clusters without existing rules */}
+      {suggestions.length > 0 && (
+        <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
+          <div className="px-4 py-3">
+            <div
+              role="heading"
+              aria-level={2}
+              className="text-base md:text-lg font-normal font-sans text-mono-dark"
+            >
+              Suggested Rules
+            </div>
+            <p className="mt-1 text-xs text-mono-medium font-sans">
+              Vendors we've seen 5+ times with a consistent category. One click to lock it in.
+            </p>
+          </div>
+          <div>
+            {suggestions.map((s) => (
+              <div
+                key={s.vendorNormalized}
+                className="px-4 py-3 flex items-center justify-between gap-3 border-b border-[#F0F1F7] last:border-0"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-mono-dark truncate">
+                    {s.vendorNormalized}
+                  </p>
+                  <p className="text-xs text-mono-medium mt-0.5">
+                    Auto-categorize as{" "}
+                    <span className="font-medium text-mono-dark">{s.category}</span>
+                    {" · "}{s.timesUsed} transactions
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleAcceptSuggestion(s)}
+                    disabled={acceptingVendor === s.vendorNormalized}
+                    className="px-3 py-1.5 text-xs font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 disabled:opacity-50 transition-colors"
+                  >
+                    {acceptingVendor === s.vendorNormalized ? "Adding…" : "Add rule"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDismissSuggestion(s.vendorNormalized)}
+                    className="p-1.5 text-mono-light hover:text-mono-dark transition-colors"
+                    aria-label="Dismiss suggestion"
+                  >
+                    <span
+                      className="material-symbols-rounded leading-none inline-flex items-center justify-center"
+                      style={{ fontSize: 16 }}
+                    >
+                      close
+                    </span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Rules list in flat card */}
       <section className="border border-[#F0F1F7] bg-white divide-y divide-[#F0F1F7]">
@@ -255,8 +369,9 @@ export function RulesPageClient({
             <div className="px-4 py-4 text-xs font-sans text-mono-medium">
               <p className="font-semibold text-mono-dark">No rules yet</p>
               <p className="mt-2">
-                Rules automatically categorize or exclude transactions based on vendor or description.
-                Rules you create elsewhere will appear here automatically.
+                {isRulesPage
+                  ? "Sort a transaction in your Inbox to create a vendor rule automatically. Future transactions from that vendor will be handled the same way."
+                  : "Rules automatically categorize or exclude transactions based on vendor or description. Rules you create elsewhere will appear here automatically."}
               </p>
             </div>
           ) : (
@@ -296,7 +411,7 @@ export function RulesPageClient({
         </div>
       </section>
 
-      {notificationModalOpen && (
+      {notificationModalOpen && !isRulesPage && (
         <NotificationControlsModal
           initialPrefs={notificationPreferences}
           onClose={() => setNotificationModalOpen(false)}
@@ -325,7 +440,7 @@ export function RulesPageClient({
       )}
 
       {/* Tax Rate Modal */}
-      {taxModalOpen && (
+      {taxModalOpen && !isRulesPage && (
         <div
           className="fixed inset-0 min-h-[100dvh] z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
           role="dialog"

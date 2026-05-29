@@ -10,8 +10,18 @@
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
+-- 0. data_sources.workspace_id — nullable (workspaces table has no user_id FK)
+-- -----------------------------------------------------------------------------
+-- The workspaces table is a standalone business-profile entity with no user_id
+-- column. workspace_id on data_sources is therefore left NULL until a proper
+-- workspace-membership system is built. Make the column nullable so inserts
+-- don't require it.
+ALTER TABLE public.data_sources ALTER COLUMN workspace_id DROP NOT NULL;
+
+-- -----------------------------------------------------------------------------
 -- 1. data_sources: missing columns (Stripe / Direct Feed)
 -- -----------------------------------------------------------------------------
+
 ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'manual';
 ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS stripe_account_id TEXT;
 ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS financial_connections_account_id TEXT;
@@ -27,6 +37,9 @@ ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_access_token TEXT
 ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_item_id TEXT;
 ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_cursor TEXT;
 ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS plaid_institution_id TEXT;
+
+-- Phase 2: mixed vs. purely-business account flag
+ALTER TABLE public.data_sources ADD COLUMN IF NOT EXISTS is_mixed_account BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_data_sources_plaid_item_id
   ON public.data_sources(plaid_item_id)
@@ -70,6 +83,12 @@ ALTER TABLE public.transactions ADD CONSTRAINT transactions_transaction_type_che
   CHECK (transaction_type IN ('expense', 'income'));
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS deduction_percent INTEGER DEFAULT 100;
 ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS eligible_for_ai BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- Phase 1: Plaid primary category for MCC-based rule matching
+ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS plaid_category TEXT;
+CREATE INDEX IF NOT EXISTS idx_transactions_plaid_category
+  ON public.transactions(plaid_category)
+  WHERE plaid_category IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_transactions_user_status ON public.transactions(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_transactions_type ON public.transactions(transaction_type);
@@ -157,3 +176,40 @@ CREATE POLICY "Users can manage own disclaimer acks"
   USING (auth.uid() = user_id);
 CREATE INDEX IF NOT EXISTS idx_disclaimer_acks_user
   ON public.disclaimer_acknowledgments(user_id, tax_year);
+
+-- -----------------------------------------------------------------------------
+-- Phase 1: quarterly reminders + monthly summaries tracking tables
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.quarterly_reminders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  period TEXT NOT NULL,
+  sent_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, period)
+);
+ALTER TABLE public.quarterly_reminders ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view own quarterly reminders" ON public.quarterly_reminders;
+CREATE POLICY "Users can view own quarterly reminders"
+  ON public.quarterly_reminders FOR SELECT
+  USING (auth.uid() = user_id);
+CREATE INDEX IF NOT EXISTS idx_quarterly_reminders_user
+  ON public.quarterly_reminders(user_id, period);
+
+CREATE TABLE IF NOT EXISTS public.monthly_summaries_sent (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  period TEXT NOT NULL,
+  sent_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, period)
+);
+ALTER TABLE public.monthly_summaries_sent ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can view own monthly summaries" ON public.monthly_summaries_sent;
+CREATE POLICY "Users can view own monthly summaries"
+  ON public.monthly_summaries_sent FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- -----------------------------------------------------------------------------
+-- Phase 2: W-2 income fields for combined tax estimate
+-- -----------------------------------------------------------------------------
+ALTER TABLE public.tax_year_settings ADD COLUMN IF NOT EXISTS w2_gross_income DECIMAL(12, 2);
+ALTER TABLE public.tax_year_settings ADD COLUMN IF NOT EXISTS w2_withholding_ytd DECIMAL(12, 2);

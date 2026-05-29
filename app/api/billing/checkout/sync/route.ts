@@ -6,6 +6,7 @@ import {
   getStripeModeForHostname,
   getStripeProductIdForPlan,
 } from "@/lib/stripe";
+import { planForStripePriceId } from "@/lib/billing/stripe-prices";
 
 function planForProductId(productId: string, mode: "test" | "live"): "starter" | "plus" | null {
   if (productId === getStripeProductIdForPlan("starter", mode)) return "starter";
@@ -73,18 +74,21 @@ export async function POST(req: Request) {
   }
 
   const item = subscription.items?.data?.[0];
+  const priceId = item?.price?.id ?? null;
   const productId = item?.price?.product
     ? (typeof item.price.product === "string" ? item.price.product : item.price.product.id)
     : null;
 
-  if (!productId) {
+  if (!productId && !priceId) {
     return NextResponse.json(
-      { error: "Subscription has no product" },
+      { error: "Subscription has no product or price" },
       { status: 400 }
     );
   }
 
-  const plan = planForProductId(productId, mode);
+  const plan =
+    (productId ? planForProductId(productId, mode) : null) ??
+    (priceId ? planForStripePriceId(priceId, mode) : null);
   if (!plan) {
     return NextResponse.json(
       { error: "Product not mapped to a plan" },
@@ -93,7 +97,6 @@ export async function POST(req: Request) {
   }
 
   const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
-  const priceId = item?.price?.id ?? null;
   const currentPeriodEnd = subscription.current_period_end
     ? new Date(subscription.current_period_end * 1000).toISOString()
     : null;

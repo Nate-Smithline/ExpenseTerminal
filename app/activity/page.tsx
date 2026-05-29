@@ -26,13 +26,18 @@ export default async function ActivityPage({
   const dataSourceIdRaw = Array.isArray(dataSourceIdParam) ? dataSourceIdParam[0] : dataSourceIdParam;
   const dataSourceId = dataSourceIdRaw && uuidSchema.safeParse(dataSourceIdRaw).success ? dataSourceIdRaw : null;
 
+  const { data: dataSources } = await (db as any)
+    .from("data_sources")
+    .select("id, name, institution, source_type")
+    .eq("user_id", userId)
+    .order("name", { ascending: true });
+
   let txQuery = (db as any)
     .from("transactions")
     .select("*")
     .eq("user_id", userId)
     .order("date", { ascending: false });
   if (dataSourceId) {
-    // Deep link from Accounts page: show all time for this data source.
     txQuery = txQuery.eq("data_source_id", dataSourceId);
   } else {
     txQuery = txQuery.eq("tax_year", taxYear);
@@ -52,6 +57,8 @@ export default async function ActivityPage({
       initialTransactions={transactions ?? []}
       initialTotalCount={totalCount ?? 0}
       initialYear={taxYear}
+      initialDataSourceId={dataSourceId}
+      dataSources={(dataSources ?? []) as { id: string; name: string; institution: string | null; source_type: string }[]}
       userId={userId}
     />
   );

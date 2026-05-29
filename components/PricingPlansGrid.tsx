@@ -43,10 +43,9 @@ export function PricingPlansGrid() {
             )}
           </div>
           <p className="text-2xl font-display text-mono-dark mb-1">
-            {plan.priceHuman}
-            {plan.priceInterval === "year" && (
-              <span className="text-xs font-normal text-mono-medium">/year</span>
-            )}
+            {plan.id === "plus"
+              ? `${pro.priceMonthlyHuman}/mo or ${pro.priceYearlyHuman}/yr`
+              : plan.priceHuman}
           </p>
           <p className="text-sm text-mono-medium mb-3">{plan.description}</p>
           <ul className="text-sm text-mono-medium space-y-1.5">

@@ -47,6 +47,8 @@ export async function POST(req: Request) {
     description,
     transaction_type,
     source,
+    marker,
+    business_pct,
   } = parsed.data;
 
   const updatePayload: Record<string, unknown> = {
@@ -68,6 +70,8 @@ export async function POST(req: Request) {
   if (description !== undefined) updatePayload.description = description;
   if (transaction_type !== undefined) updatePayload.transaction_type = transaction_type;
   if (source !== undefined) updatePayload.source = source;
+  if (marker !== undefined) updatePayload.marker = marker;
+  if (business_pct !== undefined) updatePayload.business_pct = business_pct;
 
   if (updatePayload.vendor_normalized === undefined) {
     const { data: row } = await (supabase as any)

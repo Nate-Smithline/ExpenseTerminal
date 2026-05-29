@@ -4,18 +4,16 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import type { Database } from "@/lib/types/database";
 import { normalizeVendor } from "@/lib/vendor-matching";
-import { TaxYearSelector } from "@/components/TaxYearSelector";
 import { UploadModal } from "@/components/UploadModal";
 import { TransactionCard } from "@/components/TransactionCard";
 import type { TransactionUpdate, TransactionCardRef } from "@/components/TransactionCard";
 import { TransactionDetailPanel, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
 import { SimilarTransactionsPopup } from "@/components/SimilarTransactionsPopup";
+import { vendorPromptKey } from "@/lib/vendor-prompt-key";
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
 interface InboxPageClientProps {
-  initialYear: number;
   initialPendingCount: number;
-  initialTotalPendingCount?: number;
   initialUnanalyzedCount?: number;
   initialTransactions: Transaction[];
   userId: string;
@@ -76,16 +74,13 @@ async function fetchUnanalyzedIds(params: Record<string, string>): Promise<strin
 }
 
 export function InboxPageClient({
-  initialYear,
   initialPendingCount,
-  initialTotalPendingCount,
   initialUnanalyzedCount = 0,
   initialTransactions,
   userId,
   taxRate = 0.24,
 }: InboxPageClientProps) {
-  const [selectedYear, setSelectedYear] = useState(initialYear);
-  const [pendingCount, setPendingCount] = useState(initialTotalPendingCount ?? initialPendingCount);
+  const [pendingCount, setPendingCount] = useState(initialPendingCount);
   const [unanalyzedCount, setUnanalyzedCount] = useState(initialUnanalyzedCount);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -95,13 +90,6 @@ export function InboxPageClient({
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [manageTx, setManageTx] = useState<Transaction | null>(null);
   const [bulkAnalyzing, setBulkAnalyzing] = useState(false);
-  const [similarPopup, setSimilarPopup] = useState<{
-    transaction: Transaction;
-    update: TransactionUpdate;
-    similarTransactions: Transaction[];
-  } | null>(null);
-  const [applyingSimilar, setApplyingSimilar] = useState(false);
-
   const [undoState, setUndoState] = useState<{
     id: string;
     previous: Transaction;
@@ -112,9 +100,20 @@ export function InboxPageClient({
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [dismissedDuplicateKeys, setDismissedDuplicateKeys] = useState<Set<string>>(new Set());
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [duplicateModalIdx, setDuplicateModalIdx] = useState(0);
 
   const [aiProgress, setAiProgress] = useState<{ completed: number; total: number; current: string } | null>(null);
   const [aiStalled, setAiStalled] = useState(false);
+
+  const [similarPopup, setSimilarPopup] = useState<{
+    transaction: Transaction;
+    update: TransactionUpdate;
+    similarTransactions: Transaction[];
+  } | null>(null);
+  const [applyingSimilar, setApplyingSimilar] = useState(false);
+  const [autoSortVendorKeys, setAutoSortVendorKeys] = useState<Set<string>>(new Set());
+  const [dismissedSimilarKeys, setDismissedSimilarKeys] = useState<Set<string>>(new Set());
 
 
   // If we ever end up in a "bulkAnalyzing" UI state without the real AI progress
@@ -130,6 +129,18 @@ export function InboxPageClient({
   }, [bulkAnalyzing, aiProgress]);
 
   const cardRefs = useRef<Map<string, TransactionCardRef>>(new Map());
+
+  const reloadSimilarPromptStatus = useCallback(async () => {
+    const res = await fetch("/api/transactions/similar-prompt-status");
+    if (!res.ok) return;
+    const body = (await res.json()) as { autoSortKeys?: string[]; dismissedKeys?: string[] };
+    setAutoSortVendorKeys(new Set(body.autoSortKeys ?? []));
+    setDismissedSimilarKeys(new Set(body.dismissedKeys ?? []));
+  }, []);
+
+  useEffect(() => {
+    void reloadSimilarPromptStatus();
+  }, [reloadSimilarPromptStatus]);
 
   function formatDollars(n: number): string {
     return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -181,19 +192,13 @@ export function InboxPageClient({
   );
 
   const reloadInbox = useCallback(async () => {
-    const [txs, countForYear, totalPending, unanalyzed] = await Promise.all([
+    const [txs, totalPending, unanalyzed] = await Promise.all([
       fetchTransactions({
-        tax_year: String(selectedYear),
         inbox: "true",
         limit: "50",
       }),
-      fetchCount({
-        tax_year: String(selectedYear),
-        inbox: "true",
-      }),
       fetchTotalPendingCount(),
       fetchCount({
-        tax_year: String(selectedYear),
         status: "pending",
         transaction_type: "expense",
         analyzed_only: "false",
@@ -205,7 +210,7 @@ export function InboxPageClient({
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("inbox-count-changed"));
     }
-  }, [selectedYear]);
+  }, []);
 
   function runBackgroundAI(txIds: string[]): Promise<{ ok: boolean; error?: string }> {
     if (txIds.length === 0) return Promise.resolve({ ok: true });
@@ -346,7 +351,6 @@ export function InboxPageClient({
     setBulkAnalyzing(true);
     try {
       const allIds = await fetchUnanalyzedIds({
-        tax_year: String(selectedYear),
         status: "pending",
         transaction_type: "expense",
       });
@@ -436,7 +440,6 @@ export function InboxPageClient({
       amount?: number;
       description?: string | null;
     },
-    opts?: { applyToSimilar?: boolean },
   ) {
     const tx = transactions.find((t) => t.id === id);
     if (!tx) return;
@@ -483,10 +486,20 @@ export function InboxPageClient({
           throw new Error(message);
         }
 
-        if (opts?.applyToSimilar) {
-          await handleApplyToAllSimilar(tx, update);
-        } else {
-          const similar = await handleCheckSimilar(tx.vendor, id);
+        const txType = (update.transaction_type ?? tx.transaction_type ?? "expense") as "income" | "expense";
+        const vendorNormalized = tx.vendor_normalized ?? normalizeVendor(tx.vendor);
+        const promptKey = vendorPromptKey(vendorNormalized, txType);
+
+        if (autoSortVendorKeys.has(promptKey)) {
+          await handleApplyToAllSimilar(tx, update).catch((ruleErr) => {
+            const message = ruleErr instanceof Error ? ruleErr.message : "Failed to save vendor rule";
+            console.warn("[inbox] vendor rule failed", { id, update, error: message });
+            setToast("Saved, but vendor rule could not be updated");
+            setTimeout(() => setToast(null), 4000);
+          });
+          await reloadSimilarPromptStatus();
+        } else if (!dismissedSimilarKeys.has(promptKey)) {
+          const similar = await handleCheckSimilar(tx.vendor, id, txType);
           if (similar.length > 0) {
             setSimilarPopup({
               transaction: tx,
@@ -510,7 +523,7 @@ export function InboxPageClient({
   }
 
   async function handleMarkPersonal(id: string) {
-    handleSave(id, { status: "personal", deduction_percent: 0 });
+    handleSave(id, { status: "personal", deduction_percent: 0, quick_label: "Personal" });
   }
 
   async function saveTransactionUpdate(txId: string, update: TransactionDetailUpdate): Promise<void> {
@@ -566,25 +579,37 @@ export function InboxPageClient({
     })();
   }
 
+
   const handleCheckSimilar = useCallback(
-    async (vendor: string, excludeId: string): Promise<Transaction[]> => {
-      return fetchTransactions({
-        tax_year: String(selectedYear),
-        status: "pending",
-        transaction_type: "expense",
+    async (
+      vendor: string,
+      excludeId: string,
+      transactionType: "income" | "expense",
+    ): Promise<Transaction[]> => {
+      const rows = await fetchTransactions({
+        inbox: "true",
         vendor_normalized: normalizeVendor(vendor),
         exclude_id: excludeId,
+        transaction_type: transactionType,
+        limit: "50",
       });
+      return rows.filter((t) => (t.transaction_type ?? "expense") === transactionType);
     },
-    [selectedYear],
+    [],
   );
 
   const handleApplyToAllSimilar = useCallback(
     async (transaction: Transaction, data: TransactionUpdate) => {
-      const isPersonal = data.quick_label === "Personal" || (data.deduction_percent === 0);
+      const txType = (data.transaction_type ?? transaction.transaction_type ?? "expense") as "income" | "expense";
+      const isPersonal =
+        data.status === "personal" ||
+        data.quick_label === "Personal" ||
+        data.deduction_percent === 0;
       const quickLabel = isPersonal
         ? "Personal"
-        : (data.quick_label || data.business_purpose || "Business expense");
+        : (data.quick_label ||
+          data.business_purpose ||
+          (txType === "income" ? "Business income" : "Business expense"));
       const res = await fetch("/api/transactions/auto-sort", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -594,18 +619,41 @@ export function InboxPageClient({
           businessPurpose: isPersonal ? "" : (data.business_purpose ?? ""),
           category: data.category ?? transaction.category ?? undefined,
           schedule_c_line: data.schedule_c_line ?? transaction.schedule_c_line ?? undefined,
-          taxYear: selectedYear,
+          transactionType: txType,
         }),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string; updatedCount?: number };
       if (!res.ok) {
         throw new Error(body.error ?? "Failed to apply to all");
       }
-      setToast(`${body.updatedCount ?? 0} transaction${(body.updatedCount ?? 0) === 1 ? "" : "s"} auto-sorted`);
-      setTimeout(() => setToast(null), 4000);
-      await reloadInbox();
+      if ((body.updatedCount ?? 0) > 0) {
+        setToast(`${body.updatedCount} transaction${body.updatedCount === 1 ? "" : "s"} auto-sorted`);
+        setTimeout(() => setToast(null), 4000);
+        await reloadInbox();
+      }
+      await reloadSimilarPromptStatus();
     },
-    [selectedYear, reloadInbox],
+    [reloadInbox, reloadSimilarPromptStatus],
+  );
+
+  const handleDismissSimilarPrompt = useCallback(
+    async (transaction: Transaction, transactionType: "income" | "expense") => {
+      const vendorNormalized = transaction.vendor_normalized ?? normalizeVendor(transaction.vendor);
+      const res = await fetch("/api/transactions/dismiss-similar-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorNormalized, transactionType }),
+      });
+      if (!res.ok) {
+        throw new Error("Failed to save preference");
+      }
+      setDismissedSimilarKeys((prev) => {
+        const next = new Set(prev);
+        next.add(vendorPromptKey(vendorNormalized, transactionType));
+        return next;
+      });
+    },
+    [],
   );
 
   const handleUndoLast = useCallback(async () => {
@@ -752,7 +800,7 @@ export function InboxPageClient({
   }, [transactions.length, activeIdx]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-4 py-6 md:px-9 md:py-8">
       {/* Header */}
       <div className="space-y-3">
         <div>
@@ -766,22 +814,11 @@ export function InboxPageClient({
           <p className="text-base text-mono-medium mt-1 font-sans">
             {pendingCount} {pendingCount === 1 ? "item" : "items"} to review
           </p>
-          {pendingCount > 0 && transactions.length === 0 && (
-            <p className="text-xs text-mono-light mt-1 font-sans">
-              No pending for {selectedYear}. Change the tax year above to see items from other years.
-            </p>
-          )}
         </div>
       </div>
 
       {/* Controls */}
       <div className="flex items-center gap-6">
-        <TaxYearSelector
-          value={selectedYear}
-          onChange={(y) => setSelectedYear(y)}
-          label="Tax year"
-          compact={false}
-        />
         <button
           onClick={() => setShowShortcuts((v) => !v)}
           type="button"
@@ -930,7 +967,6 @@ export function InboxPageClient({
               ["1-4", "Select reason (step 2)"],
               ["c", "Change category (arrows + Enter)"],
               ["p", "Mark as personal"],
-              ["a", "Toggle apply to similar"],
               ["w", "Write in purpose"],
               ["d", "Cycle deduction %"],
               ["s", "Next / Save"],
@@ -952,57 +988,127 @@ export function InboxPageClient({
         </div>
       )}
 
-      {/* Possible duplicates */}
+      {/* Possible duplicates — single "Review duplicates" entry point */}
       {!loading && visibleDuplicateGroups.length > 0 && (
-        <div className="space-y-3">
-          <div className="space-y-1">
-            <h3 className="text-base text-mono-dark !font-sans !font-normal">
-              Possible duplicates
-            </h3>
+        <div className="border border-[#F0F1F7] bg-white px-4 py-3 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-mono-dark">
+              {visibleDuplicateGroups.length} possible duplicate{visibleDuplicateGroups.length !== 1 ? "s" : ""}
+            </p>
             <p className="text-xs text-mono-medium">
-              Transactions in this section share the same date, amount, and vendor. Review each group before removing duplicates.
+              Transactions sharing the same date, amount, and vendor.
             </p>
           </div>
-          {visibleDuplicateGroups.map((group) => {
-            const key = duplicateKey(group[0]);
-            const first = group[0];
-            return (
-              <div
-                key={key}
-                className="border border-[#F0F1F7] bg-white p-4 space-y-3"
-              >
-                <ul className="text-xs text-mono-dark space-y-1">
-                  {group.map((t) => (
-                    <li key={t.id}>
-                      {t.vendor} — {t.date} — ${Number(t.amount).toFixed(2)}
+          <button
+            type="button"
+            onClick={() => { setDuplicateModalIdx(0); setDuplicateModalOpen(true); }}
+            className="shrink-0 px-3 py-2 text-xs font-medium bg-[#F0F1F7] text-mono-dark hover:bg-[#E4E7F0] transition rounded-none"
+          >
+            Review
+          </button>
+        </div>
+      )}
+
+      {/* Duplicate step-through modal */}
+      {duplicateModalOpen && (() => {
+        const group = visibleDuplicateGroups[duplicateModalIdx];
+        if (!group) { setDuplicateModalOpen(false); return null; }
+        const key = duplicateKey(group[0]);
+        const first = group[0];
+        const total = visibleDuplicateGroups.length;
+        const isLast = duplicateModalIdx >= total - 1;
+
+        function advance() {
+          if (isLast) {
+            setDuplicateModalOpen(false);
+          } else {
+            setDuplicateModalIdx((i) => i + 1);
+          }
+        }
+
+        return (
+          <div
+            className="fixed inset-0 min-h-[100dvh] z-[60] flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="rounded-none bg-white shadow-xl max-w-md w-full mx-4 border border-[#F0F1F7]">
+              {/* Header */}
+              <div className="px-6 pt-5 pb-0 flex items-center justify-between">
+                <p className="text-xs text-mono-light">
+                  Group {duplicateModalIdx + 1} of {total}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setDuplicateModalOpen(false)}
+                  className="p-1 -mr-1 text-mono-light hover:text-mono-dark"
+                  aria-label="Close"
+                >
+                  <span className="material-symbols-rounded text-xl leading-none">close</span>
+                </button>
+              </div>
+
+              <div className="px-6 pt-3 pb-2">
+                <p className="text-base font-medium text-mono-dark mb-0.5">Possible duplicate</p>
+                <p className="text-xs text-mono-medium mb-4">
+                  These transactions share the same date, amount, and vendor.
+                </p>
+
+                <ul className="divide-y divide-[#F0F1F7] border border-[#F0F1F7]">
+                  {group.map((t, i) => (
+                    <li key={t.id} className="px-4 py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-mono-dark">{t.vendor}</p>
+                          <p className="text-xs text-mono-light">{t.date} · ${Number(t.amount).toFixed(2)}</p>
+                          {t.source && <p className="text-xs text-mono-light/70 mt-0.5">Source: {t.source}</p>}
+                        </div>
+                        {i === 0 && (
+                          <span className="text-[10px] text-mono-light border border-[#F0F1F7] px-1.5 py-0.5">oldest</span>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleDelete(first.id);
-                    }}
-                    className="px-3 py-2 text-xs font-medium bg-[#FEE2E2] text-[#DC2626] hover:bg-[#FCA5A5]/30 transition rounded-none"
-                  >
-                    Mark as duplicate (remove first)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDismissedDuplicateKeys((prev) => new Set(prev).add(key));
-                    }}
-                    className="px-3 py-2 text-xs font-medium bg-cool-stock text-black hover:bg-[#E8EEF5] transition rounded-none"
-                  >
-                    Not a duplicate (keep all)
-                  </button>
-                </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+
+              <div className="px-6 pt-3 pb-5 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleDelete(first.id);
+                    setDismissedDuplicateKeys((prev) => new Set(prev).add(key));
+                    advance();
+                  }}
+                  className="w-full px-4 py-2.5 text-sm font-medium bg-[#FEE2E2] text-[#DC2626] hover:bg-[#FCA5A5]/40 transition rounded-none text-left"
+                >
+                  Remove oldest — it's a duplicate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDismissedDuplicateKeys((prev) => new Set(prev).add(key));
+                    advance();
+                  }}
+                  className="w-full px-4 py-2.5 text-sm font-medium bg-[#F0F1F7] text-mono-dark hover:bg-[#E4E7F0] transition rounded-none text-left"
+                >
+                  Keep all — not a duplicate
+                </button>
+              </div>
+
+              {/* Progress bar */}
+              {total > 1 && (
+                <div className="h-0.5 bg-[#F0F1F7]">
+                  <div
+                    className="h-full bg-[#2563EB] transition-all duration-300"
+                    style={{ width: `${((duplicateModalIdx + 1) / total) * 100}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Transaction list */}
       {loading && (
@@ -1034,7 +1140,7 @@ export function InboxPageClient({
             isActive={i === activeIdx}
             onFocus={() => setActiveIdx(i)}
             taxRate={taxRate}
-            onSave={(data, opts) =>
+            onSave={(data) =>
               handleSave(
                 t.id,
                 {
@@ -1050,13 +1156,10 @@ export function InboxPageClient({
                   transaction_type:
                     data.transaction_type ?? (t.transaction_type ?? undefined),
                 },
-                opts,
               )
             }
             onMarkPersonal={async () => handleMarkPersonal(t.id)}
             onDelete={async () => handleDelete(t.id)}
-            onCheckSimilar={handleCheckSimilar}
-            onApplyToAllSimilar={handleApplyToAllSimilar}
             onOpenManage={(tx) => setManageTx(tx)}
             similarPopupOpen={!!similarPopup}
             hasPrevious={i > 0}
@@ -1106,7 +1209,6 @@ export function InboxPageClient({
         />
       )}
 
-      {/* Similar transactions popup (after save without "apply to similar") */}
       {similarPopup && (
         <SimilarTransactionsPopup
           vendor={similarPopup.transaction.vendor}
@@ -1115,7 +1217,19 @@ export function InboxPageClient({
           businessPurpose={similarPopup.update.business_purpose ?? ""}
           deductionPercent={similarPopup.update.deduction_percent ?? null}
           onCancel={() => setSimilarPopup(null)}
-          onJustThisOne={() => setSimilarPopup(null)}
+          onJustThisOne={async () => {
+            const txType = (similarPopup.update.transaction_type ??
+              similarPopup.transaction.transaction_type ??
+              "expense") as "income" | "expense";
+            try {
+              await handleDismissSimilarPrompt(similarPopup.transaction, txType);
+              setSimilarPopup(null);
+            } catch (err) {
+              const message = err instanceof Error ? err.message : "Failed to save preference";
+              setToast(message);
+              setTimeout(() => setToast(null), 5000);
+            }
+          }}
           onApplyToAll={async () => {
             setApplyingSimilar(true);
             try {
@@ -1132,6 +1246,7 @@ export function InboxPageClient({
           applying={applyingSimilar}
         />
       )}
+
     </div>
   );
 }

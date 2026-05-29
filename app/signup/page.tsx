@@ -1,22 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseClient } from "@/lib/supabase/client";
 import { getAuthErrorMessage } from "@/lib/auth-errors";
 import { AuthLayout } from "@/components/AuthLayout";
-import { validatePassword, getPasswordStrength } from "@/lib/validation/password";
+import { validatePassword } from "@/lib/validation/password";
 import { formatUSPhone, parseUSPhone } from "@/lib/format-us-phone";
 import Link from "next/link";
-
-const BUSINESS_TYPES = [
-  "Sole Proprietor",
-  "Single-member LLC",
-  "S-Corp",
-  "Partnership",
-  "C-Corp",
-  "Other",
-];
 
 export default function SignupPage() {
   const router = useRouter();
@@ -28,25 +19,6 @@ export default function SignupPage() {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const isMobile = window.matchMedia("(max-width: 767px)").matches;
-    if (isMobile) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle if not typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
-      if (e.key === "l" || e.key === "L") {
-        e.preventDefault();
-        router.push("/login");
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -63,7 +35,6 @@ export default function SignupPage() {
     try {
       const emailValue = email.trim();
 
-      // Check if an account already exists for this email before attempting sign up.
       try {
         const res = await fetch("/api/auth/check-email", {
           method: "POST",
@@ -82,7 +53,7 @@ export default function SignupPage() {
           return;
         }
       } catch {
-        // If the check fails, fall back to Supabase's own validation below.
+        /* fall through to Supabase validation */
       }
 
       const supabase = createSupabaseClient();
@@ -90,10 +61,7 @@ export default function SignupPage() {
         email: emailValue,
         password,
         options: {
-          emailRedirectTo:
-            typeof window !== "undefined"
-              ? `${window.location.origin}/auth/callback`
-              : undefined,
+          emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
           data: {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
@@ -112,49 +80,47 @@ export default function SignupPage() {
 
       const userId = data.user?.id ?? null;
 
-      // Send custom verification email (this route now also ensures a profile
-      // row exists with the correct email using the service-role client).
       try {
         await fetch("/api/email/send-verification", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: emailValue, userId }),
         });
-      } catch {
-        // Verification email is best-effort
-      }
+      } catch { /* best-effort */ }
 
       const params = new URLSearchParams({ email: emailValue });
       if (userId) params.set("userId", userId);
       router.push("/auth/verify-pending?" + params.toString());
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Could not connect. Check your network and try again.";
+      const message = err instanceof Error ? err.message : "Could not connect. Check your network and try again.";
       setError(getAuthErrorMessage({ message }, "connection"));
     } finally {
       setLoading(false);
     }
   }
 
-  return (
-    <div className="relative w-full min-w-0 max-w-full">
-      <AuthLayout>
-        <h1 className="text-center text-lg md:text-2xl font-display text-mono-dark mb-6">
-          Keep more of what you earn. Increase peace of mind about it.
-        </h1>
 
-      <form onSubmit={handleSubmit} className="space-y-3.5 w-full min-w-0">
+  return (
+    <AuthLayout isLoading={loading}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-.02em", color: "var(--ink)", margin: 0 }}>
+          Create your account
+        </h1>
+        <p style={{ fontSize: 14, color: "var(--ink-3)", marginTop: 4 }}>
+          Start your 15-day free trial — no card required.
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {/* Name row */}
-        <div className="flex gap-3">
+        <div style={{ display: "flex", gap: 10 }}>
           <input
             type="text"
             required
             placeholder="First name"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
-            className="auth-input signup-input flex-1 h-12"
+            className="auth-input"
           />
           <input
             type="text"
@@ -162,136 +128,116 @@ export default function SignupPage() {
             placeholder="Last name"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
-            className="auth-input signup-input flex-1 h-12"
+            className="auth-input"
           />
         </div>
 
-        {/* Email */}
         <input
           type="email"
           required
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="auth-input signup-input h-12"
+          className="auth-input"
         />
 
-        {/* Phone (US only) */}
-        <div className="space-y-1">
+        <input
+          type="tel"
+          inputMode="tel"
+          placeholder="Phone (US)"
+          required
+          value={phone}
+          onChange={(e) => setPhone(formatUSPhone(e.target.value))}
+          className="auth-input"
+        />
+
+        <div style={{ position: "relative" }}>
           <input
-            type="tel"
-            inputMode="tel"
-            placeholder="Phone"
+            type={showPassword ? "text" : "password"}
             required
-            value={phone}
-            onChange={(e) => setPhone(formatUSPhone(e.target.value))}
-            className="auth-input signup-input h-12"
+            minLength={8}
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="auth-input"
+            style={{ paddingRight: 44 }}
           />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            tabIndex={-1}
+            style={{
+              position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+              background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)",
+              display: "flex", alignItems: "center", padding: 0,
+            }}
+          >
+            <span className="material-symbols-rounded" style={{ fontSize: 18 }}>
+              {showPassword ? "visibility_off" : "visibility"}
+            </span>
+          </button>
         </div>
 
-        {/* Password */}
-        <div>
-          <div className="relative">
-            <input
-              type={showPassword ? "text" : "password"}
-              required
-              minLength={8}
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="auth-input signup-input pr-12 h-12"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-mono-light hover:text-mono-medium transition-colors flex items-center justify-center"
-              tabIndex={-1}
-              style={{ height: '20px', width: '20px' }}
-            >
-              <span className="material-symbols-rounded text-[20px] leading-none">
-                {showPassword ? "visibility_off" : "visibility"}
-              </span>
-            </button>
+        {/* Password strength hints */}
+        {password && (
+          <div style={{
+            padding: "10px 14px", background: "var(--bone-2)", borderRadius: 8,
+            display: "flex", flexDirection: "column", gap: 6, fontSize: 12.5,
+          }}>
+            {[
+              { label: "8+ characters", ok: password.length >= 8 },
+              { label: "Uppercase letter", ok: /[A-Z]/.test(password) },
+              { label: "Lowercase letter", ok: /[a-z]/.test(password) },
+              { label: "Number", ok: /\d/.test(password) },
+            ].map(({ label, ok }) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, color: ok ? "var(--forest)" : "var(--ink-3)" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  {ok ? <path d="M20 6L9 17l-5-5" /> : <circle cx="12" cy="12" r="9" strokeWidth="1.5" />}
+                </svg>
+                {label}
+              </div>
+            ))}
           </div>
-          {password && (
-            <div className="mt-2 p-3 bg-[#E8EEF5] text-[#16A34A] min-w-0">
-              <div className="space-y-1.5 text-xs break-words">
-                <div className={`flex items-center gap-2 ${password.length >= 12 || (password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) ? "text-green-600" : "text-mono-medium"}`}>
-                  <span className="material-symbols-rounded text-[14px]">
-                    {password.length >= 12 || (password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) ? "check_circle" : "radio_button_unchecked"}
-                  </span>
-                  <span>{password.length >= 12 ? "12+ characters" : "8+ characters with uppercase, lowercase, number, and special character"}</span>
-                </div>
-                <div className={`flex items-center gap-2 ${/[a-z]/.test(password) ? "text-green-600" : "text-mono-medium"}`}>
-                  <span className="material-symbols-rounded text-[14px]">
-                    {/[a-z]/.test(password) ? "check_circle" : "radio_button_unchecked"}
-                  </span>
-                  <span>Lowercase letter</span>
-                </div>
-                <div className={`flex items-center gap-2 ${/[A-Z]/.test(password) ? "text-green-600" : "text-mono-medium"}`}>
-                  <span className="material-symbols-rounded text-[14px]">
-                    {/[A-Z]/.test(password) ? "check_circle" : "radio_button_unchecked"}
-                  </span>
-                  <span>Uppercase letter</span>
-                </div>
-                <div className={`flex items-center gap-2 ${/\d/.test(password) ? "text-green-600" : "text-mono-medium"}`}>
-                  <span className="material-symbols-rounded text-[14px]">
-                    {/\d/.test(password) ? "check_circle" : "radio_button_unchecked"}
-                  </span>
-                  <span>Number</span>
-                </div>
-                <div className={`flex items-center gap-2 ${/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password) ? "text-green-600" : "text-mono-medium"}`}>
-                  <span className="material-symbols-rounded text-[14px]">
-                    {/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password) ? "check_circle" : "radio_button_unchecked"}
-                  </span>
-                  <span>Special character</span>
-                </div>
-              </div>
-              <div className="mt-2 pt-2 border-t border-bg-tertiary">
-                <p className={`text-xs font-medium ${getPasswordStrength(password) === "weak" ? "text-red-600" : getPasswordStrength(password) === "fair" ? "text-amber-600" : "text-green-600"}`}>
-                  Strength: {getPasswordStrength(password)}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-        {/* Terms copy only */}
-        <p className="pt-1 text-xs text-mono-medium">
-          By proceeding, you agree to the{" "}
-          <Link href="/terms" className="text-accent-navy underline">
-            Terms &amp; Conditions
-          </Link>{" "}
-          and{" "}
-          <Link href="/privacy" className="text-accent-navy underline">
-            Privacy Policy
-          </Link>
-          .
-        </p>
-
-        {/* Error */}
-        {error && (
-          <p className="text-sm text-black bg-[#F5F0E8] p-3">
-            {error}
-          </p>
         )}
 
-        {/* Submit */}
+        <p style={{ fontSize: 12, color: "var(--ink-4)", lineHeight: 1.5, margin: "2px 0" }}>
+          By proceeding you agree to the{" "}
+          <Link href="/terms" style={{ color: "var(--forest)", textDecoration: "none" }}>Terms</Link>{" "}
+          and{" "}
+          <Link href="/privacy" style={{ color: "var(--forest)", textDecoration: "none" }}>Privacy Policy</Link>.
+        </p>
+
+        {error && (
+          <div style={{
+            padding: "10px 14px", background: "var(--ember-tint)", border: "1px solid var(--ember-soft)",
+            borderRadius: 8, fontSize: 13.5, color: "var(--ember-deep)", lineHeight: 1.4,
+          }}>
+            {error}
+          </div>
+        )}
+
         <button
           type="submit"
           disabled={loading}
-          className="w-full mt-2 bg-black text-white text-sm font-medium h-12 px-4 rounded-none transition-opacity duration-150 hover:opacity-70 disabled:opacity-60 disabled:cursor-not-allowed"
+          style={{
+            width: "100%", height: 44, background: loading ? "var(--forest-mid)" : "var(--forest)",
+            color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 600,
+            letterSpacing: "-.005em", cursor: loading ? "not-allowed" : "pointer",
+            transition: "background .15s ease", marginTop: 4,
+          }}
+          onMouseOver={e => { if (!loading) (e.currentTarget as HTMLButtonElement).style.background = "var(--forest-deep)"; }}
+          onMouseOut={e => { if (!loading) (e.currentTarget as HTMLButtonElement).style.background = "var(--forest)"; }}
         >
-          {loading ? "Creating account..." : "Get Started"}
+          {loading ? "Creating account…" : "Start free trial"}
         </button>
-        </form>
 
-        <p className="mt-6 text-sm text-mono-medium text-center break-words">
-          <Link href="/login" className="inline-flex items-center gap-2 text-accent-navy font-medium">
-            <span className="kbd-hint hidden md:inline-flex">L</span>
-            <span>Already have an account?</span>
+        <p style={{ textAlign: "center", fontSize: 13, color: "var(--ink-3)", margin: 0 }}>
+          Already have an account?{" "}
+          <Link href="/login" style={{ color: "var(--forest)", fontWeight: 600, textDecoration: "none" }}>
+            Sign in
           </Link>
         </p>
-      </AuthLayout>
-    </div>
+      </form>
+    </AuthLayout>
   );
 }

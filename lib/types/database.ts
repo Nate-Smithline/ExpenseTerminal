@@ -232,6 +232,7 @@ export interface Database {
         Row: {
           id: string;
           user_id: string;
+          workspace_id: string | null;
           name: string;
           account_type: string;
           institution: string | null;
@@ -249,11 +250,13 @@ export interface Database {
           plaid_item_id: string | null;
           plaid_cursor: string | null;
           plaid_institution_id: string | null;
+          is_mixed_account: boolean;
           created_at: string;
         };
         Insert: {
           id?: string;
           user_id: string;
+          workspace_id?: string | null;
           name: string;
           account_type: string;
           institution?: string | null;
@@ -271,6 +274,7 @@ export interface Database {
           plaid_item_id?: string | null;
           plaid_cursor?: string | null;
           plaid_institution_id?: string | null;
+          is_mixed_account?: boolean;
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["data_sources"]["Insert"]>;

@@ -79,6 +79,9 @@ export const transactionUpdateBodySchema = z.object({
   description: descriptionSchema.nullable().optional(),
   transaction_type: z.enum(["income", "expense"]).optional(),
   source: z.enum(["csv_upload", "manual"]).optional(),
+  // New design: marker system
+  marker: z.enum(["Personal", "Business", "Partial"]).nullable().optional(),
+  business_pct: z.number().int().min(0).max(100).nullable().optional(),
 });
 
 export const transactionDeleteBodySchema = z.object({

@@ -1,22 +1,20 @@
 import { NextResponse } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
+import type { BillingInterval } from "@/lib/billing/plans";
 import {
-  getStripeClient,
-  getStripeMode,
-  getStripeProductIdForPlan,
-  assertStripeProductEnv,
-} from "@/lib/stripe";
+  assertStripePriceEnv,
+  getStripePriceId,
+} from "@/lib/billing/stripe-prices";
+import { getStripeClient, getStripeMode } from "@/lib/stripe";
 
 function getBaseUrl(req: Request, hostname: string): string {
   const isLocal =
     hostname === "localhost" || hostname === "127.0.0.1";
 
-  // Explicit env wins (e.g. NEXT_PUBLIC_APP_URL=http://localhost:3001)
   const explicit = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (explicit) return explicit.replace(/\/$/, "");
 
-  // On localhost: use the request’s own origin so the return URL matches the app (and port).
   if (isLocal) {
     try {
       const url = new URL(req.url);
@@ -26,7 +24,6 @@ function getBaseUrl(req: Request, hostname: string): string {
     }
   }
 
-  // Production: prefer Origin/Referer so we get the correct public URL.
   const origin = req.headers.get("origin") ?? req.headers.get("referer");
   if (origin) {
     try {
@@ -45,6 +42,10 @@ function getBaseUrl(req: Request, hostname: string): string {
   }
 }
 
+function parseInterval(value: unknown): BillingInterval {
+  return value === "month" ? "month" : "year";
+}
+
 export async function POST(req: Request) {
   const authClient = await createSupabaseRouteClient();
   const auth = await requireAuth(authClient);
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
     return NextResponse.json(auth.body, { status: auth.status });
   }
 
-  let body: { plan?: string } = {};
+  let body: { plan?: string; interval?: string } = {};
   try {
     body = await req.json();
   } catch {
@@ -70,53 +71,55 @@ export async function POST(req: Request) {
     );
   }
 
+  const interval = parseInterval(body.interval);
   const url = new URL(req.url);
   const mode = getStripeMode(url.hostname);
 
   try {
-    assertStripeProductEnv("plus", mode);
+    assertStripePriceEnv(interval, mode);
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Stripe product not configured";
+    const message = e instanceof Error ? e.message : "Stripe price not configured";
     return NextResponse.json(
-      { error: message, code: "STRIPE_PRODUCT_MISSING" },
+      { error: message, code: "STRIPE_PRICE_MISSING" },
+      { status: 500 }
+    );
+  }
+
+  const priceId = getStripePriceId(interval, mode);
+  if (!priceId) {
+    return NextResponse.json(
+      { error: "Stripe price ID not set", code: "STRIPE_PRICE_MISSING" },
       { status: 500 }
     );
   }
 
   const stripe = getStripeClient(mode);
-  const productId = getStripeProductIdForPlan("plus", mode);
-  if (!productId) {
-    return NextResponse.json(
-      { error: "Stripe product ID not set", code: "STRIPE_PRODUCT_MISSING" },
-      { status: 500 }
-    );
-  }
-
   const base = getBaseUrl(req, url.hostname);
   const successUrl = `${base}/settings/billing?session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl = `${base}/settings/billing`;
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          product: productId,
-          unit_amount: 30000,
-          recurring: { interval: "year" },
-        },
-        quantity: 1,
-      },
-    ],
+    line_items: [{ price: priceId, quantity: 1 }],
     allow_promotion_codes: true,
     success_url: successUrl,
     cancel_url: cancelUrl,
     client_reference_id: auth.userId,
     customer_email: undefined,
+    subscription_data: {
+      trial_period_days: 15,
+    },
+    metadata: {
+      plan: "plus",
+      interval,
+      stripe_mode: mode,
+    },
   });
 
-  const payload: { url: string | null; success_url?: string } = { url: session.url };
+  const payload: { url: string | null; success_url?: string; mode: typeof mode } = {
+    url: session.url,
+    mode,
+  };
   if (process.env.NODE_ENV !== "production") {
     payload.success_url = successUrl;
   }

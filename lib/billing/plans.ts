@@ -1,10 +1,14 @@
 export type PlanId = "free" | "starter" | "plus";
 
+export type BillingInterval = "month" | "year";
+
 export interface PlanDefinition {
   id: PlanId;
   name: string;
   priceHuman: string;
-  priceInterval: "year";
+  priceMonthlyHuman: string;
+  priceYearlyHuman: string;
+  priceInterval: BillingInterval;
   stripeProductId: string | null;
   description: string;
   highlights: string[];
@@ -22,6 +26,8 @@ export const plans: Record<PlanId, PlanDefinition> = {
     id: "free",
     name: "ExpenseTerminal",
     priceHuman: "$0",
+    priceMonthlyHuman: "$0",
+    priceYearlyHuman: "$0",
     priceInterval: "year",
     stripeProductId: null,
     description: "The full ExpenseTerminal experience — no limits.",
@@ -39,7 +45,9 @@ export const plans: Record<PlanId, PlanDefinition> = {
   starter: {
     id: "starter",
     name: "Starter",
-    priceHuman: "$120",
+    priceHuman: "$120/yr",
+    priceMonthlyHuman: "$10",
+    priceYearlyHuman: "$120",
     priceInterval: "year",
     stripeProductId: STARTER_PRODUCT_ID,
     description: "A calm, dependable tax companion (legacy plan).",
@@ -56,7 +64,9 @@ export const plans: Record<PlanId, PlanDefinition> = {
   plus: {
     id: "plus",
     name: "Pro",
-    priceHuman: "$400",
+    priceHuman: "$18/mo or $180/yr",
+    priceMonthlyHuman: "$18",
+    priceYearlyHuman: "$180",
     priceInterval: "year",
     stripeProductId: PLUS_PRODUCT_ID,
     description: "For founders who want ExpenseTerminal woven directly into their banking.",
@@ -74,5 +84,12 @@ export const plans: Record<PlanId, PlanDefinition> = {
 
 export function getPlanDefinition(id: PlanId): PlanDefinition {
   return plans[id];
+}
+
+export function formatProPrice(interval: BillingInterval): string {
+  const pro = plans.plus;
+  return interval === "month"
+    ? `${pro.priceMonthlyHuman}/mo`
+    : `${pro.priceYearlyHuman}/yr`;
 }
 

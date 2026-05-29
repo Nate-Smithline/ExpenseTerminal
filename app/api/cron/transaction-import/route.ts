@@ -1,21 +1,28 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { runSyncForDataSource } from "@/lib/data-sources/sync-runner";
+import { runAnalysisForIds } from "@/lib/ai/analyze-transactions";
+import { applyAllAutoSortRulesForUser } from "@/lib/auto-sort";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 /**
- * EventBridge / Vercel Cron: run transaction import for all connected data sources.
- * Schedule: 2:00 AM EST (07:00 UTC).
- * Supports both Stripe (legacy) and Plaid source types.
- * Secured by CRON_SECRET: set in Vercel (and .env.local for local testing).
+ * Vercel Cron — runs at 2:00 AM EST (07:00 UTC) every night.
+ *
+ * For each connected data source:
+ *  1. Sync new transactions from Plaid or Stripe.
+ *  2. Auto-analyze any pending, uncategorized transactions for that user.
+ *     Cached vendor patterns resolve instantly; only genuinely new merchants hit the AI.
+ *
+ * Zero-click design: by the time the user opens the app, their transactions
+ * are already categorized. No second button required.
  */
 export async function GET(req: Request) {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
     return NextResponse.json(
-      { error: "CRON_SECRET is not configured. Set CRON_SECRET in Vercel Environment Variables (and .env.local for local runs)." },
+      { error: "CRON_SECRET is not configured." },
       { status: 503 },
     );
   }
@@ -33,24 +40,101 @@ export async function GET(req: Request) {
   const xfHost = req.headers.get("x-forwarded-host");
   const host = req.headers.get("host");
   const hostname = (xfHost ?? host ?? "").split(",")[0]?.trim()?.split(":")[0] || new URL(req.url).hostname;
-  const results: { id: string; source_type: string; success: boolean; error?: string }[] = [];
+
+  const results: {
+    id: string;
+    source_type: string;
+    sync: { success: boolean; error?: string };
+    analysis?: { successful: number; failed: number; cachedCount: number; total: number };
+  }[] = [];
+
   for (const row of sources ?? []) {
-    const result = await runSyncForDataSource(
+    // ── Step 1: Sync ────────────────────────────────────────────────────────
+    const syncResult = await runSyncForDataSource(
       supabase,
       row.user_id,
       row.id,
       row.source_type,
       { hostname },
     );
-    results.push({
+
+    const entry: (typeof results)[number] = {
       id: row.id,
       source_type: row.source_type,
-      success: result.success,
-      error: result.error,
-      ...(result.diagnostics ? { diagnostics: result.diagnostics } : {}),
-      ...(result.plaidDiagnostics ? { plaidDiagnostics: result.plaidDiagnostics } : {}),
-    });
+      sync: { success: syncResult.success, error: syncResult.error },
+    };
+
+    // ── Step 2: Apply saved vendor rules to new pending transactions ────────
+    if (syncResult.success) {
+      try {
+        await applyAllAutoSortRulesForUser(supabase, row.user_id);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[cron/transaction-import] Auto-sort rules error", { userId: row.user_id, sourceId: row.id, msg });
+      }
+    }
+
+    // ── Step 3: Auto-analyze (only on successful sync) ─────────────────────
+    if (syncResult.success) {
+      try {
+        const analysisResult = await autoAnalyzeForUser(supabase, row.user_id, row.id);
+        entry.analysis = analysisResult;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[cron/transaction-import] Auto-analyze error", { userId: row.user_id, sourceId: row.id, msg });
+        entry.analysis = { successful: 0, failed: 0, cachedCount: 0, total: 0 };
+      }
+    }
+
+    results.push(entry);
   }
 
   return NextResponse.json({ ok: true, results });
+}
+
+/**
+ * Fetch pending, uncategorized transactions for this user's data source,
+ * then run AI analysis on them. Capped at 300 per run to keep within cron limits.
+ */
+async function autoAnalyzeForUser(
+  supabase: ReturnType<typeof createSupabaseServiceClient>,
+  userId: string,
+  dataSourceId: string,
+): Promise<{ successful: number; failed: number; cachedCount: number; total: number }> {
+  // Fetch business industry for context-aware prompting
+  const { data: orgRow } = await (supabase as any)
+    .from("org_settings")
+    .select("business_industry")
+    .eq("user_id", userId)
+    .single();
+  const businessIndustry: string | null = orgRow?.business_industry ?? null;
+
+  // Get pending, uncategorized transactions for this data source.
+  // We order by created_at DESC so the freshest transactions (just synced) go first.
+  const { data: pendingRows } = await (supabase as any)
+    .from("transactions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("data_source_id", dataSourceId)
+    .eq("status", "pending")
+    .is("category", null)
+    .order("created_at", { ascending: false })
+    .limit(300);
+
+  const ids: string[] = (pendingRows ?? []).map((r: { id: string }) => r.id);
+  if (ids.length === 0) {
+    return { successful: 0, failed: 0, cachedCount: 0, total: 0 };
+  }
+
+  const result = await runAnalysisForIds(supabase as any, userId, ids, businessIndustry);
+  console.log("[cron/transaction-import] Auto-analyze complete", {
+    userId,
+    dataSourceId,
+    total: result.total,
+    successful: result.successful,
+    cachedCount: result.cachedCount,
+    failed: result.failed,
+  });
+
+  return result;
 }

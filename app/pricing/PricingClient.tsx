@@ -3,7 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getPlanDefinition, type PlanId } from "@/lib/billing/plans";
+import {
+  formatProPrice,
+  getPlanDefinition,
+  type BillingInterval,
+  type PlanId,
+} from "@/lib/billing/plans";
+import { startProCheckout } from "@/lib/billing/start-checkout";
 
 export function PricingClient({
   checkoutSessionId,
@@ -18,6 +24,7 @@ export function PricingClient({
   const [successPlan, setSuccessPlan] = useState<string | null>(null);
   const [currentPlan, setCurrentPlan] = useState<PlanId | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>("year");
   const [downgradeModalOpen, setDowngradeModalOpen] = useState(false);
   const syncedRef = useRef(false);
 
@@ -72,22 +79,55 @@ export function PricingClient({
 
   const planIds: PlanId[] = ["free", "plus"];
   const isPro = currentPlan === "starter" || currentPlan === "plus";
+  const proPlan = getPlanDefinition("plus");
 
   const startCheckout = async () => {
     setCheckoutLoading(true);
-    const res = await fetch("/api/billing/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ plan: "plus" }),
-    });
-    const data = await res.json().catch(() => ({}));
+    const result = await startProCheckout(billingInterval);
     setCheckoutLoading(false);
-    if (res.ok && data.url) window.location.href = data.url;
-    else setError(data.error ?? "Checkout failed");
+    if (!result.ok) setError(result.error ?? "Checkout failed");
   };
+
+  const checkoutButton = (label: string) => (
+    <button
+      type="button"
+      onClick={startCheckout}
+      disabled={checkoutLoading}
+      className="mt-4 w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8] disabled:opacity-60 disabled:cursor-not-allowed"
+    >
+      {checkoutLoading ? "Redirecting…" : label}
+    </button>
+  );
+
+  const intervalToggle = (
+    <div className="mt-3 flex gap-2 text-xs">
+      <button
+        type="button"
+        onClick={() => setBillingInterval("month")}
+        className={`px-2 py-1 border ${billingInterval === "month" ? "border-[#2563EB] text-[#2563EB]" : "border-[#E8EEF5] text-mono-medium"}`}
+      >
+        {proPlan.priceMonthlyHuman}/mo
+      </button>
+      <button
+        type="button"
+        onClick={() => setBillingInterval("year")}
+        className={`px-2 py-1 border ${billingInterval === "year" ? "border-[#2563EB] text-[#2563EB]" : "border-[#E8EEF5] text-mono-medium"}`}
+      >
+        {proPlan.priceYearlyHuman}/yr
+      </button>
+    </div>
+  );
 
   return (
     <div>
+      {(syncing || successPlan || error) && (
+        <div className="mb-4 text-sm">
+          {syncing && <p className="text-[#b45309]">Processing your subscription…</p>}
+          {successPlan && <p className="text-[#166534]">You&apos;re now on the {successPlan} plan.</p>}
+          {error && <p className="text-red-600">{error}</p>}
+        </div>
+      )}
+
       <div className="mt-4 grid gap-6 sm:grid-cols-2">
         {planIds.map((id) => {
           const plan = getPlanDefinition(id);
@@ -102,8 +142,9 @@ export function PricingClient({
                 {plan.name}
               </p>
               <p className="mt-1 text-sm text-[#5B82B4]">
-                {plan.priceHuman}
-                {plan.priceInterval === "year" && "/year"}
+                {id === "plus"
+                  ? `${plan.priceMonthlyHuman}/mo or ${plan.priceYearlyHuman}/yr`
+                  : plan.priceHuman}
               </p>
               <p className="mt-3 text-sm text-mono-medium">
                 {plan.description}
@@ -135,14 +176,10 @@ export function PricingClient({
                   ) : (
                     <>
                       {currentPlan !== null ? (
-                        <button
-                          type="button"
-                          onClick={startCheckout}
-                          disabled={checkoutLoading}
-                          className="mt-4 w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8] disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          {checkoutLoading ? "Redirecting…" : "Upgrade to Pro"}
-                        </button>
+                        <>
+                          {intervalToggle}
+                          {checkoutButton(`Upgrade to Pro (${formatProPrice(billingInterval)})`)}
+                        </>
                       ) : (
                         <Link
                           href="/signup"
@@ -159,20 +196,16 @@ export function PricingClient({
                 <>
                   {isPro ? (
                     <Link
-                      href="/preferences/billing"
+                      href="/settings/billing"
                       className="mt-4 inline-block text-center w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8]"
                     >
                       You&apos;re on Pro · Manage plan
                     </Link>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={startCheckout}
-                      disabled={checkoutLoading}
-                      className="mt-4 w-full px-4 py-2 bg-[#2563EB] text-white text-sm font-medium rounded-none hover:bg-[#1D4ED8] disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {checkoutLoading ? "Redirecting…" : "Upgrade to Pro"}
-                    </button>
+                    <>
+                      {intervalToggle}
+                      {checkoutButton(`Upgrade to Pro (${formatProPrice(billingInterval)})`)}
+                    </>
                   )}
                 </>
               )}
@@ -213,7 +246,7 @@ export function PricingClient({
                 Cancel
               </button>
               <Link
-                href="/preferences/billing"
+                href="/settings/billing"
                 className="px-4 py-2 text-sm font-medium bg-[#2563EB] text-white rounded-none hover:bg-[#1D4ED8]"
               >
                 Go to Billing
@@ -224,7 +257,7 @@ export function PricingClient({
       )}
 
       <p className="mt-8 text-sm text-mono-medium">
-        <Link href="/preferences/billing" className="text-accent-navy underline hover:no-underline">
+        <Link href="/settings/billing" className="text-accent-navy underline hover:no-underline">
           Manage billing
         </Link>{" "}
         · <Link href="/" className="text-accent-navy underline hover:no-underline">Home</Link>{" "}

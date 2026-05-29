@@ -15,6 +15,7 @@ import { ExportCallout } from "./ExportCallout";
 import { ForYourAwareness } from "./ForYourAwareness";
 import { DashboardPeriodBar } from "./DashboardPeriodBar";
 import { TaxDetailsSections } from "./TaxDetailsSections";
+import { TaxIntelligenceWidget } from "./TaxIntelligenceWidget";
 
 function deductibleAmount(t: { amount: string; deduction_percent?: number | null; is_meal?: boolean; is_travel?: boolean }): number {
   const amt = Math.abs(Number(t.amount));
@@ -33,15 +34,17 @@ export default async function DashboardPage() {
   const taxYear = getEffectiveTaxYear(cookieStore, profile);
   const supabase = authClient;
 
-  // Fetch user's tax rate for this year
+  // Fetch user's tax rate + W-2 data for this year
   const { data: taxYearRow } = await (supabase as any)
     .from("tax_year_settings")
-    .select("tax_rate")
+    .select("tax_rate, w2_gross_income, w2_withholding_ytd")
     .eq("user_id", userId)
     .eq("tax_year", taxYear)
     .single();
 
   const taxRate = taxYearRow ? Number(taxYearRow.tax_rate) : 0.24;
+  const w2GrossIncome = taxYearRow?.w2_gross_income != null ? Number(taxYearRow.w2_gross_income) : null;
+  const w2WithholdingYtd = taxYearRow?.w2_withholding_ytd != null ? Number(taxYearRow.w2_withholding_ytd) : null;
 
   const { data: completedTx } = await (supabase as any)
     .from("transactions")
@@ -152,7 +155,7 @@ export default async function DashboardPage() {
   const totalSavings = transactionSavings + additionalTotal;
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-10 px-4 py-6 md:px-9 md:py-8">
       <div className="space-y-4">
         <DashboardHeader
           pendingCount={pendingCount ?? 0}
@@ -187,6 +190,16 @@ export default async function DashboardPage() {
           taxYear={taxYear}
         />
       </div>
+
+      {/* Tax Intelligence — "What do I owe?" combined estimate */}
+      <TaxIntelligenceWidget
+        taxYear={taxYear}
+        sideHustleRevenue={revenue}
+        sideHustleDeductions={totalDeductions}
+        marginalTaxRate={taxRate}
+        initialW2GrossIncome={w2GrossIncome}
+        initialW2WithholdingYtd={w2WithholdingYtd}
+      />
 
       {/* Tax Details sections merged into Home (How much should I file, Schedule C, Category breakout, SE) */}
       <TaxDetailsSections defaultYear={taxYear} />

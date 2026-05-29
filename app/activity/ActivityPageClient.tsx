@@ -56,6 +56,8 @@ interface ActivityPageClientProps {
   initialTransactions: Transaction[];
   initialTotalCount: number;
   initialYear: number;
+  initialDataSourceId?: string | null;
+  dataSources?: { id: string; name: string; institution: string | null; source_type: string }[];
   userId: string;
 }
 
@@ -63,6 +65,8 @@ export function ActivityPageClient({
   initialTransactions,
   initialTotalCount,
   initialYear,
+  initialDataSourceId = null,
+  dataSources = [],
   userId,
 }: ActivityPageClientProps) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
@@ -138,10 +142,11 @@ export function ActivityPageClient({
       try {
         const res = await fetch("/api/activity-view-settings");
         if (cancelled) return;
+        let nextState = DEFAULT_VIEW_STATE;
         if (res.ok) {
           const data = await res.json().catch(() => null);
           if (data && !cancelled) {
-            setViewState({
+            nextState = {
               sort_column: data.sort_column ?? DEFAULT_VIEW_STATE.sort_column,
               sort_asc: data.sort_asc ?? DEFAULT_VIEW_STATE.sort_asc,
               visible_columns: Array.isArray(data.visible_columns) && data.visible_columns.length > 0
@@ -156,9 +161,28 @@ export function ActivityPageClient({
                 date_from: typeof data.filters?.date_from === "string" ? data.filters.date_from : defaultDateRange().date_from,
                 date_to: typeof data.filters?.date_to === "string" ? data.filters.date_to : defaultDateRange().date_to,
               },
-            });
+            };
           }
         }
+
+        const dsFromUrl =
+          initialDataSourceId ??
+          (typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("data_source_id")
+            : null);
+
+        if (dsFromUrl) {
+          nextState = {
+            ...nextState,
+            filters: {
+              ...nextState.filters,
+              data_source_id: dsFromUrl,
+              ...allTimeDateRange(),
+            },
+          };
+        }
+
+        if (!cancelled) setViewState(nextState);
       } finally {
         if (!cancelled) setViewSettingsLoaded(true);
       }
@@ -166,26 +190,7 @@ export function ActivityPageClient({
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  // If URL has ?data_source_id=, override filters (deep link from Accounts page).
-  useEffect(() => {
-    try {
-      const sp = new URLSearchParams(window.location.search);
-      const ds = sp.get("data_source_id");
-      if (!ds) return;
-      setViewState((prev) => ({
-        ...prev,
-        filters: {
-          ...prev.filters,
-          data_source_id: ds,
-          ...allTimeDateRange(),
-        },
-      }));
-    } catch {
-      // ignore
-    }
-  }, []);
+  }, [initialDataSourceId]);
 
   useEffect(() => {
     if (!viewSettingsLoaded) return;
@@ -451,7 +456,7 @@ export function ActivityPageClient({
   }, [openNewTransaction]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-4 py-6 md:px-9 md:py-8">
       <ActivityToolbar
         viewState={viewState}
         onViewStateChange={persistViewState}
@@ -460,6 +465,7 @@ export function ActivityPageClient({
         onNewTransaction={openNewTransaction}
         totalCount={totalCount}
         loading={loading}
+        dataSources={dataSources}
       />
 
       {toast && (

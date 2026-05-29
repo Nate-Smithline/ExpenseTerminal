@@ -142,10 +142,10 @@ export function SimilarTransactionsPopup({
           <button
             type="button"
             onClick={onJustThisOne}
-            className="px-4 py-2.5 text-sm font-medium text-mono-dark bg-[#F0F1F7] rounded-none hover:bg-[#E4E7F0] transition-colors inline-flex items-center gap-2"
+            className="px-4 py-2.5 text-sm font-medium text-mono-dark bg-white border border-black rounded-none hover:bg-bg-secondary/40 transition-colors inline-flex items-center gap-2"
             title="Shortcut: O"
           >
-            Just This One
+            No
             <span className="kbd-hint !bg-white/50 !text-mono-dark !border-transparent !rounded-none text-xs">o</span>
           </button>
           <button
@@ -155,7 +155,7 @@ export function SimilarTransactionsPopup({
             className="px-4 py-2.5 text-sm font-medium font-sans bg-black text-white rounded-none hover:bg-black/85 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
             title="Shortcut: Y or Enter"
           >
-            {applying ? "Applying…" : "Apply to All"}
+            {applying ? "Applying…" : "Yes"}
             <span className="kbd-hint !rounded-none !border-transparent !bg-white/20 !text-white text-xs">y</span>
           </button>
         </div>

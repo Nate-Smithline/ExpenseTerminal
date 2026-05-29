@@ -1,9 +1,6 @@
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentUserId } from "@/lib/get-current-user";
-import { getEffectiveTaxYear } from "@/lib/tax-year-cookie";
-import { getProfileOnboarding } from "@/lib/profile";
 import { DataSourcesClient } from "./DataSourcesClient";
 
 export type DataSourceStats = {
@@ -12,8 +9,6 @@ export type DataSourceStats = {
   totalExpenses: number;
   pctReviewed: number;
   totalSavings: number;
-  /** Earliest `transactions.date` (YYYY-MM-DD) for the viewed tax year, or null if none */
-  earliestTransactionDateInTaxYear: string | null;
 };
 
 export default async function DataSourcesPage() {
@@ -30,10 +25,6 @@ export default async function DataSourcesPage() {
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
-  const cookieStore = await cookies();
-  const profile = await getProfileOnboarding(supabase as any, userId);
-  const taxYear = getEffectiveTaxYear(cookieStore, profile);
-
   const sourceIds = (sources ?? []).map((s: { id: string }) => s.id);
   const statsBySource: Record<string, DataSourceStats> = {};
 
@@ -44,24 +35,6 @@ export default async function DataSourcesPage() {
       .eq("user_id", userId)
       .in("data_source_id", sourceIds);
 
-    /** Earliest transaction date per source for viewed tax year (indexed query, limit 1 — avoids row caps on bulk MIN). */
-    const earliestBySource: Record<string, string> = {};
-    await Promise.all(
-      sourceIds.map(async (id: string) => {
-        const { data } = await (supabase as any)
-          .from("transactions")
-          .select("date")
-          .eq("user_id", userId)
-          .eq("data_source_id", id)
-          .eq("tax_year", taxYear)
-          .order("date", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-        const d = data?.date as string | undefined;
-        if (d) earliestBySource[id] = d;
-      }),
-    );
-
     for (const id of sourceIds) {
       statsBySource[id] = {
         transactionCount: 0,
@@ -69,7 +42,6 @@ export default async function DataSourcesPage() {
         totalExpenses: 0,
         pctReviewed: 0,
         totalSavings: 0,
-        earliestTransactionDateInTaxYear: earliestBySource[id] ?? null,
       };
     }
 
@@ -110,7 +82,6 @@ export default async function DataSourcesPage() {
     <DataSourcesClient
       initialSources={sources ?? []}
       initialStats={statsBySource}
-      taxYear={taxYear}
     />
   );
 }

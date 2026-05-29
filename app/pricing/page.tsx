@@ -3,7 +3,9 @@ import { PricingPlansGrid } from "@/components/PricingPlansGrid";
 import { FaqJsonLd } from "@/components/SeoJsonLd";
 
 export const metadata: Metadata = {
-  title: "ExpenseTerminal pricing — AI expense tracking for self‑employed tax deductions",
+  title: {
+    absolute: "ExpenseTerminal pricing — AI expense tracking for self‑employed tax deductions",
+  },
   description:
     "Compare ExpenseTerminal Trial and Pro plans for AI-powered expense tracking and tax deductions for self-employed professionals and small businesses.",
   alternates: {

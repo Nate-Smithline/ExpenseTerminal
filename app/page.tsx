@@ -6,7 +6,9 @@ import { LandingPage } from "./LandingPage";
 import { FaqJsonLd } from "@/components/SeoJsonLd";
 
 export const metadata: Metadata = {
-  title: "ExpenseTerminal — AI-powered expense tracking for self‑employed tax deductions",
+  title: {
+    absolute: "ExpenseTerminal — AI-powered expense tracking for self‑employed tax deductions",
+  },
   description:
     "Inbox-first expense tracking and tax deduction software that helps self-employed professionals and small businesses categorize transactions, track write-offs, and export audit-ready reports.",
   alternates: {
