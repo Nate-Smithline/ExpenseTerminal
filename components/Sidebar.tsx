@@ -11,6 +11,7 @@ import {
   IAccounts,
   ISettings,
 } from "./ui/icons";
+import { GettingStartedWidget } from "./GettingStartedWidget";
 
 const NAV = [
   { id: "budget",   label: "Budget",    href: "/budget",   Icon: IBudget },
@@ -81,6 +82,8 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
           })}
         </div>
       </div>
+
+      <GettingStartedWidget />
 
       <div className="nav__footer">
         <Link

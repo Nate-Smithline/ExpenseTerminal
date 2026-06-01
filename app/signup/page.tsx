@@ -61,7 +61,9 @@ export default function SignupPage() {
         email: emailValue,
         password,
         options: {
-          emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
+          emailRedirectTo: typeof window !== "undefined"
+            ? `${window.location.origin}/auth/callback?next=/onboarding`
+            : undefined,
           data: {
             first_name: firstName.trim(),
             last_name: lastName.trim(),

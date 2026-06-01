@@ -43,8 +43,8 @@ export async function GET(req: Request) {
     .in("status", ["completed", "auto_sorted"])
     .order("date", { ascending: false });
 
-  // For income transactions that don't have a direct marker, check if they belong
-  // to a budget line that is marked Business or Partial — and inherit that marker.
+  // For income transactions, check if they belong to a budget line with a default_marker
+  // so the line assignment can override the transaction's own marker.
   const incomeIds = (incomeTx ?? []).map((t: { id: string }) => t.id);
   let lineMarkerMap: Map<string, { marker: string; pct: number }> = new Map();
 
@@ -62,12 +62,13 @@ export async function GET(req: Request) {
         .select("id, default_marker, default_business_pct")
         .eq("user_id", userId)
         .in("id", lineIds)
-        .in("default_marker", ["Business", "Partial"]);
+        .in("default_marker", ["Business", "Partial", "Personal"]);
 
       const lineById = new Map(
-        (lines ?? []).map((l: { id: string; default_marker: string; default_business_pct: number | null }) =>
-          [l.id, { marker: l.default_marker, pct: l.default_business_pct ?? 100 }]
-        )
+        (lines ?? []).map((l: { id: string; default_marker: string; default_business_pct: number | null }) => {
+          const pct = l.default_marker === "Personal" ? 0 : (l.default_business_pct ?? 100);
+          return [l.id, { marker: l.default_marker, pct }];
+        })
       );
 
       for (const link of links) {
@@ -79,14 +80,17 @@ export async function GET(req: Request) {
     }
   }
 
-  // Annotate income transactions: use their own marker if set, else inherit from line
+  // Annotate income transactions: budget line assignment wins over the transaction's own marker.
+  // This ensures a Personal line always excludes the transaction from taxable income,
+  // even if it previously had a Business/Partial marker from an earlier assignment.
   const annotatedIncome = (incomeTx ?? []).map((t: Record<string, unknown> & { id: string; marker?: string | null; business_pct?: number | null }) => {
-    if (t.marker === "Business" || t.marker === "Partial") return t;
     const lineInfo = lineMarkerMap.get(t.id);
     if (lineInfo) {
       return { ...t, marker: lineInfo.marker, business_pct: lineInfo.pct };
     }
-    // No direct marker and no qualifying line — mark as Personal to exclude from income
+    // No line assignment — trust the transaction's own Business/Partial marker if present
+    if (t.marker === "Business" || t.marker === "Partial") return t;
+    // No line, no explicit business marker — exclude from taxable income
     return { ...t, marker: "Personal" };
   });
 
@@ -127,6 +131,15 @@ export async function GET(req: Request) {
   const summary = calculateTaxSummary(transactions, deductions ?? [], taxRate);
   const deductibleTransactions = filterDeductibleTransactions(transactions ?? []);
 
+  // Per-quarter tax estimates based on transactions that occurred in each quarter
+  const quarterlyEstimates = [1, 2, 3, 4].map((q) => {
+    const qTxns = filterByQuarter(allTransactions ?? [], q);
+    const qSummary = calculateTaxSummary(qTxns, [], taxRate);
+    // Total tax liability for activity in this quarter (SE + income tax)
+    const qTotalTax = qSummary.estimatedQuarterlyPayment * 4;
+    return { quarter: q, amount: Math.round(qTotalTax * 100) / 100 };
+  });
+
   const pendingCount = pendingTx?.length ?? 0;
   const pendingDeductionPotential =
     pendingTx?.reduce((sum: number, t: { amount: string; deduction_percent?: number | null; is_meal?: boolean }) => {
@@ -146,6 +159,7 @@ export async function GET(req: Request) {
       deductibleTransactions,
       pendingCount,
       pendingDeductionPotential,
+      quarterlyEstimates,
     },
     {
       headers: { "Cache-Control": "no-store" },

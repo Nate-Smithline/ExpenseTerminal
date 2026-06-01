@@ -65,7 +65,7 @@ function currentYear(): number {
   return new Date().getFullYear();
 }
 
-function normalizeTaxSummary(raw: Record<string, unknown>): TaxSummary {
+function normalizeTaxSummary(raw: Record<string, unknown>): TaxSummary & { quarterlyEstimates: { quarter: number; amount: number }[] } {
   const grossIncome = Number(raw.grossIncome ?? raw.totalIncome ?? 0);
   const totalExpenses = Number(raw.totalExpenses ?? 0);
   const netProfit = Number(raw.netProfit ?? 0);
@@ -74,6 +74,12 @@ function normalizeTaxSummary(raw: Record<string, unknown>): TaxSummary {
   const totalTaxDue = perQuarter * 4;
   const rawRate = Number(raw.taxRate ?? 0.24);
   const taxRatePct = rawRate <= 1 ? Math.round(rawRate * 100) : rawRate;
+
+  const rawEstimates = raw.quarterlyEstimates as { quarter: number; amount: number }[] | undefined;
+  const quarterlyEstimates: { quarter: number; amount: number }[] =
+    rawEstimates?.length === 4
+      ? rawEstimates
+      : [1, 2, 3, 4].map((q) => ({ quarter: q, amount: perQuarter }));
 
   return {
     totalIncome: grossIncome,
@@ -86,6 +92,7 @@ function normalizeTaxSummary(raw: Record<string, unknown>): TaxSummary {
     taxRate: taxRatePct,
     quarterlyPayments: [],
     scheduleC: { income: [], expenses: [] },
+    quarterlyEstimates,
   };
 }
 
@@ -152,15 +159,14 @@ export function TaxPageClient() {
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   }
 
-  const loadQuarterly = useCallback(async (y: number, estimatedPerQuarter: number) => {
-    const res = await fetch(
-      `/api/tax/quarterly-payments?tax_year=${y}&estimated_per_quarter=${estimatedPerQuarter}`
-    );
+  const loadQuarterly = useCallback(async (y: number, quarterlyEstimates: { quarter: number; amount: number }[]) => {
+    const qParams = quarterlyEstimates.map((e) => `q${e.quarter}=${e.amount}`).join("&");
+    const res = await fetch(`/api/tax/quarterly-payments?tax_year=${y}&${qParams}`);
     if (!res.ok) {
-      setQPayments([1, 2, 3, 4].map((quarter) => ({
+      setQPayments(quarterlyEstimates.map(({ quarter, amount }) => ({
         quarter,
         dueDate: QUARTERLY_DUE[quarter],
-        amount: estimatedPerQuarter,
+        amount,
         paid: false,
       })));
       return;
@@ -181,7 +187,7 @@ export function TaxPageClient() {
       }
       const normalized = normalizeTaxSummary(raw);
       setSummary(normalized);
-      await loadQuarterly(y, normalized.totalTaxDue / 4);
+      await loadQuarterly(y, normalized.quarterlyEstimates);
     } catch {
       setSummary(null);
       setQPayments([]);
@@ -205,7 +211,10 @@ export function TaxPageClient() {
           amount_paid: paid ? estimate : undefined,
         }),
       });
-      if (res.ok) await loadQuarterly(year, estimate);
+      if (res.ok) {
+        const estimates = qPayments.map((p) => ({ quarter: p.quarter, amount: p.amount }));
+        await loadQuarterly(year, estimates);
+      }
     } finally {
       setMarkingQuarter(null);
     }

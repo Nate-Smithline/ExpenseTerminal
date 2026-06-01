@@ -2,6 +2,14 @@
    Budget page
    ────────────────────────────────────────────────────────────── */
 
+/* Sticky page header (month title + controls + alloc banner) */
+.budget-sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bone);
+}
+
 .budget-layout {
   display: grid;
   grid-template-columns: 1fr 380px;
@@ -197,7 +205,7 @@
 
 .group__columns {
   display: grid;
-  grid-template-columns: 1fr 96px 1fr;
+  grid-template-columns: 1fr 120px 120px;
   gap: 16px;
   padding: 8px 20px 8px 36px;
   border-top: 1px solid var(--border-soft);
@@ -209,7 +217,70 @@
   font-weight: 700;
 }
 .group__columns-num { text-align: right; }
-.group__columns-dial { text-align: center; }
+
+/* Column header toggle (Remaining ▾ / Received ▾) */
+.group__col-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: transparent;
+  border: 0;
+  padding: 2px 5px;
+  margin: -2px -5px;
+  border-radius: var(--r-1);
+  cursor: pointer;
+  transition: color .12s, background .12s;
+}
+.group__col-toggle:hover { color: var(--ink); background: var(--wheat-tint); }
+.group__col-toggle-chev {
+  color: var(--wheat);
+  flex: none;
+  transition: color .12s;
+}
+.group__col-toggle:hover .group__col-toggle-chev { color: var(--wheat-deep); }
+.group__col-drop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-pop, 0 4px 16px rgba(0,0,0,.12));
+  padding: 4px;
+  min-width: 130px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.group__col-drop-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  border-radius: var(--r-1);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.group__col-drop-item:hover { background: var(--bone-2); }
+.group__col-drop-item.is-active { font-weight: 600; color: var(--ink); }
+.group__col-drop-check {
+  width: 14px;
+  font-size: 11px;
+  color: var(--forest);
+  flex: none;
+}
 
 .group__body {
   border-top: 1px solid var(--border-soft);
@@ -218,7 +289,7 @@
 
 .group__foot {
   display: grid;
-  grid-template-columns: 1fr 96px 1fr;
+  grid-template-columns: 1fr 120px 120px;
   gap: 16px;
   padding: 12px 20px 12px 36px;
   border-top: 1px solid var(--border);
@@ -297,7 +368,7 @@
 
 .line__row {
   display: grid;
-  grid-template-columns: 20px 1fr 96px 1fr;
+  grid-template-columns: 20px 1fr 120px 120px;
   align-items: center;
   gap: 12px;
   padding: 12px 20px 12px 20px;
@@ -472,7 +543,7 @@
 .line__planned:hover { background: var(--bone-3); }
 
 .line__plan-input {
-  width: 80px;
+  width: 100px;
   text-align: right;
   background: var(--surface);
   border: 1px solid var(--ink);
@@ -484,70 +555,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Progress dial: actual ‹bar› remaining */
-.line__dial {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-variant-numeric: tabular-nums;
-  min-width: 0;
-}
-.line__dial-actual {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--ink-3);
-  white-space: nowrap;
-  min-width: 58px;
+/* Second column (Remaining or Actual) */
+.line__second-col {
   text-align: right;
-  flex-shrink: 0;
-}
-.line__dial-track {
-  flex: 1;
-  height: 4px;
-  background: var(--bone-3);
-  border-radius: 999px;
-  overflow: hidden;
-  min-width: 20px;
-}
-.line__dial-fill {
-  height: 100%;
-  background: var(--forest);
-  border-radius: 999px;
-  transition: width 0.4s ease;
-}
-.line__dial-fill--over { background: var(--ember); }
-.line__dial-rem {
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 600;
-  white-space: nowrap;
-  min-width: 58px;
-  text-align: left;
-  flex-shrink: 0;
-}
-
-/* Group footer dial */
-.group__foot-dial {
-  display: flex;
-  align-items: center;
-  gap: 10px;
   font-variant-numeric: tabular-nums;
 }
-.group__foot-actual {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-3);
-  white-space: nowrap;
-  min-width: 60px;
-  text-align: right;
-}
-.group__foot-rem {
-  font-size: 14.5px;
-  font-weight: 700;
-  color: var(--ink);
-  white-space: nowrap;
-  min-width: 60px;
-}
-.group__foot-rem--mute { color: var(--ink-3); font-weight: 600; }
 
 .line__panel {
   padding: 0 20px 18px 36px;
@@ -1368,6 +1382,143 @@
   }
 }
 
+/* ── Copy-from month picker (empty state) ─────────────────────────────── */
+.budget-copy-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+  padding: 14px 16px;
+  background: var(--bone-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-2);
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.budget-copy-row__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.budget-copy-select {
+  height: 32px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-1);
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  min-width: 140px;
+}
+.budget-copy-select:focus {
+  outline: 2px solid var(--forest);
+  outline-offset: 1px;
+}
+.budget-copy-select--inline {
+  margin-top: 4px;
+  min-width: 130px;
+}
+
+/* ── Reset budget button ──────────────────────────────────────────────── */
+.budget-reset-row {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+.budget-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  padding: 6px 10px;
+  border-radius: var(--r-1);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color .15s, background .15s;
+}
+.budget-reset-btn:hover {
+  color: var(--ember);
+  background: var(--ember-soft, rgba(220,80,60,.07));
+}
+
+/* ── Reset budget modal ───────────────────────────────────────────────── */
+.budget-modal--reset {
+  max-width: 460px;
+}
+.budget-reset-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.budget-reset-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-2);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.budget-reset-option:hover {
+  border-color: var(--ink-3);
+  background: var(--bone-2);
+}
+.budget-reset-option.is-selected {
+  border-color: var(--forest);
+  background: var(--forest-tint, rgba(40,120,80,.06));
+}
+.budget-reset-option input[type="radio"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--forest);
+}
+.budget-reset-option input[type="radio"]:disabled + .budget-reset-option__body {
+  opacity: .45;
+}
+.budget-reset-option__title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.budget-reset-option__sub {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+.budget-reset-error {
+  font-size: 13px;
+  color: var(--ember);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+.btn--danger {
+  background: var(--ember);
+  color: #fff;
+  border: 1px solid var(--ember);
+}
+.btn--danger:hover:not(:disabled) {
+  background: var(--ember-deep, #b93020);
+  border-color: var(--ember-deep, #b93020);
+}
+.btn--danger:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
 @media (max-width: 767px) {
   .budget-layout {
     padding: 14px 16px 40px;
@@ -1386,7 +1537,7 @@
   .group__columns,
   .line__row,
   .group__foot {
-    min-width: 340px;
+    min-width: 300px;
     padding-left: 16px;
     padding-right: 16px;
   }

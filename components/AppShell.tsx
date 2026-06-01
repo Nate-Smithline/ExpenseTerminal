@@ -4,6 +4,8 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { UpgradeModalProvider } from "./UpgradeModalContext";
+import { TrialBanner } from "./TrialBanner";
+import { UpgradeGate } from "./UpgradeGate";
 
 const NO_SHELL_ROUTES = [
   "/login",
@@ -87,7 +89,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </header>
 
-          <main className="app__main">{children}</main>
+          <main className="app__main">
+            <TrialBanner />
+            <UpgradeGate>{children}</UpgradeGate>
+          </main>
         </div>
 
         {navOpen && (

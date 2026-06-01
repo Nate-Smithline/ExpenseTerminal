@@ -37,6 +37,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "tax_year required" }, { status: 400 });
   }
 
+  // Per-quarter amounts take precedence; fall back to a single estimated_per_quarter for all
+  const qAmounts: Record<number, number> = {};
+  for (let q = 1; q <= 4; q++) {
+    const perQ = req.nextUrl.searchParams.get(`q${q}`);
+    if (perQ !== null) {
+      qAmounts[q] = Number(perQ);
+    }
+  }
   const estimatedParam = req.nextUrl.searchParams.get("estimated_per_quarter");
   const estimatedPerQuarter = estimatedParam ? Number(estimatedParam) : 0;
 
@@ -55,10 +63,11 @@ export async function GET(req: NextRequest) {
     const row = byQuarter.get(quarter) as { amount_paid?: number | null; paid_at?: string | null } | undefined;
     const amountPaid = row?.amount_paid != null ? Number(row.amount_paid) : 0;
     const paid = !!row?.paid_at || amountPaid > 0;
+    const amount = qAmounts[quarter] !== undefined ? qAmounts[quarter] : estimatedPerQuarter;
     return {
       quarter,
       dueDate: QUARTERLY_DUE[quarter],
-      amount: estimatedPerQuarter,
+      amount,
       paid,
       amountPaid: paid ? amountPaid : 0,
     };

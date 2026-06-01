@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { MarkerPill, type Marker } from "@/components/MarkerPill";
 import { MarkerEditor } from "@/components/MarkerEditor";
 import { PartialDial } from "@/components/PartialDial";
-import { IChevronD, IChevronR, IDrag, IPlus, IClose, ISearch, IExport, ISpark2, ITrash } from "@/components/ui/icons";
+import { IChevronD, IChevronR, IChevronU, IDrag, IPlus, IClose, ISearch, IExport, ISpark2, ITrash } from "@/components/ui/icons";
 import { planLineMove, sortBudgetGroups, sortBudgetLines } from "@/lib/budget/line-order";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -148,8 +148,19 @@ export function BudgetPageClient() {
   const [editingGroupName, setEditingGroupName] = useState<{ groupId: string; value: string } | null>(null);
   const [editingLineName, setEditingLineName] = useState<{ lineId: string; value: string } | null>(null);
   const [addGroupMode, setAddGroupMode] = useState<"closed" | "choose">("closed");
-  const [initializing, setInitializing] = useState<"init" | "copy_last" | null>(null);
+  const [initializing, setInitializing] = useState<"init" | "copy_last" | "copy_from" | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
+
+  // Copy-from month picker (used in both empty state and reset modal)
+  const [copyMonths, setCopyMonths] = useState<string[]>([]);
+  const [copyMonthsLoading, setCopyMonthsLoading] = useState(false);
+  const [copyFromMonth, setCopyFromMonth] = useState<string>("");
+
+  // Reset modal
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetAction, setResetAction] = useState<"init" | "copy_from">("copy_from");
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null);
@@ -164,6 +175,9 @@ export function BudgetPageClient() {
 
   // Marker editor popover
   const [markerPopTxId, setMarkerPopTxId] = useState<string | null>(null);
+
+  // Second column toggle: show Remaining or Actual (Received/Spent)
+  const [secondCol, setSecondCol] = useState<"remaining" | "actual">("remaining");
 
   // ── Data loading ────────────────────────────────────────────────────────
 
@@ -208,7 +222,39 @@ export function BudgetPageClient() {
   useEffect(() => {
     loadBudget(month);
     setSelectedLineId(null);
+    // Reset copy-months when switching months so stale options don't show
+    setCopyMonths([]);
+    setCopyFromMonth("");
   }, [month, loadBudget]);
+
+  // Load the list of months that have at least one group (for the copy picker)
+  const loadCopyMonths = useCallback(async () => {
+    setCopyMonthsLoading(true);
+    try {
+      const res = await fetch("/api/budget/months-with-groups");
+      const body = await res.json().catch(() => ({}));
+      const months: string[] = body.months ?? [];
+      setCopyMonths(months);
+      // Default selection: prefer the previous calendar month if it has groups,
+      // otherwise fall back to the most recent month that does.
+      const prev = prevMonth(month);
+      const defaultMonth = months.includes(prev) ? prev : (months[0] ?? "");
+      setCopyFromMonth(defaultMonth);
+    } catch {
+      setCopyMonths([]);
+    } finally {
+      setCopyMonthsLoading(false);
+    }
+  }, [month]);
+
+  // Auto-load available months when the empty state becomes visible
+  const hasBudgetSetupForEffect = !loading && (data?.groups?.length ?? 0) === 0;
+  useEffect(() => {
+    if (hasBudgetSetupForEffect) {
+      loadCopyMonths();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasBudgetSetupForEffect]);
 
   // Load transactions assigned to the selected line (line detail sidebar)
   useEffect(() => {
@@ -281,11 +327,18 @@ export function BudgetPageClient() {
     txns.forEach(t => txnMap.current.set(t.id, t));
   }, [txns]);
 
-  const totalAllocated = (data?.groups ?? []).reduce((sum, g) =>
-    sum + g.budget_lines.reduce((s, l) => s + (l.allocated ?? 0), 0), 0);
-
   const { income = 0, spending = 0 } = data?.stats ?? {};
-  const leftToAllocate = income - totalAllocated;
+
+  // Left-to-allocate is based on planned amounts, not actual transactions:
+  // sum of income-group planned lines minus sum of expense-group planned lines
+  const plannedIncome = (data?.groups ?? [])
+    .filter(g => g.kind === "income")
+    .reduce((sum, g) => sum + g.budget_lines.reduce((s, l) => s + (l.allocated ?? 0), 0), 0);
+  const plannedExpenses = (data?.groups ?? [])
+    .filter(g => g.kind !== "income")
+    .reduce((sum, g) => sum + g.budget_lines.reduce((s, l) => s + (l.allocated ?? 0), 0), 0);
+  const leftToAllocate = plannedIncome - plannedExpenses;
+
   const bannerClass =
     leftToAllocate < 0 ? "alloc-banner--over"
     : leftToAllocate === 0 ? "alloc-banner--balanced"
@@ -345,14 +398,18 @@ export function BudgetPageClient() {
 
   // ── Budget initialization ────────────────────────────────────────────────
 
-  async function initBudget(action: "init" | "copy_last") {
+  async function initBudget(action: "init" | "copy_from", sourceMonth?: string) {
     setInitializing(action);
     setInitError(null);
     try {
       const res = await fetch("/api/budget", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ month, action }),
+        body: JSON.stringify({
+          month,
+          action,
+          ...(action === "copy_from" ? { source_month: sourceMonth } : {}),
+        }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -364,8 +421,8 @@ export function BudgetPageClient() {
         return;
       }
       await loadBudget(month);
-      if (action === "copy_last" && body.copied === false) {
-        setInitError("No budget found for last month. Use “Start from scratch” to add default groups.");
+      if (action === "copy_from" && body.copied === false) {
+        setInitError("No budget groups found for that month. Choose a different month or start from scratch.");
       } else {
         setInitError(null);
       }
@@ -373,6 +430,46 @@ export function BudgetPageClient() {
       setInitError("Could not set up this month’s budget. Check your connection and try again.");
     } finally {
       setInitializing(null);
+    }
+  }
+
+  // ── Reset budget ─────────────────────────────────────────────────────
+
+  async function openResetModal() {
+    setResetModalOpen(true);
+    setResetError(null);
+    setResetAction("copy_from");
+    await loadCopyMonths();
+  }
+
+  async function confirmReset() {
+    setResetting(true);
+    setResetError(null);
+    try {
+      const res = await fetch("/api/budget", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          month,
+          action: resetAction,
+          ...(resetAction === "copy_from" ? { source_month: copyFromMonth } : {}),
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResetError(typeof body?.error === "string" ? body.error : "Could not reset the budget.");
+        return;
+      }
+      if (resetAction === "copy_from" && body.copied === false) {
+        setResetError("No budget groups found for that month. Choose a different month.");
+        return;
+      }
+      setResetModalOpen(false);
+      await loadBudget(month);
+    } catch {
+      setResetError("Could not reset the budget. Check your connection and try again.");
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -715,7 +812,6 @@ export function BudgetPageClient() {
     }
     const txId = e.dataTransfer.getData("txId");
     if (txId) {
-      setSelectedLineId(lineId);
       assignTxn(txId, lineId);
     }
     setDropTargetLineId(null);
@@ -798,49 +894,51 @@ export function BudgetPageClient() {
 
   return (
     <div className="page-anim">
-      {/* Page header */}
-      <header className="pagehead">
-        <div>
-          <h1 className="pagehead__title">{monthName} <em>{year}</em></h1>
-        </div>
-        <div className="pagehead__right">
-          <button
-            className="btn btn--ghost"
-            onClick={() => { setAddGroupMode("choose"); }}
-          >
-            <IPlus size={14} /> Add group
-          </button>
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={exportBudgetCsv}
-            disabled={exporting}
-            title={exportError ?? undefined}
-          >
-            <IExport size={14} /> {exporting ? "Exporting…" : "Export"}
-          </button>
-          {/* Period switcher */}
-          <div className="period">
-            <button className="period__btn" onClick={() => setMonth(prevMonth(month))}>‹</button>
-            <div className="period__label">
-              {monthName.slice(0, 3).toUpperCase()}<em>{year}</em>
+      {/* Sticky header: month title + controls + allocation banner */}
+      <div className="budget-sticky-head">
+        <header className="pagehead">
+          <div>
+            <h1 className="pagehead__title">{monthName} <em>{year}</em></h1>
+          </div>
+          <div className="pagehead__right">
+            <button
+              className="btn btn--ghost"
+              onClick={() => { setAddGroupMode("choose"); }}
+            >
+              <IPlus size={14} /> Add group
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={exportBudgetCsv}
+              disabled={exporting}
+              title={exportError ?? undefined}
+            >
+              <IExport size={14} /> {exporting ? "Exporting…" : "Export"}
+            </button>
+            {/* Period switcher */}
+            <div className="period">
+              <button className="period__btn" onClick={() => setMonth(prevMonth(month))}>‹</button>
+              <div className="period__label">
+                {monthName.slice(0, 3).toUpperCase()}<em>{year}</em>
+              </div>
+              <button className="period__btn" onClick={() => setMonth(nextMonth(month))}>›</button>
             </div>
-            <button className="period__btn" onClick={() => setMonth(nextMonth(month))}>›</button>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Allocation status bar (flat, full-width under header) */}
-      {hasBudgetSetup && (
-        <div className={`alloc-banner ${bannerClass}`}>
-          <div className="alloc-banner__label">
-            {bannerLabel}:{" "}
-            <strong style={{ fontWeight: 700 }}>
-              {leftToAllocate === 0 ? "All dollars allocated" : fmtMoney(Math.abs(leftToAllocate))}
-            </strong>
+        {/* Allocation status bar */}
+        {hasBudgetSetup && (
+          <div className={`alloc-banner ${bannerClass}`}>
+            <div className="alloc-banner__label">
+              {bannerLabel}:{" "}
+              <strong style={{ fontWeight: 700 }}>
+                {leftToAllocate === 0 ? "All dollars allocated" : fmtMoney(Math.abs(leftToAllocate))}
+              </strong>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="budget-layout">
         {/* ── Left: budget groups ── */}
@@ -861,7 +959,7 @@ export function BudgetPageClient() {
                   <div className="budget-init-progress__label">
                     {initializing === "init"
                       ? "Setting up Income, Needs, and Wants…"
-                      : "Copying groups from last month…"}
+                      : "Copying budget groups…"}
                   </div>
                   <div className="budget-init-progress__bar" role="progressbar" aria-busy="true">
                     <span className="budget-init-progress__bar-fill" />
@@ -882,14 +980,44 @@ export function BudgetPageClient() {
                       {initError}
                     </p>
                   )}
-                  <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      className="btn btn--ghost"
-                      onClick={() => initBudget("copy_last")}
-                    >
-                      Copy from last month
-                    </button>
+                  {/* Copy from month row */}
+                  {copyMonths.length > 0 && (
+                    <div className="budget-copy-row">
+                      <span className="budget-copy-row__label">Copy from</span>
+                      <select
+                        className="budget-copy-select"
+                        value={copyFromMonth}
+                        onChange={e => setCopyFromMonth(e.target.value)}
+                        disabled={copyMonthsLoading}
+                      >
+                        {copyMonths.map(mk => {
+                          const { month: mn, year: yr } = monthLabel(mk);
+                          return (
+                            <option key={mk} value={mk}>{mn} {yr}</option>
+                          );
+                        })}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        disabled={!copyFromMonth || copyMonthsLoading}
+                        onClick={() => initBudget("copy_from", copyFromMonth)}
+                      >
+                        Copy budget
+                      </button>
+                    </div>
+                  )}
+                  {copyMonthsLoading && copyMonths.length === 0 && (
+                    <div style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 16 }}>
+                      Loading available months…
+                    </div>
+                  )}
+                  {!copyMonthsLoading && copyMonths.length === 0 && (
+                    <div style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 16 }}>
+                      No previous budgets to copy from.
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginTop: copyMonths.length > 0 ? 12 : 0 }}>
                     <button
                       type="button"
                       className="btn btn--primary"
@@ -923,6 +1051,8 @@ export function BudgetPageClient() {
                       return next;
                     })}
                     selectedLineId={selectedLineId}
+                    secondCol={secondCol}
+                    onChangeSecondCol={setSecondCol}
                     onSelectLine={(lineId) =>
                       setSelectedLineId(prev => (prev === lineId ? null : lineId))
                     }
@@ -973,6 +1103,22 @@ export function BudgetPageClient() {
                 <button className="budget-addgroup" onClick={() => setAddGroupMode("choose")}>
                   <IPlus size={14} /> Add group
                 </button>
+              )}
+
+              {/* Reset budget */}
+              {addGroupMode === "closed" && (
+                <div className="budget-reset-row">
+                  <button
+                    type="button"
+                    className="budget-reset-btn"
+                    onClick={openResetModal}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path d="M13.6 2.4A7 7 0 1 0 15 8h-1.5a5.5 5.5 0 1 1-1.06-3.24L10 7h5V2l-1.4 1.4z" fill="currentColor"/>
+                    </svg>
+                    Reset budget
+                  </button>
+                </div>
               )}
             </>
           )}
@@ -1155,6 +1301,106 @@ export function BudgetPageClient() {
                 Delete group
               </button>
             </div>
+          </div>
+        </div>
+      , document.body)}
+
+      {/* Reset budget modal */}
+      {resetModalOpen && createPortal(
+        <div
+          className="budget-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="budget-reset-title"
+          onClick={() => !resetting && setResetModalOpen(false)}
+        >
+          <div className="budget-modal budget-modal--reset" onClick={e => e.stopPropagation()}>
+            <h2 id="budget-reset-title" className="budget-modal__title">
+              Reset budget
+            </h2>
+            <p className="budget-modal__body">
+              This will permanently delete all groups and lines for{" "}
+              <strong style={{ color: "var(--ink)" }}>{monthName} {year}</strong>.
+              Your transactions won&apos;t be affected.
+            </p>
+
+            {/* Action choice */}
+            <div className="budget-reset-options">
+              <label className={`budget-reset-option${resetAction === "init" ? " is-selected" : ""}`}>
+                <input
+                  type="radio"
+                  name="reset-action"
+                  value="init"
+                  checked={resetAction === "init"}
+                  onChange={() => setResetAction("init")}
+                />
+                <div className="budget-reset-option__body">
+                  <div className="budget-reset-option__title">Start from scratch</div>
+                  <div className="budget-reset-option__sub">Creates default Income, Needs, and Wants groups</div>
+                </div>
+              </label>
+              <label className={`budget-reset-option${resetAction === "copy_from" ? " is-selected" : ""}`}>
+                <input
+                  type="radio"
+                  name="reset-action"
+                  value="copy_from"
+                  checked={resetAction === "copy_from"}
+                  onChange={() => setResetAction("copy_from")}
+                  disabled={copyMonths.length === 0}
+                />
+                <div className="budget-reset-option__body">
+                  <div className="budget-reset-option__title">Copy from another month</div>
+                  {copyMonthsLoading ? (
+                    <div className="budget-reset-option__sub">Loading months…</div>
+                  ) : copyMonths.length === 0 ? (
+                    <div className="budget-reset-option__sub">No previous budgets available</div>
+                  ) : (
+                    <select
+                      className="budget-copy-select budget-copy-select--inline"
+                      value={copyFromMonth}
+                      onChange={e => { setCopyFromMonth(e.target.value); setResetAction("copy_from"); }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {copyMonths
+                        .filter(mk => mk !== month)
+                        .map(mk => {
+                          const { month: mn, year: yr } = monthLabel(mk);
+                          return <option key={mk} value={mk}>{mn} {yr}</option>;
+                        })}
+                    </select>
+                  )}
+                </div>
+              </label>
+            </div>
+
+            {resetError && (
+              <p className="budget-reset-error">{resetError}</p>
+            )}
+
+            {resetting ? (
+              <div className="budget-init-progress" style={{ marginTop: 16 }}>
+                <div className="budget-init-progress__label">
+                  {resetAction === "init" ? "Setting up default groups…" : "Copying budget groups…"}
+                </div>
+                <div className="budget-init-progress__bar" role="progressbar" aria-busy="true">
+                  <span className="budget-init-progress__bar-fill" />
+                </div>
+              </div>
+            ) : (
+              <div className="budget-modal__actions">
+                <button type="button" className="btn btn--ghost" onClick={() => setResetModalOpen(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--danger"
+                  onClick={confirmReset}
+                  disabled={resetAction === "copy_from" && (!copyFromMonth || copyMonths.filter(m => m !== month).length === 0)}
+                >
+                  Reset budget
+                </button>
+              </div>
+            )}
           </div>
         </div>
       , document.body)}
@@ -1595,6 +1841,8 @@ interface BudgetGroupProps {
   onLineDragOverGroup: (e: React.DragEvent, groupId: string, index: number, groupKind?: string) => void;
   onLineDrop: (e: React.DragEvent, groupId: string, index: number, groupKind?: string) => void;
   onStartAddLine: () => void;
+  secondCol: "remaining" | "actual";
+  onChangeSecondCol: (v: "remaining" | "actual") => void;
 }
 
 function BudgetGroup({
@@ -1608,12 +1856,25 @@ function BudgetGroup({
   draggingLineId, draggingLineKind, lineDropTarget,
   onLineDragStart, onLineDragEnd, onLineDragOverGroup, onLineDrop,
   onStartAddLine,
+  secondCol, onChangeSecondCol,
 }: BudgetGroupProps) {
   const isEditingThisGroup = editingGroupName?.groupId === group.id;
   const totalAllocated = group.budget_lines.reduce((s, l) => s + (l.allocated ?? 0), 0);
   const totalActual = group.budget_lines.reduce((s, l) => s + (l.actual ?? 0), 0);
   const barColor = group.kind === "income" ? "var(--forest)" : "var(--clay)";
   const groupKind = group.kind ?? "expense";
+  const isIncome = group.kind === "income";
+  const actualLabel = isIncome ? "Received" : "Spent";
+  const [colDropOpen, setColDropOpen] = useState(false);
+  const colDropRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!colDropOpen) return;
+    function handleOut(e: MouseEvent) {
+      if (colDropRef.current && !colDropRef.current.contains(e.target as Node)) setColDropOpen(false);
+    }
+    document.addEventListener("mousedown", handleOut);
+    return () => document.removeEventListener("mousedown", handleOut);
+  }, [colDropOpen]);
   const canAcceptLineDrop =
     !!draggingLineId && (!draggingLineKind || draggingLineKind === groupKind);
   const isGroupDropAppend =
@@ -1659,7 +1920,33 @@ function BudgetGroup({
             <div className="group__columns">
               <div>Line</div>
               <div className="group__columns-num">Planned</div>
-              <div className="group__columns-dial">Actual · Remaining</div>
+              <div className="group__columns-num" ref={colDropRef} style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  className="group__col-toggle"
+                  onClick={() => setColDropOpen(p => !p)}
+                >
+                  {secondCol === "remaining" ? "Remaining" : actualLabel}
+                  {colDropOpen
+                    ? <IChevronU size={12} className="group__col-toggle-chev" />
+                    : <IChevronD size={12} className="group__col-toggle-chev" />}
+                </button>
+                {colDropOpen && (
+                  <div className="group__col-drop">
+                    {(["remaining", "actual"] as const).map(opt => (
+                      <button
+                        key={opt}
+                        type="button"
+                        className={`group__col-drop-item${secondCol === opt ? " is-active" : ""}`}
+                        onClick={() => { onChangeSecondCol(opt); setColDropOpen(false); }}
+                      >
+                        <span className="group__col-drop-check">{secondCol === opt ? "✓" : ""}</span>
+                        {opt === "remaining" ? "Remaining" : actualLabel}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1692,6 +1979,7 @@ function BudgetGroup({
               onChangeLineName={onChangeLineName}
               onSaveLineName={(name) => onSaveLineName(line.id, name)}
               onCancelEditLineName={onCancelEditLineName}
+              secondCol={secondCol}
             />
           ))}
 
@@ -1717,19 +2005,10 @@ function BudgetGroup({
             <div className="group__foot">
               <div className="group__foot-label">Total</div>
               <div className="group__foot-num">{totalAllocated > 0 ? fmtMoney(totalAllocated) : "—"}</div>
-              <div className="group__foot-dial">
-                <span className="group__foot-actual">{fmtMoney(totalActual)}</span>
-                <div className="line__dial-track">
-                  {totalAllocated > 0 && (
-                    <div
-                      className="line__dial-fill"
-                      style={{ width: `${Math.min(100, Math.max(0, (totalActual / totalAllocated) * 100))}%` }}
-                    />
-                  )}
-                </div>
-                <span className={`group__foot-rem${totalAllocated === 0 ? " group__foot-rem--mute" : ""}`}>
-                  {totalAllocated > 0 ? fmtMoney(totalAllocated - totalActual) : "—"}
-                </span>
+              <div className="group__foot-num">
+                {secondCol === "actual"
+                  ? fmtMoney(totalActual)
+                  : totalAllocated > 0 ? fmtMoney(totalAllocated - totalActual) : "—"}
               </div>
             </div>
           )}
@@ -1763,6 +2042,7 @@ interface BudgetLineProps {
   onChangeLineName: (v: string) => void;
   onSaveLineName: (name: string) => void;
   onCancelEditLineName: () => void;
+  secondCol: "remaining" | "actual";
 }
 
 function BudgetLine({
@@ -1771,15 +2051,21 @@ function BudgetLine({
   onDragOver, onDrop, onLineDragStart, onLineDragEnd,
   editingPlanned, onStartEditPlanned, onChangePlanned, onSavePlanned,
   editingLineName, onStartEditLineName, onChangeLineName, onSaveLineName, onCancelEditLineName,
+  secondCol,
 }: BudgetLineProps) {
   const actual = line.actual ?? 0;
   const planned = line.allocated ?? 0;
   const remaining = planned - actual;
+  // Mirror the alloc-banner: wheat-deep=has room, forest=exact, ember=over
   const remainingColor =
-    line.allocated == null ? "var(--ink-3)"
+    line.allocated == null ? "var(--ink-4)"
     : remaining < 0 ? "var(--ember)"
     : remaining === 0 ? "var(--forest)"
-    : "var(--ink)";
+    : "var(--wheat-deep)";
+  const secondColValue = secondCol === "actual"
+    ? (actual > 0 ? fmtMoney(actual) : "—")
+    : (line.allocated != null ? fmtMoney(remaining) : "—");
+  const secondColColor = secondCol === "actual" ? "var(--ink-2)" : remainingColor;
 
   return (
     <div
@@ -1841,20 +2127,9 @@ function BudgetLine({
           )}
         </div>
 
-        {/* Progress dial: actual ‹bar› remaining */}
-        <div className="line__dial">
-          <span className="line__dial-actual">{actual > 0 ? fmtMoney(actual) : "—"}</span>
-          <div className="line__dial-track">
-            {line.allocated != null && planned > 0 && (
-              <div
-                className={`line__dial-fill${remaining < 0 ? " line__dial-fill--over" : ""}`}
-                style={{ width: `${Math.min(100, Math.max(0, (actual / planned) * 100))}%` }}
-              />
-            )}
-          </div>
-          <span className="line__dial-rem" style={{ color: remainingColor }}>
-            {line.allocated != null ? fmtMoney(Math.abs(remaining)) : "—"}
-          </span>
+        {/* Second column — Remaining or Actual */}
+        <div className="line__second-col" style={{ color: secondColColor }}>
+          {secondColValue}
         </div>
       </div>
     </div>

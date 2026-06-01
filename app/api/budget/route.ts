@@ -137,7 +137,11 @@ export async function POST(req: NextRequest) {
   const userId = auth.userId;
 
   const body = await req.json();
-  const { month, action } = body as { month: string; action: "init" | "copy_last" | "init_empty" };
+  const { month, action, source_month } = body as {
+    month: string;
+    action: "init" | "copy_last" | "copy_from" | "init_empty";
+    source_month?: string;
+  };
 
   if (!month || !/^\d{4}-\d{2}$/.test(month)) {
     return NextResponse.json({ error: "month required (YYYY-MM)" }, { status: 400 });
@@ -155,7 +159,7 @@ export async function POST(req: NextRequest) {
   if (bmErr) return NextResponse.json({ error: bmErr.message }, { status: 500 });
 
   // Replace existing groups when (re)initializing — not for init_empty (add-group flow)
-  if (action === "init" || action === "copy_last") {
+  if (action === "init" || action === "copy_last" || action === "copy_from") {
     const { error: clearErr } = await db
       .from("budget_groups")
       .delete()
@@ -167,24 +171,30 @@ export async function POST(req: NextRequest) {
   let copied = false;
   let groupsCreated = 0;
 
-  if (action === "copy_last") {
-    // Find previous month budget
-    const [y, m] = month.split("-").map(Number);
-    const prevDate = new Date(y, m - 2); // month is 1-based, subtract 2 for prev
-    const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+  if (action === "copy_last" || action === "copy_from") {
+    // Determine the source month key
+    let sourceKey: string;
+    if (action === "copy_from" && source_month && /^\d{4}-\d{2}$/.test(source_month)) {
+      sourceKey = source_month;
+    } else {
+      // Fall back to previous calendar month
+      const [y, m] = month.split("-").map(Number);
+      const prevDate = new Date(y, m - 2);
+      sourceKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
+    }
 
-    const { data: prevMonth } = await db
+    const { data: sourceMonth } = await db
       .from("budget_months")
       .select("id")
       .eq("user_id", userId)
-      .eq("month_key", prevKey)
+      .eq("month_key", sourceKey)
       .maybeSingle();
 
-    if (prevMonth) {
+    if (sourceMonth) {
       const { data: prevGroups } = await db
         .from("budget_groups")
-        .select("id, name, position, kind, budget_lines(name, allocated, rolled_over, position)")
-        .eq("budget_month_id", prevMonth.id)
+        .select("id, name, position, kind, budget_lines(name, allocated, rolled_over, position, default_marker, default_business_pct)")
+        .eq("budget_month_id", sourceMonth.id)
         .eq("user_id", userId)
         .order("position");
 
@@ -205,6 +215,8 @@ export async function POST(req: NextRequest) {
               allocated: pl.allocated,
               rolled_over: 0,
               position: pl.position,
+              default_marker: pl.default_marker ?? null,
+              default_business_pct: pl.default_business_pct ?? null,
             });
             if (lineErr) return NextResponse.json({ error: lineErr.message }, { status: 500 });
           }
@@ -240,7 +252,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     month_id: bm.id,
-    copied: action === "copy_last" ? copied : undefined,
+    copied: (action === "copy_last" || action === "copy_from") ? copied : undefined,
     groups_created: groupsCreated,
   });
 }
