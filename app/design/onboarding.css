@@ -30,6 +30,19 @@
 .gs-widget__bar  { height: 6px; border-radius: 999px; background: var(--bone-3); overflow: hidden; margin-top: 12px; }
 .gs-widget__bar i { display: block; height: 100%; background: var(--forest); border-radius: 999px; transition: width .6s var(--ease-out); }
 
+/* Completion exit: scale up slightly then fade + shrink away */
+.gs-widget--closing {
+  pointer-events: none;
+  animation: gs-widget-complete 1.1s var(--ease-out) forwards;
+  overflow: hidden;
+}
+@keyframes gs-widget-complete {
+  0%   { opacity: 1; transform: scale(1);    max-height: 120px; margin-top: 14px; }
+  25%  { opacity: 1; transform: scale(1.04); max-height: 120px; margin-top: 14px; }
+  60%  { opacity: 0.6; transform: scale(0.98); max-height: 120px; margin-top: 14px; }
+  100% { opacity: 0; transform: scale(0.94); max-height: 0;   margin-top: 0; padding: 0; }
+}
+
 /* ── trial banner (AppShell, shown on non-onboarding pages) ─── */
 .trial-banner {
   display: flex;

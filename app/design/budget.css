@@ -984,6 +984,8 @@
 
 /* Summary --------------------------------------------------- */
 .summary { padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+
+/* Donut chart */
 .summary__donut-wrap {
   position: relative;
   display: grid;
@@ -994,8 +996,59 @@
   inset: 0;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
+  text-align: center;
 }
+
+/* Donuts row (expense + income side by side) */
+.summary__donuts {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.summary__donut-block {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 12px;
+  background: var(--bone);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-2);
+}
+.summary__donut-legend {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.summary__donut-key {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-2);
+  min-width: 0;
+}
+.summary__donut-key-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Table */
 .summary__table { font-size: 13px; }
+.summary__table-section {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 0 4px 8px;
+  margin-bottom: 0;
+}
 .summary__table-head {
   display: grid;
   grid-template-columns: 1fr 90px 50px;
@@ -1016,7 +1069,7 @@
 }
 .summary__row--total { border-top: 1px solid var(--border); border-bottom: 0; padding-top: 12px; }
 .summary__name { display: flex; align-items: center; gap: 8px; }
-.summary__dot { width: 8px; height: 8px; border-radius: 999px; }
+.summary__dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
 .summary__table-col { text-align: right; }
 
 .summary__stats { display: flex; gap: 10px; }

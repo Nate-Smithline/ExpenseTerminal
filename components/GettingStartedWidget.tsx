@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 
 type Steps = {
@@ -30,24 +31,59 @@ function Ring({ value, total, size = 36, sw = 4 }: { value: number; total: numbe
 }
 
 export function GettingStartedWidget() {
+  const pathname = usePathname();
   const [steps, setSteps] = useState<Steps | null>(null);
+  const [completing, setCompleting] = useState(false); // true while showing 5/5 before closing
+  const [closing, setClosing] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const hasLoaded = useRef(false);
+  const prevCount = useRef(0);
 
-  useEffect(() => {
+  const fetchSteps = useCallback(() => {
     fetch("/api/onboarding")
       .then(r => r.json())
-      .then(d => setSteps(d.steps))
-      .catch(() => {});
-  }, []);
+      .then(d => {
+        const newSteps = d.steps as Steps;
+        const newCount = Object.values(newSteps).filter(Boolean).length;
 
-  if (!steps) return null;
+        // Detect the moment the last step is checked while the widget is visible
+        if (hasLoaded.current && prevCount.current < TOTAL && newCount >= TOTAL) {
+          // Set steps + completing together so the render sees both at once —
+          // completing=true prevents the doneCount >= TOTAL early-return from firing
+          setSteps(newSteps);
+          setCompleting(true);
+          setTimeout(() => setClosing(true), 900);  // let ring fill, then start exit
+          setTimeout(() => setHidden(true), 2000);  // fully remove after exit
+        } else {
+          setSteps(newSteps);
+        }
+
+        prevCount.current = newCount;
+        hasLoaded.current = true;
+      })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch on route change (catches navigating away from /onboarding)
+  useEffect(() => { fetchSteps(); }, [pathname, fetchSteps]);
+
+  // Re-fetch immediately when a step is completed on the same page
+  useEffect(() => {
+    window.addEventListener("onboarding:step-complete", fetchSteps);
+    return () => window.removeEventListener("onboarding:step-complete", fetchSteps);
+  }, [fetchSteps]);
+
+  if (hidden || !steps) return null;
 
   const doneCount = Object.values(steps).filter(Boolean).length;
-  if (doneCount >= TOTAL) return null;
+
+  // Already complete on first load (no transition) — hide immediately
+  if (doneCount >= TOTAL && !completing) return null;
 
   const pct = Math.round((doneCount / TOTAL) * 100);
 
   return (
-    <Link href="/onboarding" className="gs-widget">
+    <Link href="/onboarding" className={`gs-widget${closing ? " gs-widget--closing" : ""}`}>
       <div className="gs-widget__top">
         <Ring value={doneCount} total={TOTAL} size={36} sw={4} />
         <div className="gs-widget__txt">

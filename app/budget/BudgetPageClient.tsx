@@ -735,20 +735,16 @@ export function BudgetPageClient() {
       : defaultMarker === "Personal" ? 0
       : (targetLine?.default_business_pct ?? 50);
 
-    await fetch("/api/budget/assign", {
+    const res = await fetch("/api/budget/assign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ transaction_id: txId, budget_line_id: lineId }),
     });
+    if (!res.ok) return;
 
-    // Optimistically apply the marker locally so the rail updates immediately
-    if (defaultMarker) {
-      setTxns(prev => prev.map(t =>
-        t.id === txId
-          ? { ...t, marker: defaultMarker as Marker, business_pct: defaultPct }
-          : t
-      ));
-    }
+    // Immediately remove from the unassigned sidebar list so the UI responds
+    // without waiting for the full loadBudget round-trip
+    setTxns(prev => prev.filter(t => t.id !== txId));
 
     loadBudget(month);
   }
@@ -2270,9 +2266,119 @@ function TxnCard({
 
 // ─── SummaryTab ─────────────────────────────────────────────────────────────
 
+// Distinct color palettes that stay visually separate for income vs expense
+const INCOME_HUES  = [142, 162, 122, 170, 135, 155];
+const EXPENSE_HUES = [22, 210, 340, 48, 280, 190, 15, 260];
+
+function incomeColor(i: number)  { return `hsl(${INCOME_HUES[i % INCOME_HUES.length]}, 52%, 42%)`; }
+function expenseColor(i: number) { return `hsl(${EXPENSE_HUES[i % EXPENSE_HUES.length]}, 62%, 52%)`; }
+
+interface DonutSegment { value: number; color: string; }
+
+function DonutChart({ segments, centerLabel, centerValue }: {
+  segments: DonutSegment[];
+  centerLabel: string;
+  centerValue: string;
+}) {
+  const R = 40;
+  const C = 2 * Math.PI * R;
+  const total = segments.reduce((s, x) => s + Math.max(0, x.value), 0);
+  if (total === 0) return null;
+
+  let accumulated = 0;
+  return (
+    <div className="summary__donut-wrap" style={{ width: 120, height: 120, flexShrink: 0 }}>
+      <svg width="120" height="120" viewBox="0 0 100 100" aria-hidden="true">
+        {/* Track */}
+        <circle cx="50" cy="50" r={R} fill="none" stroke="var(--bone-3)" strokeWidth="13" />
+        {segments.map((seg, i) => {
+          const v = Math.max(0, seg.value);
+          if (v === 0) return null;
+          const dash = (v / total) * C;
+          const offset = C / 4 - accumulated;
+          accumulated += dash;
+          return (
+            <circle
+              key={i}
+              cx="50" cy="50" r={R}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth="13"
+              strokeDasharray={`${dash} ${C}`}
+              strokeDashoffset={offset}
+            />
+          );
+        })}
+      </svg>
+      <div className="summary__donut-center">
+        <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+          {centerLabel}
+        </div>
+        <div style={{ fontSize: 12.5, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--ink)", marginTop: 1 }}>
+          {centerValue}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryGroupTable({ title, groups, colors, total }: {
+  title: string;
+  groups: BudgetGroupData[];
+  colors: string[];
+  total: number;
+}) {
+  return (
+    <div className="summary__table">
+      <div className="summary__table-section">{title}</div>
+      <div className="summary__table-head">
+        <div>Group</div>
+        <div className="summary__table-col">Budget</div>
+        <div className="summary__table-col">%</div>
+      </div>
+      {groups.map((g, i) => {
+        const gTotal = g.budget_lines.reduce((s, l) => s + (l.allocated ?? 0), 0);
+        const pct = total > 0 ? Math.round((gTotal / total) * 100) : 0;
+        return (
+          <div key={g.id} className="summary__row">
+            <div className="summary__name">
+              <div className="summary__dot" style={{ background: colors[i] }} />
+              {g.name}
+            </div>
+            <div className="summary__table-col">{fmtMoney(gTotal)}</div>
+            <div className="summary__table-col">{pct}%</div>
+          </div>
+        );
+      })}
+      <div className="summary__row summary__row--total">
+        <div><strong>Total</strong></div>
+        <div className="summary__table-col"><strong>{fmtMoney(total)}</strong></div>
+        <div className="summary__table-col"><strong>100%</strong></div>
+      </div>
+    </div>
+  );
+}
+
 function SummaryTab({ groups, income, spending }: { groups: BudgetGroupData[]; income: number; spending: number }) {
-  const totalAllocated = groups.reduce((sum, g) =>
-    sum + g.budget_lines.reduce((s, l) => s + (l.allocated ?? 0), 0), 0);
+  const incomeGroups  = groups.filter(g => g.kind === "income");
+  const expenseGroups = groups.filter(g => g.kind !== "income");
+
+  const totalIncomeAllocated  = incomeGroups.reduce((s, g) => s + g.budget_lines.reduce((a, l) => a + (l.allocated ?? 0), 0), 0);
+  const totalExpenseAllocated = expenseGroups.reduce((s, g) => s + g.budget_lines.reduce((a, l) => a + (l.allocated ?? 0), 0), 0);
+
+  const incomeColors  = incomeGroups.map((_, i) => incomeColor(i));
+  const expenseColors = expenseGroups.map((_, i) => expenseColor(i));
+
+  const incomeSegments  = incomeGroups.map((g, i) => ({
+    value: g.budget_lines.reduce((s, l) => s + (l.allocated ?? 0), 0),
+    color: incomeColors[i],
+  }));
+  const expenseSegments = expenseGroups.map((g, i) => ({
+    value: g.budget_lines.reduce((s, l) => s + (l.allocated ?? 0), 0),
+    color: expenseColors[i],
+  }));
+
+  const hasGroups = groups.length > 0;
 
   return (
     <div className="summary">
@@ -2287,7 +2393,7 @@ function SummaryTab({ groups, income, spending }: { groups: BudgetGroupData[]; i
         <div className="summary__stat">
           <div style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 600 }}>Budgeted</div>
           <div style={{ fontWeight: 700, fontSize: 17, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
-            {fmtMoney(totalAllocated)}
+            {fmtMoney(totalExpenseAllocated)}
           </div>
         </div>
         <div className="summary__stat">
@@ -2298,38 +2404,67 @@ function SummaryTab({ groups, income, spending }: { groups: BudgetGroupData[]; i
         </div>
       </div>
 
-      {/* Groups summary table */}
-      {groups.length > 0 && (
-        <div className="summary__table">
-          <div className="summary__table-head">
-            <div>Group</div>
-            <div className="summary__table-col">Budget</div>
-            <div className="summary__table-col">%</div>
-          </div>
-          {groups.map((g, i) => {
-            const gTotal = g.budget_lines.reduce((s, l) => s + (l.allocated ?? 0), 0);
-            const pct = totalAllocated > 0 ? Math.round((gTotal / totalAllocated) * 100) : 0;
-            const color = `hsl(${(i * 47) % 360}, 60%, 50%)`;
-            return (
-              <div key={g.id} className="summary__row">
-                <div className="summary__name">
-                  <div className="summary__dot" style={{ background: color }} />
-                  {g.name}
-                </div>
-                <div className="summary__table-col">{fmtMoney(gTotal)}</div>
-                <div className="summary__table-col">{pct}%</div>
+      {/* Pie charts */}
+      {hasGroups && (expenseGroups.length > 0 || incomeGroups.length > 0) && (
+        <div className="summary__donuts">
+          {expenseGroups.length > 0 && (
+            <div className="summary__donut-block">
+              <DonutChart
+                segments={expenseSegments}
+                centerLabel="Expenses"
+                centerValue={fmtMoney(totalExpenseAllocated)}
+              />
+              <div className="summary__donut-legend">
+                {expenseGroups.map((g, i) => (
+                  <div key={g.id} className="summary__donut-key">
+                    <span className="summary__dot" style={{ background: expenseColors[i], flexShrink: 0 }} />
+                    <span className="summary__donut-key-label">{g.name}</span>
+                  </div>
+                ))}
               </div>
-            );
-          })}
-          <div className="summary__row summary__row--total">
-            <div><strong>Total</strong></div>
-            <div className="summary__table-col"><strong>{fmtMoney(totalAllocated)}</strong></div>
-            <div className="summary__table-col"><strong>100%</strong></div>
-          </div>
+            </div>
+          )}
+          {incomeGroups.length > 0 && (
+            <div className="summary__donut-block">
+              <DonutChart
+                segments={incomeSegments}
+                centerLabel="Income"
+                centerValue={fmtMoney(totalIncomeAllocated)}
+              />
+              <div className="summary__donut-legend">
+                {incomeGroups.map((g, i) => (
+                  <div key={g.id} className="summary__donut-key">
+                    <span className="summary__dot" style={{ background: incomeColors[i], flexShrink: 0 }} />
+                    <span className="summary__donut-key-label">{g.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {groups.length === 0 && (
+      {/* Expense groups table */}
+      {expenseGroups.length > 0 && (
+        <SummaryGroupTable
+          title="Expenses"
+          groups={expenseGroups}
+          colors={expenseColors}
+          total={totalExpenseAllocated}
+        />
+      )}
+
+      {/* Income groups table */}
+      {incomeGroups.length > 0 && (
+        <SummaryGroupTable
+          title="Income"
+          groups={incomeGroups}
+          colors={incomeColors}
+          total={totalIncomeAllocated}
+        />
+      )}
+
+      {!hasGroups && (
         <div style={{ textAlign: "center", padding: "32px 0", color: "var(--ink-3)", fontSize: 13 }}>
           Add groups to see a summary
         </div>

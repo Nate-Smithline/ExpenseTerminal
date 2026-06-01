@@ -369,6 +369,8 @@ export default function OnboardingPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ step: id }),
     }).catch(() => {});
+    // Notify the sidebar widget so it re-fetches without needing a route change
+    window.dispatchEvent(new CustomEvent("onboarding:step-complete"));
   }, []);
 
   if (!data) {
