@@ -134,6 +134,8 @@ export function AccountsPageClient() {
   const [linking, setLinking] = useState(false);
   const [pendingLink, setPendingLink] = useState<PendingLink | null>(null);
   const [selectedLookback, setSelectedLookback] = useState(4); // index into LOOKBACK_OPTIONS (Last twelve months)
+  const [importModalStep, setImportModalStep] = useState<"lookback" | "accounts">("lookback");
+  const [accountTxnPrefs, setAccountTxnPrefs] = useState<Record<string, boolean>>({});
   const [importing, setImporting] = useState(false);
 
   // ── Loading bar ─────────────────────────────────────────────────────────
@@ -201,7 +203,8 @@ export function AccountsPageClient() {
     onSuccess: (public_token, metadata) => {
       setLinking(false);
       setLinkToken(null);
-      // Show date picker modal before completing the import
+      setImportModalStep("lookback");
+      setAccountTxnPrefs({});
       setPendingLink({ public_token, metadata: metadata as PendingLink["metadata"] });
     },
     onExit: () => {
@@ -240,6 +243,7 @@ export function AccountsPageClient() {
           public_token: pendingLink.public_token,
           metadata: pendingLink.metadata,
           start_date: startDate,
+          account_prefs: accountTxnPrefs,
         }),
       });
 
@@ -254,17 +258,18 @@ export function AccountsPageClient() {
         return;
       }
 
-      // Kick off transaction sync for each newly created account
+      // Kick off transaction sync for accounts that opted in
       const exchangeBody = await res.json().catch(() => ({}));
-      const newIds: string[] = exchangeBody?.dataSourceIds ?? [];
+      // syncIds = only accounts where pull_transactions is true; fall back to all if API is older
+      const syncIds: string[] = exchangeBody?.syncIds ?? exchangeBody?.dataSourceIds ?? [];
 
-      if (newIds.length > 0) {
+      if (syncIds.length > 0) {
         setImportStep(5); // "Importing transactions…"
         setImportPct(72);
 
-        // Sync all accounts in parallel — fire and collect results
+        // Sync opted-in accounts in parallel — fire and collect results
         const syncResults = await Promise.allSettled(
-          newIds.map(id =>
+          syncIds.map(id =>
             fetch("/api/data-sources/plaid/sync", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -521,8 +526,8 @@ export function AccountsPageClient() {
         />
       )}
 
-      {/* Import date picker modal */}
-      {pendingLink && !importing && createPortal(
+      {/* Import modal — step 1: lookback range */}
+      {pendingLink && !importing && importModalStep === "lookback" && createPortal(
         <div
           className="acc-modal-backdrop"
           role="dialog"
@@ -585,9 +590,89 @@ export function AccountsPageClient() {
               <button
                 type="button"
                 className="btn btn--primary"
+                onClick={() => {
+                  const prefs: Record<string, boolean> = {};
+                  for (const acc of pendingLink.metadata?.accounts ?? []) {
+                    prefs[acc.id ?? ""] = true;
+                  }
+                  setAccountTxnPrefs(prefs);
+                  setImportModalStep("accounts");
+                }}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      , document.body)}
+
+      {/* Import modal — step 2: per-account transaction opt-in */}
+      {pendingLink && !importing && importModalStep === "accounts" && createPortal(
+        <div
+          className="acc-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="acc-txn-title"
+        >
+          <div className="acc-modal" onClick={e => e.stopPropagation()}>
+            <div className="acc-modal__head">
+              <div>
+                <h2 id="acc-txn-title" className="acc-modal__title">What should we import?</h2>
+                <p className="acc-modal__sub">
+                  {pendingLink.metadata?.institution?.name ?? "Your bank"} — choose per account
+                </p>
+              </div>
+            </div>
+            <div className="acc-modal__body" style={{ gap: 0 }}>
+              {(pendingLink.metadata?.accounts ?? []).map(acc => {
+                const key = acc.id ?? "";
+                const wantsTxn = accountTxnPrefs[key] ?? true;
+                const typeLabel = acc.subtype ?? acc.type ?? "";
+                return (
+                  <div key={key} className="acc-txn-pref-row">
+                    <div className="acc-txn-pref-info">
+                      <span className="acc-txn-pref-name">{acc.name ?? "Account"}</span>
+                      {typeLabel && <span className="acc-txn-pref-type">{typeLabel}</span>}
+                    </div>
+                    <div className="acc-txn-pref-toggle">
+                      <button
+                        type="button"
+                        className={`acc-txn-pref-btn${wantsTxn ? " is-active" : ""}`}
+                        onClick={() => setAccountTxnPrefs(p => ({ ...p, [key]: true }))}
+                      >
+                        Transactions
+                      </button>
+                      <button
+                        type="button"
+                        className={`acc-txn-pref-btn${!wantsTxn ? " is-active" : ""}`}
+                        onClick={() => setAccountTxnPrefs(p => ({ ...p, [key]: false }))}
+                      >
+                        Balance only
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              {(pendingLink.metadata?.accounts ?? []).length === 0 && (
+                <p style={{ fontSize: 13, color: "var(--ink-3)", padding: "12px 0" }}>
+                  No individual accounts detected — transactions will be imported for the connection.
+                </p>
+              )}
+            </div>
+            <div className="acc-modal__actions" style={{ flexDirection: "row", justifyContent: "flex-end", paddingTop: 16 }}>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setImportModalStep("lookback")}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
                 onClick={confirmImport}
               >
-                Import transactions
+                Start import
               </button>
             </div>
           </div>

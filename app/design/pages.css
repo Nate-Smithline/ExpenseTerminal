@@ -921,6 +921,69 @@
   margin: 0 20px 12px;
 }
 
+/* Per-account transaction opt-in (import modal step 2) */
+.acc-txn-pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.acc-txn-pref-row:last-child {
+  border-bottom: 0;
+}
+.acc-txn-pref-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.acc-txn-pref-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.acc-txn-pref-type {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  text-transform: capitalize;
+}
+.acc-txn-pref-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.acc-txn-pref-btn {
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 0;
+  background: var(--bone);
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.acc-txn-pref-btn + .acc-txn-pref-btn {
+  border-left: 1px solid var(--border);
+}
+.acc-txn-pref-btn.is-active {
+  background: var(--forest);
+  color: #fff;
+}
+.acc-txn-pref-btn:not(.is-active):hover {
+  background: var(--bone-2);
+  color: var(--ink);
+}
+
 /* ──────── Settings ──────── */
 
 .settings {

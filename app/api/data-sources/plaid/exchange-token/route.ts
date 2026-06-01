@@ -31,6 +31,7 @@ export async function POST(req: Request) {
   let body: {
     public_token?: string;
     start_date?: string | null;
+    account_prefs?: Record<string, boolean>;
     metadata?: {
       institution?: { institution_id?: string; name?: string };
       accounts?: Array<{ id?: string; name?: string; type?: string; subtype?: string; mask?: string }>;
@@ -80,9 +81,12 @@ export async function POST(req: Request) {
     const institutionId = body.metadata?.institution?.institution_id ?? null;
     const accounts = body.metadata?.accounts ?? [];
     const startDate = body.start_date ?? null;
+    // Per-account opt-in: { [plaidAccountId]: true = import transactions, false = balance only }
+    const accountPrefs: Record<string, boolean> = body.account_prefs ?? {};
 
     const now = new Date().toISOString();
     const createdIds: string[] = [];
+    const syncIds: string[] = [];
     let firstSaveError: string | null = null;
 
     // Check if this item already exists (reconnect scenario)
@@ -93,7 +97,7 @@ export async function POST(req: Request) {
       .eq("plaid_item_id", itemId)
       .limit(1);
 
-    if (existingByItem && existingByItem.length > 0) {
+      if (existingByItem && existingByItem.length > 0) {
       // Reconnecting an existing item — update the access token
       for (const existing of existingByItem) {
         const { error: updateErr } = await (supabase as any)
@@ -110,6 +114,7 @@ export async function POST(req: Request) {
           firstSaveError = firstSaveError ?? updateErr.message ?? String(updateErr);
         } else {
           createdIds.push(existing.id);
+          syncIds.push(existing.id); // On reconnect always sync to catch up
         }
       }
     } else {
@@ -130,6 +135,7 @@ export async function POST(req: Request) {
         : [{ plaidAccountId: null, mask: null, displayName: institutionName ?? "Bank account", accountType: "checking" }];
 
       for (const acc of accountsToInsert) {
+        const wantsTxns = accountPrefs[acc.plaidAccountId ?? ""] ?? true;
         const { data: inserted, error: insertErr } = await (supabase as any)
           .from("data_sources")
           .insert({
@@ -138,7 +144,7 @@ export async function POST(req: Request) {
               account_type: acc.accountType,
               institution: institutionName,
               source_type: "plaid",
-              pull_transactions: true,
+              pull_transactions: wantsTxns,
               plaid_access_token: encryptedToken,
               plaid_item_id: itemId,
               plaid_institution_id: institutionId,
@@ -160,6 +166,7 @@ export async function POST(req: Request) {
 
         if (inserted?.id) {
           createdIds.push(inserted.id);
+          if (wantsTxns) syncIds.push(inserted.id);
 
           // Apply new-schema columns as a non-fatal update (requires migration to have run)
           const extras: Record<string, unknown> = {};
@@ -232,6 +239,7 @@ export async function POST(req: Request) {
       success: true,
       accountCount: createdIds.length,
       dataSourceIds: createdIds,
+      syncIds,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Token exchange failed";

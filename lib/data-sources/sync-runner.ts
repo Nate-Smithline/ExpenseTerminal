@@ -475,7 +475,7 @@ export async function runSyncForDataSource(
     try {
       const { data: row, error: fetchError } = await (supabase as any)
         .from("data_sources")
-        .select("id, plaid_access_token, plaid_item_id, plaid_cursor, plaid_sync_start_date, plaid_account_id")
+        .select("id, plaid_access_token, plaid_item_id, plaid_cursor, plaid_sync_start_date, plaid_account_id, pull_transactions")
         .eq("id", dataSourceId)
         .eq("user_id", userId)
         .single();
@@ -494,6 +494,10 @@ export async function runSyncForDataSource(
           error: "This account isn't linked via Plaid. Use Repair connection to reconnect.",
           status: 400,
         };
+      }
+
+      if (row.pull_transactions === false) {
+        return { success: true, message: "Balance-only account — transaction sync skipped." };
       }
 
       const plaid = getPlaidClient(options?.hostname);

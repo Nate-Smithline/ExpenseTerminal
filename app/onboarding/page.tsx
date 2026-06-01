@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { startProCheckout } from "@/lib/billing/start-checkout";
 import type { TrialStatusResult } from "@/lib/billing/trial";
 
@@ -334,6 +335,7 @@ type OnbData = {
 };
 
 export default function OnboardingPage() {
+  const router = useRouter();
   const [data, setData] = useState<OnbData | null>(null);
   const [done, setDone] = useState<Record<string, boolean>>({});
   const [openTask, setOpenTask] = useState<TaskId | null>(null);
@@ -345,12 +347,17 @@ export default function OnboardingPage() {
       .then(r => r.json())
       .then((d) => {
         if (d?.steps) {
+          const completedCount = TASKS.filter(t => (d.steps as Record<string, boolean>)[t.id]).length;
+          if (completedCount >= TASKS.length) {
+            router.replace("/dashboard");
+            return;
+          }
           setData(d as OnbData);
           setDone(d.steps);
         }
       })
       .catch(() => {});
-  }, []);
+  }, [router]);
 
   const completeStep = useCallback(async (id: TaskId) => {
     setDone(prev => {
