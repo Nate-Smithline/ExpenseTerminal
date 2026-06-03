@@ -6,11 +6,13 @@ interface PageHeadProps {
   title: React.ReactNode;
   sub?: React.ReactNode;
   right?: React.ReactNode;
+  /** Tighter header for focused workflows (e.g. Tax Triage). */
+  compact?: boolean;
 }
 
-export function PageHead({ eyebrow, title, sub, right }: PageHeadProps) {
+export function PageHead({ eyebrow, title, sub, right, compact }: PageHeadProps) {
   return (
-    <header className="pagehead">
+    <header className={compact ? "pagehead pagehead--compact" : "pagehead"}>
       <div>
         {eyebrow && <div className="pagehead__eyebrow">{eyebrow}</div>}
         <h1 className="pagehead__title">{title}</h1>

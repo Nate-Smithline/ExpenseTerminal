@@ -3,6 +3,7 @@ import type { StripeMode } from "@/lib/stripe";
 import { getStripeClient } from "@/lib/stripe";
 import { getPlaidClient, decryptAccessToken } from "@/lib/plaid";
 import { normalizeVendor } from "@/lib/vendor-matching";
+import { plaidPrimaryFromTransaction } from "@/lib/ai/categorize-shared";
 
 /**
  * Stripe Financial Connections `transactions.list` accepts `limit` between 1 and 100 (inclusive).
@@ -539,6 +540,7 @@ export async function runSyncForDataSource(
           const amount = Number((-tx.amount).toFixed(2));
           const vendor = (tx.merchant_name ?? tx.name ?? "Unknown").slice(0, 255);
           const vendorNormalized = vendor.trim() ? normalizeVendor(vendor) : null;
+          const plaidPrimary = plaidPrimaryFromTransaction(tx);
 
           if (!earliestDate || dateStr < earliestDate) earliestDate = dateStr;
           if (!latestDate || dateStr > latestDate) latestDate = dateStr;
@@ -552,6 +554,8 @@ export async function runSyncForDataSource(
                 vendor,
                 vendor_normalized: vendorNormalized,
                 description: tx.name ?? null,
+                plaid_category: plaidPrimary,
+                hint_plaid_category: plaidPrimary,
                 amount,
                 status: "pending",
                 tax_year: year,
@@ -579,6 +583,7 @@ export async function runSyncForDataSource(
           const amount = Number((-tx.amount).toFixed(2));
           const vendor = (tx.merchant_name ?? tx.name ?? "Unknown").slice(0, 255);
           const vendorNormalized = vendor.trim() ? normalizeVendor(vendor) : null;
+          const plaidPrimary = plaidPrimaryFromTransaction(tx);
           const { error: updErr } = await (supabase as any)
             .from("transactions")
             .update({
@@ -586,6 +591,8 @@ export async function runSyncForDataSource(
               vendor,
               vendor_normalized: vendorNormalized,
               description: tx.name ?? null,
+              plaid_category: plaidPrimary,
+              hint_plaid_category: plaidPrimary,
               amount,
               transaction_type: amount > 0 ? "income" : "expense",
               updated_at: new Date().toISOString(),

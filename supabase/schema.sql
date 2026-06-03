@@ -172,6 +172,9 @@ CREATE TABLE IF NOT EXISTS public.auto_sort_rules (
   quick_label TEXT NOT NULL,
   business_purpose TEXT,
   category TEXT,
+  -- Tax Triage marker rules (null = legacy category-only rule)
+  marker TEXT CHECK (marker IS NULL OR marker IN ('Personal', 'Business', 'Partial')),
+  business_pct SMALLINT CHECK (business_pct IS NULL OR (business_pct >= 0 AND business_pct <= 100)),
   -- Generalized rules engine fields
   name TEXT,
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -181,6 +184,21 @@ CREATE TABLE IF NOT EXISTS public.auto_sort_rules (
 );
 
 CREATE INDEX IF NOT EXISTS idx_auto_sort_rules_user ON public.auto_sort_rules(user_id);
+CREATE INDEX IF NOT EXISTS idx_auto_sort_rules_marker ON public.auto_sort_rules(user_id) WHERE marker IS NOT NULL;
+
+-- Tax Triage gamification (persistent streaks, badges, lifetime savings)
+CREATE TABLE IF NOT EXISTS public.triage_progress (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  total_sorted INTEGER NOT NULL DEFAULT 0,
+  rules_created INTEGER NOT NULL DEFAULT 0,
+  lifetime_deductions NUMERIC(14, 2) NOT NULL DEFAULT 0,
+  lifetime_tax_saved NUMERIC(14, 2) NOT NULL DEFAULT 0,
+  current_streak INTEGER NOT NULL DEFAULT 0,
+  longest_streak INTEGER NOT NULL DEFAULT 0,
+  last_triage_date DATE,
+  badges JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- Deductions
 CREATE TABLE IF NOT EXISTS public.deductions (
@@ -256,6 +274,7 @@ CREATE INDEX IF NOT EXISTS idx_tax_year_settings_user ON public.tax_year_setting
 
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.auto_sort_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.triage_progress ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.deductions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vendor_patterns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.data_sources ENABLE ROW LEVEL SECURITY;
@@ -269,6 +288,11 @@ CREATE POLICY "Users can manage own transactions"
 CREATE POLICY "Users can manage own rules"
   ON public.auto_sort_rules FOR ALL
   USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage own triage progress"
+  ON public.triage_progress FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can manage own deductions"
   ON public.deductions FOR ALL
@@ -330,6 +354,10 @@ ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS name TEXT;
 ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS conditions JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS action JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS marker TEXT
+  CHECK (marker IS NULL OR marker IN ('Personal', 'Business', 'Partial'));
+ALTER TABLE public.auto_sort_rules ADD COLUMN IF NOT EXISTS business_pct SMALLINT
+  CHECK (business_pct IS NULL OR (business_pct >= 0 AND business_pct <= 100));
 
 -- =============================================================================
 -- EMAIL VERIFICATIONS (Bible-word tokens)

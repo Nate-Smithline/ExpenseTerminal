@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { sendUnsortedReminder } from "@/lib/email/send-unsorted-reminder";
 import { sendQuarterlyReminder } from "@/lib/email/send-quarterly-reminder";
+import { getQuarterlyTaxEstimate } from "@/lib/tax/quarterly-estimate";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://expenseterminal.com";
 const IRS_DIRECT_PAY_URL = "https://www.irs.gov/payments/direct-pay";
@@ -17,6 +18,10 @@ type QuarterSpec = {
   label: string;      // e.g. "Q1 2026"
   dueDate: Date;
   coversPeriod: string; // e.g. "January – March income"
+  /** Tax year the covered income belongs to (Q4-prev uses the previous year). */
+  taxYear: number;
+  /** 1-indexed months the IRS estimated-tax period covers (e.g. Q2 = [4, 5]). */
+  incomeMonths: number[];
 };
 
 /** Returns all quarterly deadlines for the current year + Q4 from the previous year (due Jan 15). */
@@ -29,6 +34,8 @@ function getQuarterlyDeadlines(today: Date): QuarterSpec[] {
       label: `Q4 ${year - 1}`,
       dueDate: new Date(`${year}-01-15`),
       coversPeriod: `September – December ${year - 1} income`,
+      taxYear: year - 1,
+      incomeMonths: [9, 10, 11, 12],
     },
     // Q1 — due April 15
     {
@@ -36,6 +43,8 @@ function getQuarterlyDeadlines(today: Date): QuarterSpec[] {
       label: `Q1 ${year}`,
       dueDate: new Date(`${year}-04-15`),
       coversPeriod: `January – March income`,
+      taxYear: year,
+      incomeMonths: [1, 2, 3],
     },
     // Q2 — due June 15
     {
@@ -43,6 +52,8 @@ function getQuarterlyDeadlines(today: Date): QuarterSpec[] {
       label: `Q2 ${year}`,
       dueDate: new Date(`${year}-06-15`),
       coversPeriod: `April – May income`,
+      taxYear: year,
+      incomeMonths: [4, 5],
     },
     // Q3 — due September 15
     {
@@ -50,6 +61,8 @@ function getQuarterlyDeadlines(today: Date): QuarterSpec[] {
       label: `Q3 ${year}`,
       dueDate: new Date(`${year}-09-15`),
       coversPeriod: `June – August income`,
+      taxYear: year,
+      incomeMonths: [6, 7, 8],
     },
     // Q4 of current year — due Jan 15 next year
     {
@@ -57,6 +70,8 @@ function getQuarterlyDeadlines(today: Date): QuarterSpec[] {
       label: `Q4 ${year}`,
       dueDate: new Date(`${year + 1}-01-15`),
       coversPeriod: `September – December income`,
+      taxYear: year,
+      incomeMonths: [9, 10, 11, 12],
     },
   ];
 }
@@ -228,13 +243,27 @@ export async function GET(req: Request) {
 
       const reviewUrl = `${APP_URL.replace(/\/$/, "")}/login?redirect=/dashboard`;
 
+      // Estimate the tax owed for this period from the user's categorized
+      // transactions. Returns null (no amount shown) when there's no activity.
+      let estimatedAmount: number | null = null;
+      try {
+        estimatedAmount = await getQuarterlyTaxEstimate(
+          supabase,
+          userId,
+          quarter.taxYear,
+          quarter.incomeMonths
+        );
+      } catch (e) {
+        console.warn("[cron/notifications] estimate failed for", userId, e instanceof Error ? e.message : e);
+      }
+
       try {
         await sendQuarterlyReminder(email, {
           firstName: (profile.first_name as string | null) ?? null,
           quarter: quarter.label,
           dueDate: formatDueDate(quarter.dueDate),
           daysUntilDue,
-          estimatedAmount: null, // Phase 2: calculate from transactions
+          estimatedAmount,
           coversPeriod: quarter.coversPeriod,
           irsPayUrl: IRS_DIRECT_PAY_URL,
           reviewUrl,

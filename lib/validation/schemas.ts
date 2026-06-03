@@ -88,6 +88,26 @@ export const transactionDeleteBodySchema = z.object({
   id: uuidSchema,
 });
 
+export const triageDecideBodySchema = z.object({
+  id: uuidSchema,
+  marker: z.enum(["Personal", "Business", "Partial"]),
+  business_pct: z.number().int().min(0).max(100).optional(),
+  business_purpose: businessPurposeSchema.nullable().optional(),
+  schedule_c_line: maxString(50).nullable().optional(),
+  category: maxString(200).nullable().optional(),
+  quick_label: maxString(500).nullable().optional(),
+  deduction_percent: deductionPercentSchema.optional(),
+  undo: z.boolean().optional(),
+});
+
+export const triageRuleBodySchema = z.object({
+  vendorNormalized: z.string().min(1).max(100),
+  marker: z.enum(["Personal", "Business", "Partial"]),
+  business_pct: z.number().int().min(0).max(100).optional(),
+  transactionType: z.enum(["income", "expense"]).optional(),
+  business_purpose: businessPurposeSchema.optional(),
+});
+
 /** Single transaction for POST /api/transactions (manual log) */
 export const transactionPostBodySchema = z.object({
   date: dateInputSchema,

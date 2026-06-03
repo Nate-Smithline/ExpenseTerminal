@@ -87,6 +87,29 @@ export const IReview = (p: IconProps) => (
   />
 );
 
+export const IBolt = (p: IconProps) => (
+  <Icon
+    {...p}
+    strokeWidth={2}
+    d={<path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z" />}
+    fill="currentColor"
+  />
+);
+
+/** Tax Triage — card stack / quick sort */
+export const ITriage = (p: IconProps) => (
+  <Icon
+    {...p}
+    d={
+      <>
+        <rect x="5" y="4" width="14" height="16" rx="2" />
+        <path d="M9 8h6M9 12h6M9 16h4" />
+        <path d="M16 4v3a1 1 0 0 0 1 1h2" />
+      </>
+    }
+  />
+);
+
 export const IAccounts = (p: IconProps) => (
   <Icon
     {...p}

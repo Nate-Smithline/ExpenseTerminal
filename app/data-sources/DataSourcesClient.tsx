@@ -370,6 +370,11 @@ export function DataSourcesClient({
         const diag = data.plaidDiagnostics ?? data.diagnostics;
         logSyncDiagnostics(diag);
         await reloadSources();
+        try {
+          await fetch("/api/triage/apply-rules", { method: "POST" });
+        } catch {
+          // Best-effort marker rules after sync
+        }
         window.dispatchEvent(new CustomEvent("inbox-count-changed"));
         setSyncStatusBar({ message: syncStatusMessage(diag), type: "success" });
         setTimeout(() => setSyncStatusBar(null), 8000);
@@ -832,6 +837,11 @@ export function DataSourcesClient({
             }
 
             await reloadSources();
+            try {
+              await fetch("/api/triage/apply-rules", { method: "POST" });
+            } catch {
+              // Best-effort marker rules after sync
+            }
             window.dispatchEvent(new CustomEvent("inbox-count-changed"));
 
             // ── Auto-categorize: fetch all new pending IDs then run AI ──

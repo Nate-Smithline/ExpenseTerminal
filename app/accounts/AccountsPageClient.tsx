@@ -287,6 +287,12 @@ export function AccountsPageClient() {
             console.warn("[confirmImport] sync error:", errBody?.error);
           }
         }
+
+        try {
+          await fetch("/api/triage/apply-rules", { method: "POST" });
+        } catch {
+          // Best-effort: auto-tag from saved marker rules
+        }
       }
 
       setImportStep(IMPORT_STEPS.length - 1);

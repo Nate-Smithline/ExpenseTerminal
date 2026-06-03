@@ -8,97 +8,24 @@ import { transactionIdsBodySchema } from "@/lib/validation/schemas";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import type { Database } from "@/lib/types/database";
 import { getUserPlan } from "@/lib/billing/get-user-plan";
+import {
+  CATEGORIZE_SYSTEM_PROMPT,
+  applyCategorizationGuardrails,
+  buildBatchPrompt,
+  getDefaultDeduction,
+  getDeterministicMealResult,
+  normalizeScheduleLine,
+  shouldCacheVendorPattern,
+  shouldUseVendorPatternCache,
+  toCategorizeContext,
+  type ParsedCategorization,
+} from "@/lib/ai/categorize-shared";
 
-type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
-
-/* ------------------------------------------------------------------ */
-/*  Enhanced system prompt with contextual quick-label guidance        */
-/* ------------------------------------------------------------------ */
-const systemPrompt = `You categorize business transactions for IRS Schedule C.
-
-Categories (Line: Name). Return scheduleCLine as the KEY ONLY (e.g. "8", "27a", "24b"), not "Line 8":
-8:Advertising, 9:Car/truck, 10:Commissions/fees, 11:Contract labor,
-13:Depreciation, 15:Insurance, 16b:Other interest, 17:Legal/professional,
-18:Office expense, 21:Rent/lease, 22:Repairs, 23:Supplies, 24a:Travel,
-24b:Meals, 25:Utilities, 26:Wages, 27a:Other expenses
-
-Rules:
-- Prefer the MOST SPECIFIC category. Use 27a (Other expenses) ONLY when no other line fits.
-- Office supplies, software for office work, productivity tools, and general business SaaS → 18 (Office expense). Do NOT use 27a for these.
-- Phone, internet, cloud hosting, business phone → 25 (Utilities).
-- Meals → 24b (50% deductible; 100% if overnight travel).
-- Coworking, office rent → 21.
-- Equipment >$2500 → 13.
-- Advertising / marketing / Google Ads → 8.
-- Legal, accounting, tax prep, consulting → 17.
-- Use 27a only for: education, professional memberships, bank fees, or truly miscellaneous expenses that don't fit 8–26. When unsure between 18 and 27a for software/tools, prefer 18.
-- Personal expenses → mark "likely_personal"
-- If ambiguous → "needs_review"
-
-Quick labels: Return 2-4 specific, IRS-defensible business reasons per transaction.
-These should be selectable labels the user can pick to justify the deduction.
-Generate labels based on the CATEGORY, not generic labels:
-
-- Meals (24b): "Business Meal", "Client Dinner", "Team Meal", "Working Lunch", "Prospect Meeting"
-- Travel (24a): "Business Travel", "Client Visit", "Conference", "Site Visit"
-- Office (18): "Office Supplies", "Printer/Ink", "Desk Equipment", "Stationery"
-- Advertising (8): "Social Media Ads", "Google Ads", "Print Marketing", "Brand Promotion"
-- Car/truck (9): "Client Visit", "Site Visit", "Business Errand", "Delivery"
-- Utilities (25): "Phone/Internet", "Office Utilities", "Cloud Hosting", "Business Phone"
-- Software/Other (27a): "Business Software", "SaaS Tool", "Subscription", "Dev Tools"
-- Supplies (23): "Shipping Supplies", "Raw Materials", "Packaging", "Office Supplies"
-- Rent/lease (21): "Office Rent", "Coworking", "Storage", "Equipment Lease"
-- Insurance (15): "Business Insurance", "Liability Insurance", "Health Insurance"
-- Legal/professional (17): "Legal Fees", "Accounting", "Tax Prep", "Consulting"
-- Contract labor (11): "Freelancer", "Contractor", "Consultant"
-- Commissions (10): "Sales Commission", "Referral Fee", "Platform Fee"
-- Repairs (22): "Equipment Repair", "Office Repair", "Maintenance"
-
-Also estimate a suggested deduction percentage:
-- 50 for meals (unless clearly travel-related, then 100)
-- 0 for likely_personal
-- 100 for most clear business expenses
-- Lower values (25-75) for mixed-use items
-
-Return ONLY a JSON array. No markdown fences.`;
-
-/* ------------------------------------------------------------------ */
-/*  Deduction defaults by Schedule C line                              */
-/* ------------------------------------------------------------------ */
-const CATEGORY_DEDUCTION_DEFAULTS: Record<string, number> = {
-  "24b": 50,   // Meals
-  "24a": 100,  // Travel
-  "18": 100,   // Office expense
-  "8": 100,    // Advertising
-  "9": 100,    // Car/truck
-  "25": 100,   // Utilities
-  "27a": 100,  // Other expenses / software
-  "23": 100,   // Supplies
-  "21": 100,   // Rent/lease
-  "15": 100,   // Insurance
-  "17": 100,   // Legal/professional
-  "11": 100,   // Contract labor
-  "10": 100,   // Commissions
-  "13": 100,   // Depreciation
-  "16b": 100,  // Other interest
-  "22": 100,   // Repairs
-  "26": 100,   // Wages
+type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"] & {
+  description?: string | null;
+  plaid_category?: string | null;
+  hint_plaid_category?: string | null;
 };
-
-function getDefaultDeduction(scheduleCLine: string | null, isMeal: boolean, isTravel: boolean): number {
-  if (isMeal && !isTravel) return 50;
-  if (isMeal && isTravel) return 100;
-  if (!scheduleCLine) return 100;
-  const lineNum = scheduleCLine.replace(/^Line\s*/i, "").trim();
-  return CATEGORY_DEDUCTION_DEFAULTS[lineNum] ?? 100;
-}
-
-/** Normalize AI output to stored form: "27a", "24b", etc. */
-function normalizeScheduleLine(raw: string | null | undefined): string | null {
-  if (raw == null || raw === "") return null;
-  const s = raw.replace(/^Line\s*/i, "").trim();
-  return s || null;
-}
 
 const BATCH_SIZE = 25;
 const DB_FETCH_CHUNK = 80;
@@ -125,33 +52,6 @@ async function runWithConcurrency<T, R>(
   return results;
 }
 
-function buildBatchPrompt(
-  txns: { id: string; vendor: string; amount: number; date: string; category?: string }[]
-) {
-  const lines = txns.map(
-    (t) => `${t.id}|${t.vendor}|$${Math.abs(t.amount).toFixed(2)}|${t.date}${t.category ? `|${t.category}` : ""}`
-  );
-  return `Categorize these ${txns.length} transactions. Return JSON array:
-[{"id":"...","category":"Category Name","scheduleCLine":"27a","confidence":0.85,"quickLabels":["Specific Reason 1","Specific Reason 2","Specific Reason 3"],"suggestedDeductionPct":100,"deductibility":"likely_deductible|needs_review|likely_personal","isMeal":false,"isTravel":false}]
-
-Use scheduleCLine as the line KEY only (e.g. "8", "18", "24b", "27a"), not "Line 27a".
-
-id|vendor|amount|date[|hint]
-${lines.join("\n")}`;
-}
-
-type ParsedResult = {
-  id: string;
-  category: string;
-  scheduleCLine: string;
-  confidence: number;
-  quickLabels?: string[];
-  suggestedDeductionPct?: number;
-  deductibility?: string;
-  isMeal?: boolean;
-  isTravel?: boolean;
-};
-
 function extractError(e: unknown): string {
   if (e && typeof e === "object") {
     const err = e as Record<string, unknown>;
@@ -173,7 +73,8 @@ async function fetchTransactionsInChunks(
   const all: TransactionRow[] = [];
   for (let i = 0; i < ids.length; i += DB_FETCH_CHUNK) {
     const chunk = ids.slice(i, i + DB_FETCH_CHUNK);
-    const txCols = "id,vendor,amount,date,category,vendor_normalized,is_meal,is_travel,eligible_for_ai";
+    const txCols =
+      "id,vendor,amount,date,description,category,plaid_category,hint_plaid_category,vendor_normalized,is_meal,is_travel,eligible_for_ai";
     const { data, error } = await (supabase as any)
       .from("transactions")
       .select(txCols)
@@ -214,8 +115,9 @@ async function upsertVendorPattern(
   supabase: Awaited<ReturnType<typeof createSupabaseRouteClient>>,
   userId: string,
   vendorNormalized: string,
-  result: ParsedResult,
+  result: ParsedCategorization,
 ) {
+  if (!shouldCacheVendorPattern(result)) return;
   await (supabase as any)
     .from("vendor_patterns")
     .upsert(
@@ -332,8 +234,69 @@ export async function POST(req: Request) {
 
       for (const t of transactions) {
         const vn = t.vendor_normalized || normalizeVendor(t.vendor);
+        const ctx = toCategorizeContext({
+          id: t.id,
+          vendor: t.vendor,
+          amount: t.amount,
+          date: t.date,
+          description: t.description ?? null,
+          plaid_category: t.plaid_category ?? null,
+          hint_plaid_category: t.hint_plaid_category ?? null,
+          category: t.category,
+        });
+
+        const deterministic = getDeterministicMealResult(ctx);
+        if (deterministic) {
+          const scheduleLine = normalizeScheduleLine(deterministic.scheduleCLine) ?? deterministic.scheduleCLine;
+          const deductPct = deterministic.suggestedDeductionPct ?? 50;
+          const { error: updateError } = await (supabase as any)
+            .from("transactions")
+            .update({
+              category: deterministic.category,
+              schedule_c_line: scheduleLine,
+              ai_confidence: deterministic.confidence,
+              ai_reasoning: deterministic.reasoning,
+              ai_suggestions: deterministic.quickLabels ?? [],
+              deduction_percent: deductPct,
+              is_meal: true,
+              is_travel: false,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", t.id)
+            .eq("user_id", userId);
+
+          if (!updateError) {
+            cachedCount++;
+            successful++;
+            send({
+              type: "success",
+              id: t.id,
+              vendor: t.vendor,
+              category: deterministic.category,
+              line: scheduleLine,
+              confidence: deterministic.confidence,
+              quickLabels: deterministic.quickLabels ?? [],
+              deductionPct: deductPct,
+              isMeal: true,
+              isTravel: false,
+              reasoning: deterministic.reasoning,
+            });
+            try {
+              await upsertVendorPattern(supabase as any, userId, vn, {
+                ...deterministic,
+                scheduleCLine: scheduleLine,
+              });
+            } catch {
+              /* optional */
+            }
+          } else {
+            needsAI.push(t);
+          }
+          continue;
+        }
+
         const cached = cachedPatterns.get(vn);
-        if (cached && cached.category) {
+        if (cached && shouldUseVendorPatternCache(ctx, cached)) {
           const cachedDeduction = cached.deduction_percent ?? getDefaultDeduction(
             cached.schedule_c_line, 
             t.is_meal ?? false, 
@@ -431,18 +394,21 @@ export async function POST(req: Request) {
               vendorToTxns.set(vn, list);
             }
             const representatives = Array.from(vendorToTxns.values()).map((txns) => txns[0]);
-            const batchInput = representatives.map((t) => ({
+            const batchInput = representatives.map((t) => toCategorizeContext({
               id: t.id,
               vendor: t.vendor,
-              amount: Number(t.amount),
+              amount: t.amount,
               date: t.date,
+              description: t.description ?? null,
+              plaid_category: t.plaid_category ?? null,
+              hint_plaid_category: t.hint_plaid_category ?? null,
               category: t.category ?? undefined,
             }));
 
             try {
               const effectiveSystemPrompt = businessIndustry
-                ? `${systemPrompt}\n\nBusiness context: The user's business industry is "${businessIndustry}". Use this as one factor when evaluating deductibility — expenses common in this industry are more likely business-related. This is guidance, not a hard rule; still evaluate each transaction individually.`
-                : systemPrompt;
+                ? `${CATEGORIZE_SYSTEM_PROMPT}\n\nBusiness context: The user's business industry is "${businessIndustry}". Use this as one factor when evaluating deductibility — expenses common in this industry are more likely business-related. This is guidance, not a hard rule; still evaluate each transaction individually.`
+                : CATEGORIZE_SYSTEM_PROMPT;
 
               const message = await withRetry(
                 () =>
@@ -472,7 +438,7 @@ export async function POST(req: Request) {
                 jsonText = jsonText.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
               }
 
-              let parsedArray: ParsedResult[];
+              let parsedArray: ParsedCategorization[];
               try {
                 const parsed = JSON.parse(jsonText);
                 parsedArray = Array.isArray(parsed) ? parsed : [parsed];
@@ -484,29 +450,47 @@ export async function POST(req: Request) {
                 return { batchSuccess, batchFailed, inputTokens, outputTokens };
               }
 
-              const resultById = new Map<string, ParsedResult>();
+              const resultById = new Map<string, ParsedCategorization>();
               for (const r of parsedArray) {
                 if (r.id) resultById.set(r.id, r);
               }
 
               for (const t of batch) {
                 const vn = t.vendor_normalized || normalizeVendor(t.vendor);
+                const ctx = toCategorizeContext({
+                  id: t.id,
+                  vendor: t.vendor,
+                  amount: t.amount,
+                  date: t.date,
+                  description: t.description ?? null,
+                  plaid_category: t.plaid_category ?? null,
+                  hint_plaid_category: t.hint_plaid_category ?? null,
+                  category: t.category,
+                });
                 const group = vendorToTxns.get(vn)?.[0];
                 const repId = group?.id ?? t.id;
-                const result = resultById.get(repId) ?? resultById.get(t.id) ?? parsedArray[0];
+                const rawResult = resultById.get(repId) ?? resultById.get(t.id) ?? parsedArray[0];
 
-                if (!result?.category || !result?.scheduleCLine) {
+                if (!rawResult?.category || !rawResult?.scheduleCLine) {
                   batchFailed++;
                   send({ type: "error", id: t.id, vendor: t.vendor, message: "Missing category in AI response" });
                   continue;
                 }
 
+                const result = applyCategorizationGuardrails(
+                  { ...rawResult, id: t.id },
+                  ctx
+                );
                 const scheduleLine = normalizeScheduleLine(result.scheduleCLine) ?? result.scheduleCLine;
-                const isMealResult = result.isMeal ?? result.category.toLowerCase().includes("meal");
+                const isMealResult = result.isMeal ?? scheduleLine === "24b";
                 const isTravelResult = result.isTravel ?? false;
                 const deductPct = result.deductibility === "likely_personal"
                   ? 0
                   : result.suggestedDeductionPct ?? getDefaultDeduction(scheduleLine, isMealResult, isTravelResult);
+
+                const aiReasoning =
+                  result.reasoning?.trim()?.slice(0, 500) ||
+                  "Likely a business expense for your work.";
 
                 const { error: updateError } = await (supabase as any)
                   .from("transactions")
@@ -514,6 +498,7 @@ export async function POST(req: Request) {
                     category: result.category,
                     schedule_c_line: scheduleLine,
                     ai_confidence: result.confidence ?? 0.5,
+                    ai_reasoning: aiReasoning,
                     ai_suggestions: result.quickLabels ?? [],
                     deduction_percent: deductPct,
                     is_meal: isMealResult,
@@ -538,6 +523,7 @@ export async function POST(req: Request) {
                   deductionPct: deductPct,
                   isMeal: isMealResult,
                   isTravel: isTravelResult,
+                  reasoning: aiReasoning,
                 });
 
                 try {

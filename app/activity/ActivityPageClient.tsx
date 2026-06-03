@@ -431,6 +431,8 @@ export function ActivityPageClient({
         is_travel: null,
         data_source_id: null,
         data_feed_external_id: row.data_feed_external_id != null ? String(row.data_feed_external_id) : null,
+        marker: null,
+        business_pct: null,
       };
       setSidebarTransaction(normalized);
       const txs = await loadTransactions();

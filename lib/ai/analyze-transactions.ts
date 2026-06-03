@@ -11,39 +11,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { withRetry } from "@/lib/api/retry";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { applyAllAutoSortRulesForUser } from "@/lib/auto-sort";
-
-// ─── Prompt ──────────────────────────────────────────────────────────────────
-
-const SYSTEM_PROMPT = `You categorize business transactions for IRS Schedule C.
-
-Categories (Line: Name). Return scheduleCLine as the KEY ONLY (e.g. "8", "27a", "24b"), not "Line 8":
-8:Advertising, 9:Car/truck, 10:Commissions/fees, 11:Contract labor,
-13:Depreciation, 15:Insurance, 16b:Other interest, 17:Legal/professional,
-18:Office expense, 21:Rent/lease, 22:Repairs, 23:Supplies, 24a:Travel,
-24b:Meals, 25:Utilities, 26:Wages, 27a:Other expenses
-
-Rules:
-- Prefer the MOST SPECIFIC category. Use 27a (Other expenses) ONLY when no other line fits.
-- Office supplies, software for office work, productivity tools, and general business SaaS → 18 (Office expense). Do NOT use 27a for these.
-- Phone, internet, cloud hosting, business phone → 25 (Utilities).
-- Meals → 24b (50% deductible; 100% if overnight travel).
-- Coworking, office rent → 21.
-- Equipment >$2500 → 13.
-- Advertising / marketing / Google Ads → 8.
-- Legal, accounting, tax prep, consulting → 17.
-- Use 27a only for: education, professional memberships, bank fees, or truly miscellaneous expenses that don't fit 8–26. When unsure between 18 and 27a for software/tools, prefer 18.
-- Personal expenses → mark "likely_personal"
-- If ambiguous → "needs_review"
-
-Quick labels: Return 2-4 specific, IRS-defensible business reasons per transaction.
-
-Also estimate a suggested deduction percentage:
-- 50 for meals (unless clearly travel-related, then 100)
-- 0 for likely_personal
-- 100 for most clear business expenses
-- Lower values (25-75) for mixed-use items
-
-Return ONLY a JSON array. No markdown fences.`;
+import { applyAllMarkerRulesForUser } from "@/lib/triage/marker-rules";
+import {
+  CATEGORIZE_SYSTEM_PROMPT,
+  applyCategorizationGuardrails,
+  buildBatchPrompt,
+  getDefaultDeduction,
+  getDeterministicMealResult,
+  normalizeScheduleLine,
+  shouldCacheVendorPattern,
+  shouldUseVendorPatternCache,
+  toCategorizeContext,
+  type CategorizeTxContext,
+  type ParsedCategorization,
+} from "@/lib/ai/categorize-shared";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -52,25 +33,8 @@ const DB_FETCH_CHUNK = 80;
 const BATCH_CONCURRENCY = 3;
 const ANTHROPIC_TIMEOUT_MS = 60_000;
 
-const CATEGORY_DEDUCTION_DEFAULTS: Record<string, number> = {
-  "24b": 50,
-  "24a": 100,
-  "18": 100,
-  "8": 100,
-  "9": 100,
-  "25": 100,
-  "27a": 100,
-  "23": 100,
-  "21": 100,
-  "15": 100,
-  "17": 100,
-  "11": 100,
-  "10": 100,
-  "13": 100,
-  "16b": 100,
-  "22": 100,
-  "26": 100,
-};
+const TX_SELECT =
+  "id,vendor,amount,date,description,category,plaid_category,hint_plaid_category,vendor_normalized,is_meal,is_travel,eligible_for_ai,status";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -79,7 +43,10 @@ type TransactionRow = {
   vendor: string;
   amount: number;
   date: string;
+  description: string | null;
   category: string | null;
+  plaid_category: string | null;
+  hint_plaid_category: string | null;
   vendor_normalized: string | null;
   is_meal: boolean | null;
   is_travel: boolean | null;
@@ -96,18 +63,6 @@ type VendorPatternRow = {
   quick_labels: string[] | null;
 };
 
-type ParsedResult = {
-  id: string;
-  category: string;
-  scheduleCLine: string;
-  confidence: number;
-  quickLabels?: string[];
-  suggestedDeductionPct?: number;
-  deductibility?: string;
-  isMeal?: boolean;
-  isTravel?: boolean;
-};
-
 export type AnalysisRunResult = {
   successful: number;
   failed: number;
@@ -117,39 +72,6 @@ export type AnalysisRunResult = {
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function getDefaultDeduction(
-  scheduleCLine: string | null,
-  isMeal: boolean,
-  isTravel: boolean
-): number {
-  if (isMeal && !isTravel) return 50;
-  if (isMeal && isTravel) return 100;
-  if (!scheduleCLine) return 100;
-  const line = scheduleCLine.replace(/^Line\s*/i, "").trim();
-  return CATEGORY_DEDUCTION_DEFAULTS[line] ?? 100;
-}
-
-function normalizeScheduleLine(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  return raw.replace(/^Line\s*/i, "").trim() || null;
-}
-
-function buildBatchPrompt(
-  txns: { id: string; vendor: string; amount: number; date: string; category?: string }[]
-): string {
-  const lines = txns.map(
-    (t) =>
-      `${t.id}|${t.vendor}|$${Math.abs(t.amount).toFixed(2)}|${t.date}${t.category ? `|${t.category}` : ""}`
-  );
-  return `Categorize these ${txns.length} transactions. Return JSON array:
-[{"id":"...","category":"Category Name","scheduleCLine":"27a","confidence":0.85,"quickLabels":["Specific Reason 1","Specific Reason 2"],"suggestedDeductionPct":100,"deductibility":"likely_deductible|needs_review|likely_personal","isMeal":false,"isTravel":false}]
-
-Use scheduleCLine as the line KEY only (e.g. "8", "18", "24b", "27a"), not "Line 27a".
-
-id|vendor|amount|date[|hint]
-${lines.join("\n")}`;
-}
 
 async function runWithConcurrency<T, R>(
   items: T[],
@@ -182,7 +104,7 @@ async function fetchTransactions(
     const chunk = ids.slice(i, i + DB_FETCH_CHUNK);
     const { data } = await (supabase as any)
       .from("transactions")
-      .select("id,vendor,amount,date,category,vendor_normalized,is_meal,is_travel,eligible_for_ai,status")
+      .select(TX_SELECT)
       .in("id", chunk)
       .eq("user_id", userId);
     if (data) all.push(...data);
@@ -213,16 +135,69 @@ async function getCachedPatterns(
   return map;
 }
 
+async function applyCategorizationToTransaction(
+  supabase: SupabaseClient,
+  userId: string,
+  transactionId: string,
+  result: ParsedCategorization,
+  vn: string
+): Promise<boolean> {
+  const scheduleLine = normalizeScheduleLine(result.scheduleCLine) ?? result.scheduleCLine;
+  const isMealResult = result.isMeal ?? scheduleLine === "24b";
+  const isTravelResult = result.isTravel ?? false;
+  const deductPct =
+    result.deductibility === "likely_personal"
+      ? 0
+      : result.suggestedDeductionPct ??
+        getDefaultDeduction(scheduleLine, isMealResult, isTravelResult);
+
+  const aiReasoning =
+    result.reasoning?.trim()?.slice(0, 500) ||
+    (result.deductibility === "likely_personal"
+      ? "Likely a personal expense — confirm if any portion is business."
+      : result.deductibility === "needs_review"
+        ? "Mixed or unclear use — set the business split that fits."
+        : "Likely a business expense for your work.");
+
+  const { error } = await (supabase as any)
+    .from("transactions")
+    .update({
+      category: result.category,
+      schedule_c_line: scheduleLine,
+      ai_confidence: result.confidence ?? 0.5,
+      ai_reasoning: aiReasoning,
+      ai_suggestions: result.quickLabels ?? [],
+      deduction_percent: deductPct,
+      is_meal: isMealResult,
+      is_travel: isTravelResult,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", transactionId)
+    .eq("user_id", userId);
+
+  if (error) return false;
+
+  if (shouldCacheVendorPattern(result)) {
+    try {
+      await upsertVendorPattern(supabase, userId, vn, { ...result, scheduleCLine: scheduleLine });
+    } catch {
+      // vendor_patterns optional
+    }
+  }
+  return true;
+}
+
 async function upsertVendorPattern(
   supabase: SupabaseClient,
   userId: string,
   vendorNormalized: string,
-  result: ParsedResult
+  result: ParsedCategorization
 ): Promise<void> {
+  const scheduleLine = normalizeScheduleLine(result.scheduleCLine) ?? result.scheduleCLine;
   const deductPct =
     result.suggestedDeductionPct ??
     getDefaultDeduction(
-      result.scheduleCLine,
+      scheduleLine,
       result.isMeal ?? false,
       result.isTravel ?? false
     );
@@ -231,7 +206,7 @@ async function upsertVendorPattern(
       user_id: userId,
       vendor_normalized: vendorNormalized,
       category: result.category,
-      schedule_c_line: result.scheduleCLine,
+      schedule_c_line: scheduleLine,
       quick_labels: result.quickLabels ?? [],
       confidence: result.confidence,
       deduction_percent: deductPct,
@@ -280,6 +255,12 @@ export async function runAnalysisForIds(
     // Saved rules are best-effort before AI
   }
 
+  try {
+    await applyAllMarkerRulesForUser(supabase, userId);
+  } catch {
+    // Marker rules are best-effort before AI
+  }
+
   const refreshed = await fetchTransactions(supabase, transactionIds, userId);
   const pendingTransactions = refreshed.filter(
     (t) => t.status === "pending" && !t.category,
@@ -310,11 +291,24 @@ export async function runAnalysisForIds(
   let failed = 0;
   let cachedCount = 0;
 
-  // ── Apply cache hits first ─────────────────────────────────────────────────
   for (const t of pendingTransactions) {
     const vn = t.vendor_normalized || normalizeVendor(t.vendor);
+    const ctx = toCategorizeContext(t);
+
+    const deterministic = getDeterministicMealResult(ctx);
+    if (deterministic) {
+      const ok = await applyCategorizationToTransaction(supabase, userId, t.id, deterministic, vn);
+      if (ok) {
+        cachedCount++;
+        successful++;
+        continue;
+      }
+      needsAI.push(t);
+      continue;
+    }
+
     const cached = cachedPatterns.get(vn);
-    if (cached?.category) {
+    if (cached && shouldUseVendorPatternCache(ctx, cached)) {
       const deductPct =
         cached.deduction_percent ??
         getDefaultDeduction(cached.schedule_c_line, t.is_meal ?? false, t.is_travel ?? false);
@@ -333,9 +327,9 @@ export async function runAnalysisForIds(
       if (!error) {
         cachedCount++;
         successful++;
-      } else {
-        needsAI.push(t);
+        continue;
       }
+      needsAI.push(t);
     } else if (cached?.deduction_percent === 0) {
       const { error } = await (supabase as any)
         .from("transactions")
@@ -351,9 +345,9 @@ export async function runAnalysisForIds(
       if (!error) {
         cachedCount++;
         successful++;
-      } else {
-        needsAI.push(t);
+        continue;
       }
+      needsAI.push(t);
     } else {
       needsAI.push(t);
     }
@@ -363,12 +357,11 @@ export async function runAnalysisForIds(
     return { successful, failed, cachedCount, total: transactions.length, skipped: 0 };
   }
 
-  // ── AI batches ─────────────────────────────────────────────────────────────
   const anthropic = new Anthropic({ apiKey, timeout: ANTHROPIC_TIMEOUT_MS });
 
   const effectiveSystemPrompt = businessIndustry
-    ? `${SYSTEM_PROMPT}\n\nBusiness context: The user's business industry is "${businessIndustry}". Use this as one factor when evaluating deductibility.`
-    : SYSTEM_PROMPT;
+    ? `${CATEGORIZE_SYSTEM_PROMPT}\n\nBusiness context: The user's business industry is "${businessIndustry}". Use this as one factor when evaluating deductibility.`
+    : CATEGORIZE_SYSTEM_PROMPT;
 
   const batches: TransactionRow[][] = [];
   for (let i = 0; i < needsAI.length; i += BATCH_SIZE) {
@@ -382,7 +375,6 @@ export async function runAnalysisForIds(
       let batchSuccess = 0;
       let batchFailed = 0;
 
-      // Deduplicate by vendor: one AI call per unique vendor in batch
       const vendorToTxns = new Map<string, TransactionRow[]>();
       for (const t of batch) {
         const vn = t.vendor_normalized || normalizeVendor(t.vendor);
@@ -391,13 +383,7 @@ export async function runAnalysisForIds(
         vendorToTxns.set(vn, list);
       }
       const representatives = Array.from(vendorToTxns.values()).map((txns) => txns[0]!);
-      const batchInput = representatives.map((t) => ({
-        id: t.id,
-        vendor: t.vendor,
-        amount: Number(t.amount),
-        date: t.date,
-        category: t.category ?? undefined,
-      }));
+      const batchInput: CategorizeTxContext[] = representatives.map((t) => toCategorizeContext(t));
 
       try {
         const message = await withRetry(
@@ -422,7 +408,7 @@ export async function runAnalysisForIds(
           jsonText = jsonText.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
         }
 
-        let parsedArray: ParsedResult[];
+        let parsedArray: ParsedCategorization[];
         try {
           const raw = JSON.parse(jsonText);
           parsedArray = Array.isArray(raw) ? raw : [raw];
@@ -431,63 +417,39 @@ export async function runAnalysisForIds(
           return { batchSuccess, batchFailed };
         }
 
-        const resultById = new Map<string, ParsedResult>();
+        const resultById = new Map<string, ParsedCategorization>();
         for (const r of parsedArray) {
           if (r.id) resultById.set(r.id, r);
         }
 
         for (const t of batch) {
           const vn = t.vendor_normalized || normalizeVendor(t.vendor);
+          const ctx = toCategorizeContext(t);
           const rep = vendorToTxns.get(vn)?.[0];
-          const result =
+          const rawResult =
             resultById.get(rep?.id ?? t.id) ??
             resultById.get(t.id) ??
             parsedArray[0];
 
-          if (!result?.category || !result?.scheduleCLine) {
+          if (!rawResult?.category || !rawResult?.scheduleCLine) {
             batchFailed++;
             continue;
           }
 
-          const scheduleLine = normalizeScheduleLine(result.scheduleCLine) ?? result.scheduleCLine;
-          const isMealResult = result.isMeal ?? result.category.toLowerCase().includes("meal");
-          const isTravelResult = result.isTravel ?? false;
-          const deductPct =
-            result.deductibility === "likely_personal"
-              ? 0
-              : result.suggestedDeductionPct ??
-                getDefaultDeduction(scheduleLine, isMealResult, isTravelResult);
+          const result = applyCategorizationGuardrails(
+            { ...rawResult, id: t.id },
+            ctx
+          );
 
-          const { error } = await (supabase as any)
-            .from("transactions")
-            .update({
-              category: result.category,
-              schedule_c_line: scheduleLine,
-              ai_confidence: result.confidence ?? 0.5,
-              ai_suggestions: result.quickLabels ?? [],
-              deduction_percent: deductPct,
-              is_meal: isMealResult,
-              is_travel: isTravelResult,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", t.id)
-            .eq("user_id", userId);
-
-          if (error) {
-            batchFailed++;
-            continue;
-          }
-
-          batchSuccess++;
-
-          try {
-            await upsertVendorPattern(supabase, userId, vn, {
-              ...result,
-              scheduleCLine: scheduleLine,
-            });
-          } catch {
-            // vendor_patterns optional
-          }
+          const ok = await applyCategorizationToTransaction(
+            supabase,
+            userId,
+            t.id,
+            result,
+            vn
+          );
+          if (ok) batchSuccess++;
+          else batchFailed++;
         }
       } catch (e) {
         console.error("[analyze-transactions] Batch error:", e instanceof Error ? e.message : e);

@@ -7,6 +7,7 @@ import {
   IBudget,
   ICash,
   ITax,
+  ITriage,
   IReview,
   IAccounts,
   ISettings,
@@ -15,6 +16,7 @@ import { GettingStartedWidget } from "./GettingStartedWidget";
 
 const NAV = [
   { id: "budget",   label: "Budget",    href: "/budget",   Icon: IBudget },
+  { id: "triage",   label: "Triage",    href: "/triage",   Icon: ITriage, triageBadge: true },
   { id: "cashflow", label: "Cash Flow", href: "/cashflow", Icon: ICash },
   { id: "tax",      label: "Tax",       href: "/tax",      Icon: ITax,     badge: "Q2" },
   { id: "review",   label: "Review",    href: "/review",   Icon: IReview,  badgeCount: true },
@@ -29,6 +31,7 @@ type SidebarProps = {
 export function Sidebar({ className, onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const [reviewCount, setReviewCount] = useState<number | null>(null);
+  const [triageCount, setTriageCount] = useState<number | null>(null);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
@@ -39,6 +42,10 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
     fetch("/api/review?count_only=true")
       .then((r) => r.json())
       .then((d) => setReviewCount(d.count ?? 0))
+      .catch(() => {});
+    fetch("/api/triage/queue?count_only=true")
+      .then((r) => r.json())
+      .then((d) => setTriageCount(d.total ?? 0))
       .catch(() => {});
   }, [pathname]);
 
@@ -75,6 +82,16 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                   reviewCount > 0 && (
                     <span className="nav__pill nav__pill--alert">
                       {reviewCount > 99 ? "99+" : reviewCount}
+                    </span>
+                  )}
+
+                {"triageBadge" in n &&
+                  n.triageBadge &&
+                  !active &&
+                  triageCount != null &&
+                  triageCount > 0 && (
+                    <span className="nav__pill nav__pill--alert">
+                      {triageCount > 99 ? "99+" : triageCount}
                     </span>
                   )}
               </Link>

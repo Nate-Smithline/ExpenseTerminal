@@ -112,6 +112,8 @@ export interface Database {
           eligible_for_ai: boolean;
           data_source_id: string | null;
           data_feed_external_id: string | null;
+          marker: "Personal" | "Business" | "Partial" | null;
+          business_pct: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -142,6 +144,8 @@ export interface Database {
           eligible_for_ai?: boolean;
           data_source_id?: string | null;
           data_feed_external_id?: string | null;
+          marker?: "Personal" | "Business" | "Partial" | null;
+          business_pct?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -155,6 +159,8 @@ export interface Database {
           quick_label: string;
           business_purpose: string | null;
           category: string | null;
+          marker: "Personal" | "Business" | "Partial" | null;
+          business_pct: number | null;
           name: string | null;
           enabled: boolean;
           conditions: Json;
@@ -168,6 +174,8 @@ export interface Database {
           quick_label: string;
           business_purpose?: string | null;
           category?: string | null;
+          marker?: "Personal" | "Business" | "Partial" | null;
+          business_pct?: number | null;
           name?: string | null;
           enabled?: boolean;
           conditions?: Json;
@@ -175,6 +183,33 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["auto_sort_rules"]["Insert"]>;
+      };
+      triage_progress: {
+        Row: {
+          user_id: string;
+          total_sorted: number;
+          rules_created: number;
+          lifetime_deductions: string;
+          lifetime_tax_saved: string;
+          current_streak: number;
+          longest_streak: number;
+          last_triage_date: string | null;
+          badges: Json;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          total_sorted?: number;
+          rules_created?: number;
+          lifetime_deductions?: string;
+          lifetime_tax_saved?: string;
+          current_streak?: number;
+          longest_streak?: number;
+          last_triage_date?: string | null;
+          badges?: Json;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["triage_progress"]["Insert"]>;
       };
       vendor_patterns: {
         Row: {

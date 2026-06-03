@@ -3,6 +3,7 @@ import { createSupabaseServiceClient } from "@/lib/supabase/server";
 import { runSyncForDataSource } from "@/lib/data-sources/sync-runner";
 import { runAnalysisForIds } from "@/lib/ai/analyze-transactions";
 import { applyAllAutoSortRulesForUser } from "@/lib/auto-sort";
+import { applyAllMarkerRulesForUser } from "@/lib/triage/marker-rules";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -71,6 +72,12 @@ export async function GET(req: Request) {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error("[cron/transaction-import] Auto-sort rules error", { userId: row.user_id, sourceId: row.id, msg });
+      }
+      try {
+        await applyAllMarkerRulesForUser(supabase, row.user_id);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[cron/transaction-import] Marker rules error", { userId: row.user_id, sourceId: row.id, msg });
       }
     }
 
