@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { ruleTransactionType } from "@/lib/vendor-prompt-key";
 import type { Marker } from "@/components/MarkerPill";
+import { triageTransactionImpact } from "@/lib/triage/tax-rate";
 
 export type MarkerRuleInput = {
   vendorNormalized: string;
@@ -11,9 +12,16 @@ export type MarkerRuleInput = {
   businessPurpose?: string | null;
 };
 
+export type MarkerRuleImpact = {
+  updatedCount: number;
+  deltaTax: number;
+  deltaDeduction: number;
+};
+
 export type MarkerRuleResult = {
   ruleId: string;
   updatedCount: number;
+  impact: MarkerRuleImpact;
 };
 
 function markerQuickLabel(marker: Marker): string {
@@ -116,7 +124,7 @@ export async function applyMarkerRuleForVendor(
 
   const { data: candidates, error: fetchErr } = await (supabase as any)
     .from("transactions")
-    .select("id, vendor, vendor_normalized")
+    .select("id, vendor, vendor_normalized, amount")
     .eq("user_id", userId)
     .is("marker", null)
     .eq("transaction_type", transactionType)
@@ -126,16 +134,34 @@ export async function applyMarkerRuleForVendor(
     throw new Error(fetchErr.message);
   }
 
-  const idsToUpdate = (candidates ?? [])
-    .filter(
-      (row: { vendor?: string | null; vendor_normalized?: string | null }) =>
-        row.vendor_normalized === vendorNormalized ||
-        (row.vendor != null && normalizeVendor(String(row.vendor)) === vendorNormalized),
-    )
-    .map((row: { id: string }) => row.id);
+  const rowsToUpdate = (candidates ?? []).filter(
+    (row: { vendor?: string | null; vendor_normalized?: string | null }) =>
+      row.vendor_normalized === vendorNormalized ||
+      (row.vendor != null && normalizeVendor(String(row.vendor)) === vendorNormalized),
+  ) as Array<{ id: string; amount: number | string }>;
+
+  const idsToUpdate = rowsToUpdate.map((row) => row.id);
 
   if (idsToUpdate.length === 0) {
-    return { ruleId: rule.id, updatedCount: 0 };
+    return {
+      ruleId: rule.id,
+      updatedCount: 0,
+      impact: { updatedCount: 0, deltaTax: 0, deltaDeduction: 0 },
+    };
+  }
+
+  let deltaTax = 0;
+  let deltaDeduction = 0;
+  for (const row of rowsToUpdate) {
+    const { deltaTax: t, deltaDeduction: d } = triageTransactionImpact(
+      Number(row.amount),
+      marker,
+      businessPct,
+      transactionType,
+      userId,
+    );
+    deltaTax += t;
+    deltaDeduction += d;
   }
 
   const updatePayload: Record<string, unknown> = {
@@ -160,9 +186,16 @@ export async function applyMarkerRuleForVendor(
     throw new Error(updateError.message);
   }
 
+  const updatedCount = updated?.length ?? 0;
+
   return {
     ruleId: rule.id,
-    updatedCount: updated?.length ?? 0,
+    updatedCount,
+    impact: {
+      updatedCount,
+      deltaTax,
+      deltaDeduction,
+    },
   };
 }
 

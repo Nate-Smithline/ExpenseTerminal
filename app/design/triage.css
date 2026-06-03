@@ -852,13 +852,36 @@ kbd {
 }
 
 .meter__lifetime {
-  font-size: 11.5px;
-  color: rgba(255, 255, 255, 0.45);
-  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.88);
+  margin-top: 10px;
+  line-height: 1.4;
 }
 .meter__lifetime strong {
-  color: rgba(255, 255, 255, 0.72);
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 18px;
+  color: #86efac;
+  font-variant-numeric: tabular-nums;
+}
+.meter__lifetime.is-in strong {
+  color: #7dd3fc;
+}
+
+.tdone__lifetime {
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+.tdone__lifetime strong {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--forest);
+  font-variant-numeric: tabular-nums;
+}
+.tdone__lifetime.is-in strong {
+  color: var(--wheat-deep);
 }
 
 @media (max-width: 960px) {

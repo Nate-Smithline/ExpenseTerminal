@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Marker } from "@/components/MarkerPill";
-import { getTriageTaxRate, deductionFromMarker, taxableIncomeFromMarker } from "@/lib/triage/tax-rate";
+import { triageTransactionImpact } from "@/lib/triage/tax-rate";
 
 export const TRIAGE_BADGES = {
   first_sort: { id: "first_sort", label: "First sort", description: "Tagged your first transaction" },
@@ -132,18 +132,13 @@ export async function recordTriageDecision(
   }
 
   const progress = await getOrCreateTriageProgress(supabase, userId);
-  const rate = getTriageTaxRate(userId);
-
-  let deltaDeduction = 0;
-  let deltaTax = 0;
-  if (input.transactionType === "expense") {
-    deltaDeduction = deductionFromMarker(input.amount, input.marker, input.businessPct);
-    deltaTax = deltaDeduction * rate;
-  } else {
-    const taxable = taxableIncomeFromMarker(input.amount, input.marker, input.businessPct);
-    deltaTax = taxable * rate;
-    deltaDeduction = taxable;
-  }
+  const { deltaDeduction, deltaTax } = triageTransactionImpact(
+    input.amount,
+    input.marker,
+    input.businessPct,
+    input.transactionType,
+    userId,
+  );
 
   const { currentStreak, longestStreakBump } = computeStreak(
     progress.last_triage_date,
@@ -190,14 +185,26 @@ export async function recordTriageDecision(
 export async function recordTriageRuleCreated(
   supabase: SupabaseClient,
   userId: string,
+  ruleImpact?: {
+    updatedCount: number;
+    deltaTax: number;
+    deltaDeduction: number;
+  },
 ): Promise<{ progress: TriageProgressRow; newBadges: string[] }> {
   const progress = await getOrCreateTriageProgress(supabase, userId);
   const rulesCreated = progress.rules_created + 1;
+  const updatedCount = ruleImpact?.updatedCount ?? 0;
+  const totalSorted = progress.total_sorted + updatedCount;
+  const lifetimeDeductions =
+    progress.lifetime_deductions + (ruleImpact?.deltaDeduction ?? 0);
+  const lifetimeTaxSaved =
+    progress.lifetime_tax_saved + (ruleImpact?.deltaTax ?? 0);
+
   const badges = awardBadges(progress.badges, {
-    totalSorted: progress.total_sorted,
+    totalSorted,
     rulesCreated,
     currentStreak: progress.current_streak,
-    lifetimeTaxSaved: progress.lifetime_tax_saved,
+    lifetimeTaxSaved,
   });
   const newBadges = badges.filter((b) => !progress.badges.includes(b));
 
@@ -205,6 +212,9 @@ export async function recordTriageRuleCreated(
     .from("triage_progress")
     .update({
       rules_created: rulesCreated,
+      total_sorted: totalSorted,
+      lifetime_deductions: lifetimeDeductions,
+      lifetime_tax_saved: lifetimeTaxSaved,
       badges,
       updated_at: new Date().toISOString(),
     })
@@ -235,18 +245,13 @@ export async function revertTriageDecision(
   }
 
   const progress = await getOrCreateTriageProgress(supabase, userId);
-  const rate = getTriageTaxRate(userId);
-
-  let deltaDeduction = 0;
-  let deltaTax = 0;
-  if (input.transactionType === "expense") {
-    deltaDeduction = deductionFromMarker(input.amount, input.marker, input.businessPct);
-    deltaTax = deltaDeduction * rate;
-  } else {
-    const taxable = taxableIncomeFromMarker(input.amount, input.marker, input.businessPct);
-    deltaTax = taxable * rate;
-    deltaDeduction = taxable;
-  }
+  const { deltaDeduction, deltaTax } = triageTransactionImpact(
+    input.amount,
+    input.marker,
+    input.businessPct,
+    input.transactionType,
+    userId,
+  );
 
   const totalSorted = Math.max(0, progress.total_sorted - 1);
   const lifetimeDeductions = Math.max(0, progress.lifetime_deductions - deltaDeduction);

@@ -7,7 +7,7 @@ import { PartialDial } from "@/components/PartialDial";
 import { MarkerPill, type Marker } from "@/components/MarkerPill";
 import { IBolt, ICheck, IRules, ITax, IReview } from "@/components/ui/icons";
 import { RULE_OFFER_TIMEOUT_MS, RULE_SEEN_THRESHOLD } from "@/lib/triage/constants";
-import { DEFAULT_TRIAGE_TAX_RATE } from "@/lib/triage/tax-rate";
+import { triageTransactionImpact } from "@/lib/triage/tax-rate";
 import type { TaxDraft, TriageQueueItem } from "@/lib/triage/queue-map";
 import { taxDraftFromQueueItem } from "@/lib/triage/queue-map";
 import {
@@ -23,6 +23,13 @@ type Mode = "expenses" | "income";
 
 type Decision = { marker: Marker; pct: number; viaRule?: boolean };
 
+type SessionImpact = {
+  taxSaved: number;
+  deductions: number;
+  excluded: number;
+  sorted: number;
+};
+
 type HistoryEntry = {
   mode: Mode;
   transactionId: string;
@@ -31,7 +38,68 @@ type HistoryEntry = {
   decision: Decision;
   ruleVendorKey?: string;
   bulkIds?: string[];
+  impact?: SessionImpact;
 };
+
+function emptySessionImpact(): SessionImpact {
+  return { taxSaved: 0, deductions: 0, excluded: 0, sorted: 0 };
+}
+
+function addSessionImpact(a: SessionImpact, b: SessionImpact): SessionImpact {
+  return {
+    taxSaved: a.taxSaved + b.taxSaved,
+    deductions: a.deductions + b.deductions,
+    excluded: a.excluded + b.excluded,
+    sorted: a.sorted + b.sorted,
+  };
+}
+
+function subtractSessionImpact(a: SessionImpact, b: SessionImpact): SessionImpact {
+  return {
+    taxSaved: Math.max(0, a.taxSaved - b.taxSaved),
+    deductions: Math.max(0, a.deductions - b.deductions),
+    excluded: Math.max(0, a.excluded - b.excluded),
+    sorted: Math.max(0, a.sorted - b.sorted),
+  };
+}
+
+function sessionImpactFromItem(
+  amount: number,
+  marker: Marker,
+  businessPct: number,
+  mode: Mode,
+): SessionImpact {
+  if (!marker) return emptySessionImpact();
+  const transactionType = mode === "income" ? "income" : "expense";
+  const { deltaDeduction, deltaTax } = triageTransactionImpact(
+    amount,
+    marker,
+    businessPct,
+    transactionType,
+  );
+  if (mode === "income" && marker === "Personal") {
+    return { taxSaved: 0, deductions: 0, excluded: amount, sorted: 1 };
+  }
+  return {
+    taxSaved: deltaTax,
+    deductions: deltaDeduction,
+    excluded: 0,
+    sorted: 1,
+  };
+}
+
+function sessionImpactFromRuleApi(impact: {
+  deltaTax: number;
+  deltaDeduction: number;
+  updatedCount: number;
+}): SessionImpact {
+  return {
+    taxSaved: impact.deltaTax,
+    deductions: impact.deltaDeduction,
+    excluded: 0,
+    sorted: impact.updatedCount,
+  };
+}
 
 type RuleRow = {
   id: string;
@@ -99,6 +167,7 @@ export function TriagePageClient() {
     mode: Mode;
   } | null>(null);
   const [progress, setProgress] = useState<TriageProgressRow | null>(null);
+  const [sessionImpact, setSessionImpact] = useState<SessionImpact>(emptySessionImpact);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [taxDrafts, setTaxDrafts] = useState<Record<string, TaxDraft>>({});
@@ -292,6 +361,13 @@ export function TriagePageClient() {
     setPartial(null);
     window.setTimeout(() => {
       const prev = decisions[cur.id];
+      const impact = sessionImpactFromItem(
+        cur.amount,
+        marker,
+        businessPct,
+        mode,
+      );
+      setSessionImpact((s) => addSessionImpact(s, impact));
       setHistory((h) => [
         ...h,
         {
@@ -300,6 +376,7 @@ export function TriagePageClient() {
           prevMarker: prev?.marker ?? null,
           prevPct: prev ? Math.round(prev.pct * 100) : null,
           decision: dec,
+          impact,
         },
       ]);
       setDecisions((d) => ({ ...d, [cur.id]: dec }));
@@ -383,6 +460,12 @@ export function TriagePageClient() {
     if (res.ok) {
       const body = await res.json();
       if (body.progress) setProgress(body.progress);
+      const ruleImpact = body.impact
+        ? sessionImpactFromRuleApi(body.impact)
+        : emptySessionImpact();
+      if (ruleImpact.sorted > 0 || ruleImpact.taxSaved > 0) {
+        setSessionImpact((s) => addSessionImpact(s, ruleImpact));
+      }
       const dec: Decision = { marker: off.marker, pct: businessPct / 100, viaRule: true };
       const decMap: Record<string, Decision> = {};
       const ids: string[] = [];
@@ -400,6 +483,7 @@ export function TriagePageClient() {
           decision: dec,
           ruleVendorKey: off.vendorKey,
           bulkIds: ids,
+          impact: ruleImpact,
         },
       ]);
       if (ids.length) {
@@ -428,6 +512,9 @@ export function TriagePageClient() {
     setHistory((h) => h.slice(0, -1));
     setRuleOffer(null);
     setPartial(null);
+    if (last.impact) {
+      setSessionImpact((s) => subtractSessionImpact(s, last.impact!));
+    }
     if (last.mode !== mode) setMode(last.mode);
 
     if (last.bulkIds?.length && last.ruleVendorKey) {
@@ -463,12 +550,15 @@ export function TriagePageClient() {
   const switchMode = (m: Mode) => {
     setPartial(null);
     setRuleOffer(null);
+    setSessionImpact(emptySessionImpact());
     setMode(m);
   };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Sch. C / Reason inline editors — don't trigger sort shortcuts
+      if (document.activeElement?.closest(".tcard__ai-tax--edit")) return;
       const k = e.key.toLowerCase();
       if (k === "z") {
         e.preventDefault();
@@ -527,38 +617,18 @@ export function TriagePageClient() {
   });
 
   const sessionStats = useMemo(() => {
-    const sorted = items.filter((it) => decisions[it.id]);
     const skips = items.filter((it) => skipped[it.id]).length;
-    const rate = DEFAULT_TRIAGE_TAX_RATE;
-    if (mode === "expenses") {
-      const deductions = sorted.reduce((a, it) => {
-        const d = decisions[it.id]!;
-        return a + Math.abs(it.amount) * d.pct;
-      }, 0);
-      return {
-        sorted: sorted.length,
-        total: items.length,
-        skips,
-        primary: deductions * rate,
-        found: deductions,
-        excluded: 0,
-      };
-    }
-    const taxable = sorted
-      .filter((it) => decisions[it.id]?.marker === "Business")
-      .reduce((a, it) => a + it.amount, 0);
-    const excluded = sorted
-      .filter((it) => decisions[it.id]?.marker === "Personal")
-      .reduce((a, it) => a + it.amount, 0);
+    const queueLeft = items.filter((it) => !decisions[it.id] && !skipped[it.id]).length;
+    const total = sessionImpact.sorted + queueLeft + skips;
     return {
-      sorted: sorted.length,
-      total: items.length,
+      sorted: sessionImpact.sorted,
+      total,
       skips,
-      primary: taxable * rate,
-      found: taxable,
-      excluded,
+      primary: sessionImpact.taxSaved,
+      found: sessionImpact.deductions,
+      excluded: sessionImpact.excluded,
     };
-  }, [mode, decisions, skipped, items]);
+  }, [mode, sessionImpact, decisions, skipped, items]);
 
   const modeRules = rules.filter((r) =>
     mode === "income" ? r.mode === "income" : r.mode === "expenses",
@@ -774,6 +844,18 @@ function TriageTaxDetails({
           className="tcard__ai-tax-select"
           value={draft.scheduleCLine ?? ""}
           onChange={(e) => applyLine(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.stopPropagation();
+              setEditing(null);
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              setEditing(null);
+            }
+          }}
           autoFocus
         >
           <option value="">Schedule C line…</option>
@@ -817,8 +899,16 @@ function TriageTaxDetails({
             value={customReason}
             onChange={(e) => setCustomReason(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") applyReason(customReason);
-              if (e.key === "Escape") setEditing(null);
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                applyReason(customReason);
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setEditing(null);
+              }
             }}
             autoFocus
           />
@@ -1212,12 +1302,12 @@ function TaxMeter({
             <>from {usd(stats.found)} in deductions</>
           )}
         </div>
-        {progress && progress.lifetime_tax_saved > 0 && (
-          <div className="meter__lifetime">
-            Lifetime: <strong>{usd(progress.lifetime_tax_saved)}</strong> tax{" "}
-            {income ? "set aside" : "saved"}
+        {progress ? (
+          <div className={`meter__lifetime${income ? " is-in" : ""}`}>
+            Lifetime {income ? "set aside" : "tax saved"}:{" "}
+            <strong>{usd(progress.lifetime_tax_saved)}</strong>
           </div>
-        )}
+        ) : null}
         <div className="meter__count">
           <span>
             {stats.sorted} of {stats.total} sorted
@@ -1428,15 +1518,15 @@ function TriageDone({
             <>from {usd(stats.found)} in business deductions</>
           )}
         </div>
-        {progress && (
-          <div className="tdone__payoff-sub" style={{ marginTop: 10 }}>
+        {progress ? (
+          <div className={`tdone__lifetime${income ? " is-in" : ""}`}>
             Lifetime tax {income ? "set aside" : "saved"}:{" "}
             <strong>{usd(progress.lifetime_tax_saved)}</strong>
             {progress.current_streak > 1 && (
               <> · {progress.current_streak}-day streak</>
             )}
           </div>
-        )}
+        ) : null}
       </div>
       <div className="tdone__actions">
         {income ? (

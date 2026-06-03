@@ -55,11 +55,16 @@ export async function POST(req: Request) {
     businessPurpose: business_purpose ?? null,
   });
 
-  const { progress, newBadges } = await recordTriageRuleCreated(supabase, userId);
+  const { progress, newBadges } = await recordTriageRuleCreated(
+    supabase,
+    userId,
+    result.impact,
+  );
 
   return NextResponse.json({
     ruleId: result.ruleId,
     updatedCount: result.updatedCount,
+    impact: result.impact,
     progress,
     newBadges,
   });
