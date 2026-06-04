@@ -1358,12 +1358,17 @@
 .setting-section__foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   flex-wrap: wrap;
   padding: 16px 24px 20px;
   border-top: 1px solid var(--border-soft);
   background: var(--bone);
+}
+/* Keep the submit button anchored to the right whether or not a status
+   message is present, so it doesn't jump sides when the message appears. */
+.setting-section__foot > .btn {
+  margin-left: auto;
 }
 
 .settings__input {
