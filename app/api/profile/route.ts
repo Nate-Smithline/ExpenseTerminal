@@ -79,11 +79,15 @@ export async function PUT(req: Request) {
   }
 
   const selectCols = "id,email,display_name,first_name,last_name,name_prefix,avatar_url,phone,email_opt_in,notification_email_updates,notification_group,onboarding_progress,terms_accepted_at,created_at,updated_at";
-  // Use upsert so that a profile row is created if it doesn't exist yet
-  const payload = { id: userId, ...updates };
+  // Update the existing profile row (created on sign-up by the handle_new_user
+  // trigger). We intentionally avoid upsert here: an upsert issues
+  // INSERT ... ON CONFLICT, and the INSERT-candidate row fills every unset
+  // column with its DB default, which can violate column check constraints
+  // (e.g. notification_threshold) even though the row already exists.
   const { data, error } = await (supabase as any)
     .from("profiles")
-    .upsert(payload)
+    .update(updates)
+    .eq("id", userId)
     .select(selectCols)
     .single();
 
