@@ -164,6 +164,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_data_feed_external
 CREATE INDEX IF NOT EXISTS idx_transactions_user_year_status_type ON public.transactions(user_id, tax_year, status, transaction_type);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON public.transactions(date DESC);
 
+-- Recoverable trash: deleted transactions are archived here (full JSONB
+-- snapshot) before being removed from `transactions`, so they can be restored.
+CREATE TABLE IF NOT EXISTS public.deleted_transactions (
+  id              UUID PRIMARY KEY,
+  user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  snapshot        JSONB NOT NULL,
+  budget_line_id  UUID,
+  vendor          TEXT,
+  amount          DECIMAL(12, 2),
+  date            DATE,
+  deleted_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.deleted_transactions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users manage own deleted_transactions" ON public.deleted_transactions;
+CREATE POLICY "Users manage own deleted_transactions"
+  ON public.deleted_transactions
+  FOR ALL
+  USING  (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+CREATE INDEX IF NOT EXISTS idx_deleted_transactions_user
+  ON public.deleted_transactions(user_id, deleted_at DESC);
+
 -- Auto-sort rules
 CREATE TABLE IF NOT EXISTS public.auto_sort_rules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

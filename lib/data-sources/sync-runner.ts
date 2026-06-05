@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StripeMode } from "@/lib/stripe";
 import { getStripeClient } from "@/lib/stripe";
-import { getPlaidClient, decryptAccessToken } from "@/lib/plaid";
+import { getPlaidClient, decryptAccessToken, extractPlaidError } from "@/lib/plaid";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { plaidPrimaryFromTransaction } from "@/lib/ai/categorize-shared";
 
@@ -698,7 +698,43 @@ export async function runSyncForDataSource(
         plaidDiagnostics,
       };
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Sync failed";
+      // Plaid SDK errors carry the real reason on response.data; e.message is
+      // only "Request failed with status code 400". Unwrap it so the user and
+      // logs get the actual error_code/error_message.
+      const plaidErr = extractPlaidError(e);
+
+      // PRODUCT_NOT_READY (HTTP 400): transactions are still being prepared by
+      // Plaid right after linking. The import flow kicks off a sync immediately,
+      // so this is expected on first connect. Plaid will fire
+      // SYNC_UPDATES_AVAILABLE and the nightly cron / next manual sync will pull
+      // them — so treat it as a soft, non-failing state instead of an error.
+      if (plaidErr.error_code === "PRODUCT_NOT_READY") {
+        await (supabase as any)
+          .from("data_sources")
+          .update({ last_failed_sync_at: null, last_error_summary: null })
+          .eq("id", dataSourceId)
+          .eq("user_id", userId);
+        return {
+          success: true,
+          message: "Your bank is still preparing transactions. They'll appear here shortly — no action needed.",
+          code: plaidErr.error_code,
+        };
+      }
+
+      const message = plaidErr.error_code
+        ? `${plaidErr.message} (${plaidErr.error_code})`
+        : plaidErr.message;
+      // Auth/connection errors (e.g. ITEM_LOGIN_REQUIRED) are the user's to fix
+      // by reconnecting; surface them as 400 with the same status from Plaid.
+      const status = plaidErr.status && plaidErr.status >= 400 && plaidErr.status < 500 ? plaidErr.status : 500;
+      console.warn("[sync-runner/plaid] Sync failed", {
+        dataSourceId,
+        error_type: plaidErr.error_type,
+        error_code: plaidErr.error_code,
+        error_message: plaidErr.error_message,
+        request_id: plaidErr.request_id,
+        status: plaidErr.status,
+      });
       await (supabase as any)
         .from("data_sources")
         .update({
@@ -707,7 +743,7 @@ export async function runSyncForDataSource(
         })
         .eq("id", dataSourceId)
         .eq("user_id", userId);
-      return { success: false, error: message, status: 500 };
+      return { success: false, error: message, code: plaidErr.error_code, status };
     }
   }
 

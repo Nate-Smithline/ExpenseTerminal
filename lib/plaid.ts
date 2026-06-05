@@ -55,6 +55,58 @@ export function getPlaidClient(hostname?: string): PlaidApi {
 export { Products as PlaidProducts, CountryCode as PlaidCountryCode };
 
 // ---------------------------------------------------------------------------
+// Error unwrapping
+// ---------------------------------------------------------------------------
+
+export interface PlaidErrorInfo {
+  /** Best human-readable message (Plaid error_message → display_message → axios message). */
+  message: string;
+  error_type?: string;
+  error_code?: string;
+  error_message?: string;
+  display_message?: string | null;
+  request_id?: string;
+  suggested_action?: string;
+  /** HTTP status from the Plaid response, when available. */
+  status?: number;
+}
+
+/**
+ * Plaid uses axios under the hood; the useful error payload lives on
+ * `error.response.data` ({ error_type, error_code, error_message, ... }), while
+ * `error.message` is only the opaque "Request failed with status code 400".
+ * This unwraps the real Plaid error so callers can surface error_code/message.
+ */
+export function extractPlaidError(e: unknown): PlaidErrorInfo {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const err = e as any;
+  const data = err?.response?.data;
+  const status = typeof err?.response?.status === "number" ? err.response.status : undefined;
+
+  if (data && typeof data === "object") {
+    const message =
+      (data.error_message as string | undefined) ||
+      (data.display_message as string | undefined) ||
+      (err instanceof Error ? err.message : "Plaid request failed");
+    return {
+      message,
+      error_type: data.error_type,
+      error_code: data.error_code,
+      error_message: data.error_message,
+      display_message: data.display_message ?? null,
+      request_id: data.request_id,
+      suggested_action: data.suggested_action,
+      status,
+    };
+  }
+
+  return {
+    message: err instanceof Error ? err.message : "Plaid request failed",
+    status,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Access-token encryption (AES-256-GCM)
 // ---------------------------------------------------------------------------
 

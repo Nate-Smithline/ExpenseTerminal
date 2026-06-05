@@ -38,6 +38,15 @@ function fmtCurrency(n: number): string {
   return Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+function fmtCompactCurrency(n: number): string {
+  return Math.abs(n).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  });
+}
+
 function initials(name: string): string {
   return name
     .split(" ")
@@ -375,8 +384,13 @@ export function AccountsPageClient() {
 
   const groups = groupAccounts(sources);
   const assets = sources.filter(s => s.account_type !== "credit").reduce((sum, s) => sum + (s.balance ?? 0), 0);
-  const liabilities = sources.filter(s => s.account_type === "credit").reduce((sum, s) => sum + Math.abs(s.balance ?? 0), 0);
-  const netWorth = assets - liabilities;
+  // Credit balances are stored signed (negative = amount owed). Sum them as-is
+  // rather than forcing the absolute value, so a paid-off or credit balance adds
+  // to net worth instead of being treated as debt. `liabilities` stays a positive
+  // "amount owed" figure for display.
+  const creditTotal = sources.filter(s => s.account_type === "credit").reduce((sum, s) => sum + (s.balance ?? 0), 0);
+  const liabilities = -creditTotal;
+  const netWorth = assets + creditTotal;
 
   const hasAccounts = sources.length > 0;
   const connected = sources.filter(s => s.source_type === "plaid" || s.is_active).length;
@@ -483,21 +497,7 @@ export function AccountsPageClient() {
             </div>
           </div>
 
-          <div
-            style={{
-              height: 200,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderTop: "1px solid var(--border-soft)",
-              color: "var(--ink-4)",
-              fontSize: 13.5,
-            }}
-          >
-            {hasAccounts
-              ? "Net worth chart — wire to snapshots table"
-              : "Connect a bank account to start tracking net worth"}
-          </div>
+          <NetWorthChart hasAccounts={hasAccounts} reloadToken={sources.length} />
         </div>
 
         {!hasAccounts ? (
@@ -525,7 +525,7 @@ export function AccountsPageClient() {
                       {group.accounts.length} account{group.accounts.length !== 1 ? "s" : ""}
                       {" · "}
                       <span style={{ fontWeight: 600 }}>
-                        {group.isLiability ? "−" : "+"}{fmtCurrency(Math.abs(group.total))}
+                        {group.total < 0 ? "−" : "+"}{fmtCurrency(Math.abs(group.total))}
                       </span>
                     </div>
                   </div>
@@ -923,6 +923,219 @@ function AccountEditModal({
       </div>
     </div>
   , document.body);
+}
+
+// ─── NetWorthChart ───────────────────────────────────────────────────────────
+
+interface NetWorthPoint {
+  date: string; // YYYY-MM-DD
+  netWorth: number;
+}
+
+interface NetWorthHistory {
+  points: NetWorthPoint[];
+  change: { absolute: number; pct: number | null };
+  current: number;
+}
+
+type ChartRange = { label: string; months: number };
+
+const CHART_RANGES: ChartRange[] = [
+  { label: "3M", months: 3 },
+  { label: "6M", months: 6 },
+  { label: "12M", months: 12 },
+  { label: "All", months: 0 },
+];
+
+function fmtPointDate(date: string): string {
+  return new Date(date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function NetWorthChart({ hasAccounts, reloadToken }: { hasAccounts: boolean; reloadToken: number }) {
+  const [history, setHistory] = useState<NetWorthHistory | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [rangeIdx, setRangeIdx] = useState(2); // 12M
+  const [hover, setHover] = useState<number | null>(null);
+
+  const loadHistory = useCallback(async (months: number, signal: { cancelled: boolean }) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/net-worth/history?months=${months}`, { cache: "no-store" });
+      const json: NetWorthHistory | null = res.ok ? await res.json() : null;
+      if (!signal.cancelled) setHistory(json);
+    } catch {
+      if (!signal.cancelled) setHistory(null);
+    } finally {
+      if (!signal.cancelled) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hasAccounts) return;
+    const signal = { cancelled: false };
+    void loadHistory(CHART_RANGES[rangeIdx]?.months ?? 0, signal);
+    return () => {
+      signal.cancelled = true;
+    };
+  }, [hasAccounts, rangeIdx, reloadToken, loadHistory]);
+
+  if (!hasAccounts) {
+    return (
+      <div className="acc__chart-empty">
+        Connect a bank account to start tracking net worth
+      </div>
+    );
+  }
+
+  const points = history?.points ?? [];
+  const hasSeries = points.length >= 2;
+
+  // ── SVG geometry ──────────────────────────────────────────────────────────
+  const W = 600;
+  const H = 200;
+  const padX = 10;
+  const padTop = 18;
+  const padBottom = 26;
+  const plotW = W - padX * 2;
+  const plotH = H - padTop - padBottom;
+
+  const values = points.map(p => p.netWorth);
+  const minV = values.length ? Math.min(...values) : 0;
+  const maxV = values.length ? Math.max(...values) : 1;
+  const spanV = maxV - minV || Math.abs(maxV) || 1;
+
+  const x = (i: number) => (points.length <= 1 ? padX + plotW / 2 : padX + (i / (points.length - 1)) * plotW);
+  const y = (v: number) => padTop + (1 - (v - minV) / spanV) * plotH;
+
+  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(2)},${y(p.netWorth).toFixed(2)}`).join(" ");
+  const areaPath = hasSeries
+    ? `${linePath} L${x(points.length - 1).toFixed(2)},${(padTop + plotH).toFixed(2)} L${x(0).toFixed(2)},${(padTop + plotH).toFixed(2)} Z`
+    : "";
+
+  const change = history?.change;
+  const isUp = (change?.absolute ?? 0) >= 0;
+  const activeIdx = hover ?? (points.length - 1);
+  const activePoint = points[activeIdx];
+
+  // A few evenly spaced x-axis labels.
+  const labelCount = Math.min(5, points.length);
+  const labelIdxs = labelCount > 1
+    ? Array.from({ length: labelCount }, (_, k) => Math.round((k / (labelCount - 1)) * (points.length - 1)))
+    : points.map((_, i) => i);
+
+  return (
+    <div className="acc__chart">
+      <div className="acc__chart-head">
+        <div className="acc__chart-hover">
+          {activePoint ? (
+            <>
+              <span className="acc__chart-hover-value">{fmtCurrency(activePoint.netWorth)}</span>
+              <span className="acc__chart-hover-date">{fmtPointDate(activePoint.date)}</span>
+            </>
+          ) : (
+            <span className="acc__chart-hover-date">No snapshots yet</span>
+          )}
+          {change && hasSeries && hover === null && (
+            <span className={`acc__chart-change${isUp ? " is-up" : " is-down"}`}>
+              {isUp ? "▲" : "▼"} {fmtCurrency(change.absolute)}
+              {change.pct !== null && ` (${isUp ? "+" : ""}${change.pct}%)`}
+            </span>
+          )}
+        </div>
+        <div className="seg seg--sm">
+          {CHART_RANGES.map((r, i) => (
+            <button
+              key={r.label}
+              type="button"
+              className={`seg__btn${rangeIdx === i ? " is-active" : ""}`}
+              onClick={() => setRangeIdx(i)}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="acc__chart-empty">Loading net worth history…</div>
+      ) : !hasSeries ? (
+        <div className="acc__chart-empty">
+          Not enough history yet — balances are snapshotted nightly.
+        </div>
+      ) : (
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="acc__chart-svg"
+          width="100%"
+          preserveAspectRatio="none"
+          onMouseLeave={() => setHover(null)}
+        >
+          <defs>
+            <linearGradient id="nwFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--forest)" stopOpacity={0.22} />
+              <stop offset="100%" stopColor="var(--forest)" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+
+          <path d={areaPath} fill="url(#nwFill)" />
+          <path d={linePath} fill="none" stroke="var(--forest)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+
+          {/* Active marker */}
+          {activePoint && (
+            <g>
+              <line
+                x1={x(activeIdx)}
+                y1={padTop}
+                x2={x(activeIdx)}
+                y2={padTop + plotH}
+                stroke="var(--border-soft)"
+                strokeWidth={1}
+              />
+              <circle cx={x(activeIdx)} cy={y(activePoint.netWorth)} r={4} fill="var(--forest)" stroke="var(--bone)" strokeWidth={2} />
+            </g>
+          )}
+
+          {/* x-axis labels */}
+          {labelIdxs.map(i => (
+            <text
+              key={i}
+              x={x(i)}
+              y={H - 8}
+              textAnchor={i === 0 ? "start" : i === points.length - 1 ? "end" : "middle"}
+              fontSize={10.5}
+              fill="var(--ink-4)"
+              fontFamily="var(--font-sans)"
+            >
+              {fmtPointDate(points[i].date)}
+            </text>
+          ))}
+
+          {/* Hover hit areas */}
+          {points.map((_, i) => (
+            <rect
+              key={i}
+              x={i === 0 ? 0 : (x(i) + x(i - 1)) / 2}
+              y={0}
+              width={
+                i === 0
+                  ? (x(0) + x(1)) / 2
+                  : i === points.length - 1
+                    ? W - (x(i) + x(i - 1)) / 2
+                    : (x(i + 1) - x(i - 1)) / 2
+              }
+              height={H}
+              fill="transparent"
+              onMouseEnter={() => setHover(i)}
+            />
+          ))}
+        </svg>
+      )}
+      <div className="acc__chart-yaxis">
+        <span>{fmtCompactCurrency(maxV)}</span>
+        <span>{fmtCompactCurrency(minV)}</span>
+      </div>
+    </div>
+  );
 }
 
 // ─── AccountCard ─────────────────────────────────────────────────────────────

@@ -63,6 +63,12 @@ function fmtMoney(n: number, showSign = false): string {
   return str;
 }
 
+// Format a net total that can legitimately go negative (e.g. a refund netted
+// against spending). Shows a leading minus for negatives, no plus for positives.
+function fmtNet(n: number): string {
+  return n < 0 ? `−${fmtMoney(Math.abs(n))}` : fmtMoney(n);
+}
+
 function fmtDate(iso: string): { day: string; mon: string } {
   const d = new Date(iso + "T12:00:00");
   return {
@@ -889,7 +895,7 @@ export function BudgetPageClient() {
   const showEmptyState = !hasBudgetSetup && addGroupMode === "closed";
 
   return (
-    <div className="page-anim">
+    <div className="page-anim budget-page">
       {/* Sticky header: month title + controls + allocation banner */}
       <div className="budget-sticky-head">
         <header className="pagehead">
@@ -1612,8 +1618,8 @@ function LineDetailRail({
   }, [line.id]);
 
   const progressLabel = isIncome
-    ? `${fmtMoney(actual)} received${hasPlanned ? ` of ${fmtMoney(planned)}` : ""}`
-    : `${fmtMoney(actual)} spent${hasPlanned ? ` of ${fmtMoney(planned)}` : ""}`;
+    ? `${fmtNet(actual)} received${hasPlanned ? ` of ${fmtMoney(planned)}` : ""}`
+    : `${fmtNet(actual)} spent${hasPlanned ? ` of ${fmtMoney(planned)}` : ""}`;
 
   const remainingLabel = isIncome ? "Left to receive" : "Remaining";
   const remainingValue = hasPlanned ? remaining : null;
@@ -1632,7 +1638,12 @@ function LineDetailRail({
     return true;
   });
 
-  const activityTotal = filteredActivity.reduce((s, t) => s + Math.abs(t.amount), 0);
+  // Net the activity toward this line's direction: a transaction matching the
+  // line's kind adds, an opposite one (e.g. a refund on an expense line) subtracts.
+  const activityTotal = filteredActivity.reduce(
+    (s, t) => s + (t.transaction_type === (group.kind ?? "expense") ? Math.abs(t.amount) : -Math.abs(t.amount)),
+    0
+  );
 
   return (
     <div className="line-rail">
@@ -1765,8 +1776,8 @@ function LineDetailRail({
                         <div className="line-rail__activity-sub">{tx.description.trim()}</div>
                       )}
                     </div>
-                    <div className={`line-rail__activity-amt${isIncome ? " line-rail__activity-amt--in" : ""}`}>
-                      {isIncome ? "+" : "−"}{fmtMoney(Math.abs(tx.amount))}
+                    <div className={`line-rail__activity-amt${tx.transaction_type === "income" ? " line-rail__activity-amt--in" : ""}`}>
+                      {tx.transaction_type === "income" ? "+" : "−"}{fmtMoney(Math.abs(tx.amount))}
                     </div>
                     <button
                       type="button"
@@ -1794,7 +1805,7 @@ function LineDetailRail({
 
           {filteredActivity.length > 0 && (
             <div className="line-rail__activity-foot">
-              {fmtMoney(activityTotal)} {isIncome ? "received" : "spent"}
+              {fmtNet(activityTotal)} {isIncome ? "received" : "spent"}
             </div>
           )}
         </section>
@@ -2003,7 +2014,7 @@ function BudgetGroup({
               <div className="group__foot-num">{totalAllocated > 0 ? fmtMoney(totalAllocated) : "—"}</div>
               <div className="group__foot-num">
                 {secondCol === "actual"
-                  ? fmtMoney(totalActual)
+                  ? fmtNet(totalActual)
                   : totalAllocated > 0 ? fmtMoney(totalAllocated - totalActual) : "—"}
               </div>
             </div>
@@ -2059,7 +2070,7 @@ function BudgetLine({
     : remaining === 0 ? "var(--forest)"
     : "var(--wheat-deep)";
   const secondColValue = secondCol === "actual"
-    ? (actual > 0 ? fmtMoney(actual) : "—")
+    ? (actual !== 0 ? fmtNet(actual) : "—")
     : (line.allocated != null ? fmtMoney(remaining) : "—");
   const secondColColor = secondCol === "actual" ? "var(--ink-2)" : remainingColor;
 

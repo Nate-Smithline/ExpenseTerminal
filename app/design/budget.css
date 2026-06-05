@@ -20,6 +20,57 @@
 
 .budget-main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 
+/* On desktop, lock the budget content to the viewport so the groups column
+   and the preview sidebar each scroll independently — scrolling one never
+   moves the other. */
+@media (min-width: 1024px) {
+  /* Pin the app column to the viewport, but only on the budget page (scoped
+     via :has so other pages keep their normal window scroll). This keeps any
+     banner stacked above the page from pushing it past the fold, which would
+     otherwise make the whole window scroll and drag both columns together. */
+  .app__column:has(.budget-page) {
+    height: 100vh;
+    overflow: hidden;
+  }
+  .app__column:has(.budget-page) .app__main {
+    overflow: hidden;
+  }
+
+  .budget-page {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .budget-sticky-head {
+    position: static;
+    flex: none;
+  }
+
+  .budget-layout {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    align-items: stretch;
+    padding-bottom: 24px;
+  }
+
+  .budget-main {
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: 24px;
+  }
+
+  .budget-rail {
+    position: static;
+    top: auto;
+    height: 100%;
+    max-height: 100%;
+  }
+}
+
 /* Budget month initialization progress */
 .budget-init-progress {
   display: flex;

@@ -7,6 +7,7 @@ import { ActivityToolbar, type ActivityViewState } from "./ActivityToolbar";
 import { ActivityTable } from "./ActivityTable";
 import { TransactionDetailPanel, type TransactionDetailUpdate } from "@/components/TransactionDetailPanel";
 import type { TransactionUpdate } from "@/components/TransactionCard";
+import { RecentlyDeleted } from "./RecentlyDeleted";
 
 type Transaction = Database["public"]["Tables"]["transactions"]["Row"];
 
@@ -78,6 +79,7 @@ export function ActivityPageClient({
   const [reanalyzing, setReanalyzing] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [sidebarTransaction, setSidebarTransaction] = useState<Transaction | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
   const patchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const baseQueryParams = useCallback((): Record<string, string> => {
@@ -470,11 +472,27 @@ export function ActivityPageClient({
         dataSources={dataSources}
       />
 
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setShowDeleted(true)}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-mono-medium hover:text-mono-dark transition"
+        >
+          Recently deleted
+        </button>
+      </div>
+
       {toast && (
         <div className="py-2 px-4 rounded-md bg-accent-sage text-white text-sm font-medium">
           {toast}
         </div>
       )}
+
+      <RecentlyDeleted
+        open={showDeleted}
+        onClose={() => setShowDeleted(false)}
+        onRestored={() => { loadTransactions(); }}
+      />
 
       {viewSettingsLoaded && !loading && transactions.length === 0 && (
         <div className="card p-8 text-center">

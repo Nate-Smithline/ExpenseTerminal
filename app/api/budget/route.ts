@@ -79,9 +79,15 @@ async function hydrateLineActuals(
   }[]
 ) {
   const lineIds: string[] = [];
+  // Map each line to its group's direction so a transaction can be signed
+  // relative to the line: one that matches the group's kind adds to the total,
+  // while an opposite one (e.g. a refund dropped on an expense line) subtracts.
+  const groupKindByLine = new Map<string, "income" | "expense">();
   for (const g of groups) {
+    const kind = ((g as { kind?: "income" | "expense" }).kind ?? "expense");
     for (const line of g.budget_lines ?? []) {
       lineIds.push(line.id);
+      groupKindByLine.set(line.id, kind);
     }
   }
   if (lineIds.length === 0) return groups;
@@ -93,26 +99,29 @@ async function hydrateLineActuals(
     .in("budget_line_id", lineIds);
 
   const txIds = [...new Set((links ?? []).map((l: { transaction_id: string }) => l.transaction_id))];
-  const amountByTxId = new Map<string, number>();
+  const txById = new Map<string, { amount: number; type: string }>();
 
   if (txIds.length > 0) {
     const { data: txns } = await db
       .from("transactions")
-      .select("id, amount")
+      .select("id, amount, transaction_type")
       .eq("user_id", userId)
       .in("id", txIds);
 
     for (const t of txns ?? []) {
-      amountByTxId.set(t.id, Math.abs(Number(t.amount)));
+      txById.set(t.id, { amount: Math.abs(Number(t.amount)), type: t.transaction_type });
     }
   }
 
   const actualByLine = new Map<string, number>();
   for (const link of links ?? []) {
-    const amt = amountByTxId.get(link.transaction_id) ?? 0;
+    const tx = txById.get(link.transaction_id);
+    if (!tx) continue;
+    const kind = groupKindByLine.get(link.budget_line_id) ?? "expense";
+    const signed = tx.type === kind ? tx.amount : -tx.amount;
     actualByLine.set(
       link.budget_line_id,
-      (actualByLine.get(link.budget_line_id) ?? 0) + amt
+      (actualByLine.get(link.budget_line_id) ?? 0) + signed
     );
   }
 
