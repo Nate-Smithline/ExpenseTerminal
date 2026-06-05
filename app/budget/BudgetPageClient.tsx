@@ -170,6 +170,8 @@ export function BudgetPageClient() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [deleteGroupId, setDeleteGroupId] = useState<string | null>(null);
+  const [pendingDeleteTxId, setPendingDeleteTxId] = useState<string | null>(null);
+  const [deletingTxn, setDeletingTxn] = useState(false);
   const [addingLineTo, setAddingLineTo] = useState<string | null>(null); // groupId
   const [newLineValue, setNewLineValue] = useState("");
 
@@ -718,6 +720,21 @@ export function BudgetPageClient() {
     loadBudget(month);
   }
 
+  function requestDeleteTxn(txId: string) {
+    setPendingDeleteTxId(txId);
+  }
+
+  async function confirmDeleteTxn() {
+    if (!pendingDeleteTxId) return;
+    setDeletingTxn(true);
+    try {
+      await deleteTxn(pendingDeleteTxId);
+      setPendingDeleteTxId(null);
+    } finally {
+      setDeletingTxn(false);
+    }
+  }
+
   async function assignTxn(txId: string, lineId: string) {
     // If the transaction belongs to a different month, confirm before assigning
     const txn = txns.find(t => t.id === txId);
@@ -1144,7 +1161,10 @@ export function BudgetPageClient() {
                 deleteLine(selectedLineCtx.line.id);
                 setSelectedLineId(null);
               }}
-              onDeleteTxn={deleteTxn}
+              onDeleteTxn={requestDeleteTxn}
+              onTxnDragStart={handleDragStart}
+              onTxnDragEnd={handleDragEnd}
+              draggingTxId={draggingTxId}
               onUpdateLine={(lineId, patch) => {
                 setData(prev => {
                   if (!prev) return prev;
@@ -1251,7 +1271,7 @@ export function BudgetPageClient() {
                           }
                           onCloseMarkerPop={() => setMarkerPopTxId(null)}
                           onSaveMarker={(marker, pct) => saveMarker(tx.id, marker, pct)}
-                          onDelete={() => deleteTxn(tx.id)}
+                          onDelete={() => requestDeleteTxn(tx.id)}
                         />
                       ))
                     )}
@@ -1301,6 +1321,56 @@ export function BudgetPageClient() {
               </button>
               <button type="button" className="btn btn--primary" onClick={confirmDeleteGroup}>
                 Delete group
+              </button>
+            </div>
+          </div>
+        </div>
+      , document.body)}
+
+      {/* Delete transaction confirmation */}
+      {pendingDeleteTxId && createPortal(
+        <div
+          className="budget-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="budget-delete-txn-title"
+          onClick={() => !deletingTxn && setPendingDeleteTxId(null)}
+        >
+          <div className="budget-modal" onClick={e => e.stopPropagation()}>
+            <h2 id="budget-delete-txn-title" className="budget-modal__title">
+              Delete this transaction?
+            </h2>
+            <p className="budget-modal__body">
+              {(() => {
+                const t =
+                  lineActivityTxns.find(x => x.id === pendingDeleteTxId) ??
+                  txns.find(x => x.id === pendingDeleteTxId);
+                return t?.vendor ? (
+                  <>
+                    <strong style={{ color: "var(--ink)" }}>{`“${t.vendor}”`}</strong> will be deleted.
+                  </>
+                ) : (
+                  "This transaction will be deleted."
+                );
+              })()}{" "}
+              This can’t be undone.
+            </p>
+            <div className="budget-modal__actions">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                disabled={deletingTxn}
+                onClick={() => setPendingDeleteTxId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={deletingTxn}
+                onClick={confirmDeleteTxn}
+              >
+                {deletingTxn ? "Deleting…" : "Delete"}
               </button>
             </div>
           </div>
@@ -1528,6 +1598,9 @@ function LineDetailRail({
   onClose,
   onDelete,
   onDeleteTxn,
+  onTxnDragStart,
+  onTxnDragEnd,
+  draggingTxId,
   onUpdateLine,
 }: {
   line: BudgetLineData;
@@ -1538,6 +1611,9 @@ function LineDetailRail({
   onClose: () => void;
   onDelete: () => void;
   onDeleteTxn: (txId: string) => void;
+  onTxnDragStart: (e: React.DragEvent, txId: string) => void;
+  onTxnDragEnd: () => void;
+  draggingTxId: string | null;
   onUpdateLine: (lineId: string, patch: Partial<BudgetLineData>) => void;
 }) {
   const isIncome = group.kind === "income";
@@ -1764,7 +1840,15 @@ function LineDetailRail({
                   ? new Date(tx.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })
                   : null;
                 return (
-                  <li key={tx.id} className={`line-rail__activity-item${isOtherMonth ? " line-rail__activity-item--other-month" : ""}`}>
+                  <li
+                    key={tx.id}
+                    className={`line-rail__activity-item${isOtherMonth ? " line-rail__activity-item--other-month" : ""}`}
+                    draggable
+                    onDragStart={(e) => onTxnDragStart(e, tx.id)}
+                    onDragEnd={onTxnDragEnd}
+                    title="Drag onto another line to move this transaction"
+                    style={{ opacity: draggingTxId === tx.id ? 0.4 : undefined, cursor: "grab" }}
+                  >
                     <div className="line-rail__activity-date">
                       <span>{d.mon}</span>
                       <strong>{d.day}</strong>

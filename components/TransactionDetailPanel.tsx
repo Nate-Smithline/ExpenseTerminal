@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Database } from "@/lib/types/database";
 import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
 
@@ -113,6 +114,24 @@ export function TransactionDetailPanel({
   const [panelWidth, setPanelWidth] = useState(PANEL_MAX_WIDTH);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isEscapedDocked, setIsEscapedDocked] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function confirmDelete() {
+    if (!onDelete) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDelete();
+      setConfirmingDelete(false);
+      onClose();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Couldn't delete the transaction. Please try again.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const amount = Math.abs(Number(transaction.amount));
   const deductionPct = transaction.deduction_percent ?? 100;
@@ -227,6 +246,9 @@ export function TransactionDetailPanel({
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (isEscapedDocked) return;
+      // While the delete confirmation is open, ignore outside clicks so the
+      // panel doesn't close behind the modal (which is portaled to body).
+      if (confirmingDelete) return;
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         onClose();
       }
@@ -235,6 +257,10 @@ export function TransactionDetailPanel({
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
+        if (confirmingDelete) {
+          if (!deleting) setConfirmingDelete(false);
+          return;
+        }
         setIsEscapedDocked(true);
       }
     }
@@ -244,7 +270,7 @@ export function TransactionDetailPanel({
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
     };
-  }, [onClose, isEscapedDocked]);
+  }, [onClose, isEscapedDocked, confirmingDelete, deleting]);
 
   function startResize(e: React.MouseEvent<HTMLButtonElement>) {
     if (isCollapsed) return;
@@ -265,6 +291,7 @@ export function TransactionDetailPanel({
   }
 
   return (
+    <>
     <div
       className={`fixed inset-0 min-h-[100dvh] z-50 flex justify-end ${isEscapedDocked ? "pointer-events-none" : ""}`}
     >
@@ -311,10 +338,10 @@ export function TransactionDetailPanel({
                 </button>
                 <button
                   type="button"
-                  onClick={async () => {
+                  onClick={() => {
                     if (!onDelete) return;
-                    await onDelete();
-                    onClose();
+                    setDeleteError(null);
+                    setConfirmingDelete(true);
                   }}
                   disabled={!onDelete}
                   className="h-8 w-8 text-black flex items-center justify-center transition hover:bg-warm-stock disabled:opacity-40"
@@ -612,5 +639,59 @@ export function TransactionDetailPanel({
         </div>}
       </div>
     </div>
+
+    {confirmingDelete && createPortal(
+      <div
+        data-tx-confirm
+        className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tx-delete-title"
+        aria-describedby="tx-delete-desc"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget && !deleting) setConfirmingDelete(false);
+        }}
+      >
+        <div className="w-full max-w-sm bg-white border border-[#F0F1F7] shadow-xl">
+          <div className="px-5 pt-5 pb-4">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+                <span className="material-symbols-rounded text-[18px]">delete</span>
+              </span>
+              <div className="min-w-0">
+                <h2 id="tx-delete-title" className="text-base font-semibold text-mono-dark">
+                  Delete this transaction?
+                </h2>
+                <p id="tx-delete-desc" className="mt-1.5 text-sm text-mono-medium leading-relaxed">
+                  {transaction.vendor ? `“${transaction.vendor}” ` : "This transaction "}
+                  will be deleted. This can’t be undone.
+                </p>
+              </div>
+            </div>
+            {deleteError && <p className="mt-3 text-sm text-red-600">{deleteError}</p>}
+          </div>
+          <div className="flex justify-end gap-2 px-5 pb-5">
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(false)}
+              disabled={deleting}
+              className="h-9 px-4 border border-warm-stock text-sm font-medium text-mono-dark transition hover:bg-warm-stock disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmDelete}
+              disabled={deleting}
+              className="h-9 px-4 bg-red-600 text-white text-sm font-medium transition hover:bg-red-700 disabled:opacity-50"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+    </>
   );
 }
