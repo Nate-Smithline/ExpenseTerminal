@@ -126,6 +126,7 @@ const IMPORT_STEPS = [
 export function AccountsPageClient() {
   const [sources, setSources] = useState<DataSource[]>([]);
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [syncNotice, setSyncNotice] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editAccountId, setEditAccountId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -312,13 +313,22 @@ export function AccountsPageClient() {
 
   async function syncAccount(id: string) {
     setSyncing(id);
+    setSyncNotice(null);
     try {
-      await fetch("/api/data-sources/plaid/sync", {
+      const res = await fetch("/api/data-sources/plaid/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dataSourceId: id }),
       });
+      const body = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (!res.ok) {
+        setSyncNotice({ kind: "error", text: (body?.error as string) ?? "Sync failed. Please try again." });
+      } else {
+        setSyncNotice({ kind: "ok", text: (body?.message as string) ?? "Sync complete." });
+      }
       await load();
+    } catch {
+      setSyncNotice({ kind: "error", text: "Sync failed. Please check your connection and try again." });
     } finally {
       setSyncing(null);
     }
@@ -411,6 +421,21 @@ export function AccountsPageClient() {
               {loadPct < 100 && <span className="acc-load__dot" />}
               <span className="acc-load__step">{LOAD_STEPS[loadStep]}</span>
             </div>
+          </div>
+        )}
+
+        {syncNotice && (
+          <div
+            className="acc-note"
+            role="status"
+            style={
+              syncNotice.kind === "error"
+                ? { background: "var(--ember-tint)", color: "var(--ember-deep)", borderColor: "var(--ember)" }
+                : undefined
+            }
+          >
+            <IInfo size={14} />
+            <span>{syncNotice.text}</span>
           </div>
         )}
 

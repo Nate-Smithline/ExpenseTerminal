@@ -504,6 +504,9 @@ export async function runSyncForDataSource(
       const plaid = getPlaidClient(options?.hostname);
       const accessToken = decryptAccessToken(row.plaid_access_token as string);
       let cursor: string | undefined = (row.plaid_cursor as string) || undefined;
+      // Cursor we started from. If any insert fails we must NOT advance past it,
+      // otherwise Plaid's consume-once feed drops those transactions for good.
+      const startingCursor: string | undefined = cursor;
       const syncStartDate: string | null = (row.plaid_sync_start_date as string) || null;
 
       let addedCount = 0;
@@ -639,14 +642,22 @@ export async function runSyncForDataSource(
         ? { balance: freshBalance, balance_updated_at: new Date().toISOString() }
         : {};
 
-      const hadAddedButNoInsert = addedCount > 0 && upsertedCount === 0 && firstInsertError;
+      // If ANY insert failed, keep the cursor we started from so the next sync
+      // retries the same window. Advancing it would mark these transactions as
+      // consumed in Plaid's incremental feed and lose them permanently. The
+      // upsert is idempotent, so re-pulling already-saved rows is harmless.
+      const insertsFailed = !!firstInsertError;
+      const cursorToSave = insertsFailed ? (startingCursor ?? null) : (cursor ?? null);
       await (supabase as any)
         .from("data_sources")
         .update({
-          plaid_cursor: cursor ?? null,
-          last_failed_sync_at: hadAddedButNoInsert ? new Date().toISOString() : null,
-          last_error_summary: hadAddedButNoInsert && firstInsertError ? `Transactions could not be saved: ${firstInsertError.slice(0, 400)}` : null,
-          last_successful_sync_at: new Date().toISOString(),
+          plaid_cursor: cursorToSave,
+          last_failed_sync_at: insertsFailed ? new Date().toISOString() : null,
+          last_error_summary: insertsFailed && firstInsertError
+            ? `Transactions could not be saved: ${firstInsertError.slice(0, 400)}`
+            : null,
+          // Only mark a successful sync when nothing failed to insert.
+          ...(insertsFailed ? {} : { last_successful_sync_at: new Date().toISOString() }),
           transaction_count: transactionCount,
           ...balanceUpdate,
         })
@@ -671,6 +682,15 @@ export async function runSyncForDataSource(
         ...plaidDiagnostics,
         firstInsertError: firstInsertError ?? undefined,
       });
+
+      if (insertsFailed) {
+        return {
+          success: false,
+          error: `Plaid returned ${addedCount} transaction(s); ${upsertedCount} saved, the rest failed to save: ${firstInsertError}`,
+          status: 500,
+          plaidDiagnostics,
+        };
+      }
 
       return {
         success: true,
