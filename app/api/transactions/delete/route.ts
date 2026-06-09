@@ -61,6 +61,9 @@ export async function POST(req: Request) {
     .eq("user_id", userId)
     .maybeSingle();
 
+  // Best-effort archive for the "Recently deleted" trash. If the archive table
+  // is missing (migration not applied) or the write otherwise fails, we must not
+  // block the actual delete — the user's intent is to remove the transaction.
   const { error: archiveError } = await db
     .from("deleted_transactions")
     .upsert(
@@ -78,9 +81,9 @@ export async function POST(req: Request) {
     );
 
   if (archiveError) {
-    return NextResponse.json(
-      { error: safeErrorMessage(archiveError.message, "Failed to delete transaction") },
-      { status: 500 }
+    console.error(
+      "deleted_transactions archive failed; deleting without archive:",
+      archiveError.message
     );
   }
 

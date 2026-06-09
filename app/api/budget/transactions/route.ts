@@ -22,6 +22,9 @@ export async function GET(req: NextRequest) {
   const assignedParam = searchParams.get("assigned"); // "false" = only unassigned
   const budgetLineId = searchParams.get("budget_line_id");
   const search = searchParams.get("search")?.trim() ?? "";
+  // "true" = return transactions OUTSIDE the selected month (for the
+  // "other months" section of the budget sidebar) instead of within it.
+  const otherMonths = searchParams.get("other_months") === "true";
 
   const db = supabase as Supa;
 
@@ -74,10 +77,15 @@ export async function GET(req: NextRequest) {
     .from("transactions")
     .select(columns)
     .eq("user_id", userId)
-    .gte("date", startDate)
-    .lte("date", endDate)
     .order("date", { ascending: false })
     .limit(200);
+
+  if (otherMonths) {
+    // Everything except the selected month.
+    query = query.or(`date.lt.${startDate},date.gt.${endDate}`);
+  } else {
+    query = query.gte("date", startDate).lte("date", endDate);
+  }
 
   if (search) {
     query = query.ilike("vendor", `%${search}%`);

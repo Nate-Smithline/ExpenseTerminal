@@ -149,6 +149,12 @@ export function BudgetPageClient() {
   const [lineActivityTxns, setLineActivityTxns] = useState<Txn[]>([]);
   const [lineActivityLoading, setLineActivityLoading] = useState(false);
 
+  // "Other months" sidebar section: unassigned transactions from outside the
+  // selected budget month, shown collapsed underneath the current month's.
+  const [otherMonthsTxns, setOtherMonthsTxns] = useState<Txn[]>([]);
+  const [showOtherMonths, setShowOtherMonths] = useState(false);
+  const [otherMonthsLoading, setOtherMonthsLoading] = useState(false);
+
   // Inline editing
   const [editingPlanned, setEditingPlanned] = useState<{ lineId: string; value: string } | null>(null);
   const [editingGroupName, setEditingGroupName] = useState<{ groupId: string; value: string } | null>(null);
@@ -174,6 +180,9 @@ export function BudgetPageClient() {
   const [deletingTxn, setDeletingTxn] = useState(false);
   const [addingLineTo, setAddingLineTo] = useState<string | null>(null); // groupId
   const [newLineValue, setNewLineValue] = useState("");
+
+  // Scroll container for the groups/lines column (used for drag auto-scroll).
+  const budgetMainRef = useRef<HTMLElement | null>(null);
 
   // Drag state (transactions → line assignment; lines → reorder / move group)
   const [draggingTxId, setDraggingTxId] = useState<string | null>(null);
@@ -325,6 +334,88 @@ export function BudgetPageClient() {
     return () => clearTimeout(timer);
   }, [searchQ, month, loading]);
 
+  // Load unassigned transactions from OTHER months for the collapsible section.
+  const loadOtherMonths = useCallback(async (m: string, q: string) => {
+    setOtherMonthsLoading(true);
+    try {
+      const url = `/api/budget/transactions?month=${m}&assigned=false&other_months=true${
+        q ? `&search=${encodeURIComponent(q)}` : ""
+      }`;
+      const res = await fetch(url);
+      const { transactions } = await res.json();
+      setOtherMonthsTxns(transactions ?? []);
+    } catch {
+      setOtherMonthsTxns([]);
+    } finally {
+      setOtherMonthsLoading(false);
+    }
+  }, []);
+
+  // (Re)load the other-months list whenever the section is open and the
+  // month/search changes. Collapsing clears it so stale rows don't linger.
+  useEffect(() => {
+    if (!showOtherMonths) {
+      setOtherMonthsTxns([]);
+      return;
+    }
+    const timer = setTimeout(() => loadOtherMonths(month, searchQ), 300);
+    return () => clearTimeout(timer);
+  }, [showOtherMonths, month, searchQ, loadOtherMonths]);
+
+  // Auto-scroll the groups/lines column when dragging a transaction or line
+  // near its top/bottom edge, so you can reach off-screen groups mid-drag.
+  const dragActive = draggingTxId != null || draggingLineId != null;
+  useEffect(() => {
+    if (!dragActive) return;
+    const EDGE = 96;       // px from an edge where scrolling begins
+    const MAX_SPEED = 20;  // px per animation frame at the very edge
+    let pointerX = 0;
+    let pointerY = 0;
+    let raf = 0;
+
+    const onDragOver = (e: DragEvent) => {
+      pointerX = e.clientX;
+      pointerY = e.clientY;
+    };
+
+    const step = () => {
+      const el = budgetMainRef.current;
+      // Prefer the groups column when it actually scrolls; otherwise fall back
+      // to the window (mobile / short viewports where the page itself scrolls).
+      const useColumn = !!el && el.scrollHeight > el.clientHeight + 1;
+      if (pointerY > 0) {
+        if (useColumn && el) {
+          const rect = el.getBoundingClientRect();
+          const withinX = pointerX >= rect.left && pointerX <= rect.right;
+          if (withinX) {
+            const topDist = pointerY - rect.top;
+            const botDist = rect.bottom - pointerY;
+            if (topDist < EDGE) {
+              el.scrollTop -= MAX_SPEED * Math.min(1, Math.max(0, (EDGE - topDist) / EDGE));
+            } else if (botDist < EDGE) {
+              el.scrollTop += MAX_SPEED * Math.min(1, Math.max(0, (EDGE - botDist) / EDGE));
+            }
+          }
+        } else {
+          const vh = window.innerHeight;
+          if (pointerY < EDGE) {
+            window.scrollBy(0, -MAX_SPEED * Math.min(1, (EDGE - pointerY) / EDGE));
+          } else if (vh - pointerY < EDGE) {
+            window.scrollBy(0, MAX_SPEED * Math.min(1, (EDGE - (vh - pointerY)) / EDGE));
+          }
+        }
+      }
+      raf = requestAnimationFrame(step);
+    };
+
+    window.addEventListener("dragover", onDragOver);
+    raf = requestAnimationFrame(step);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      cancelAnimationFrame(raf);
+    };
+  }, [dragActive]);
+
   // ── Derived state ───────────────────────────────────────────────────────
 
   const { month: monthName, year } = monthLabel(month);
@@ -357,14 +448,17 @@ export function BudgetPageClient() {
     : leftToAllocate === 0 ? "Balanced"
     : "Left to allocate";
 
-  const filteredTxns = txns.filter((t) => {
+  const matchesMarkerFilter = (t: Txn) => {
     if (txnMarkerFilter === "all") return true;
     if (txnMarkerFilter === "unset") return !t.marker;
     if (txnMarkerFilter === "business") return t.marker === "Business";
     if (txnMarkerFilter === "personal") return t.marker === "Personal";
     if (txnMarkerFilter === "partial") return t.marker === "Partial";
     return true;
-  });
+  };
+
+  const filteredTxns = txns.filter(matchesMarkerFilter);
+  const filteredOtherMonths = otherMonthsTxns.filter(matchesMarkerFilter);
 
   type SelectedLineCtx = { line: BudgetLineData; group: BudgetGroupData };
   const selectedLineCtx: SelectedLineCtx | null = (() => {
@@ -711,6 +805,7 @@ export function BudgetPageClient() {
 
   async function deleteTxn(txId: string) {
     setTxns(prev => prev.filter(t => t.id !== txId));
+    setOtherMonthsTxns(prev => prev.filter(t => t.id !== txId));
     setLineActivityTxns(prev => prev.filter(t => t.id !== txId));
     await fetch("/api/transactions/delete", {
       method: "POST",
@@ -736,40 +831,77 @@ export function BudgetPageClient() {
   }
 
   async function assignTxn(txId: string, lineId: string) {
-    // If the transaction belongs to a different month, confirm before assigning
-    const txn = txns.find(t => t.id === txId);
-    if (txn) {
-      const txnMonth = txn.date.slice(0, 7); // "YYYY-MM"
-      if (txnMonth !== month) {
-        const txnLabel = new Date(txn.date + "T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
-        const budgetLabel = new Date(month + "-01T12:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" });
-        const ok = window.confirm(
-          `This transaction is from ${txnLabel}, but your budget is for ${budgetLabel}.\n\nAssign it anyway?`
-        );
-        if (!ok) return;
-      }
-    }
+    // Resolve the transaction from whatever list it was dragged out of
+    // (unassigned sidebar, the open line's activity, or the lookup cache).
+    const txn =
+      txns.find(t => t.id === txId) ??
+      otherMonthsTxns.find(t => t.id === txId) ??
+      lineActivityTxns.find(t => t.id === txId) ??
+      txnMap.current.get(txId) ??
+      null;
 
-    // Find the line's default marker so we can reflect it locally before reload
-    const targetLine = data?.groups.flatMap(g => g.budget_lines).find(l => l.id === lineId);
-    const defaultMarker = targetLine?.default_marker ?? null;
-    const defaultPct =
-      defaultMarker === "Business" ? 100
-      : defaultMarker === "Personal" ? 0
-      : (targetLine?.default_business_pct ?? 50);
+    // ── Optimistic UI: reflect the move instantly, reconcile on reload ──
+    // Remove from the unassigned sidebar (current month + other-months section).
+    setTxns(prev => prev.filter(t => t.id !== txId));
+    setOtherMonthsTxns(prev => prev.filter(t => t.id !== txId));
+
+    // Move it within the open line's activity list (remove from source / add to target).
+    setLineActivityTxns(prev => {
+      const without = prev.filter(t => t.id !== txId);
+      return selectedLineId === lineId && txn ? [txn, ...without] : without;
+    });
+
+    // Re-point the assignment and re-net each affected line's actual.
+    if (txn) {
+      const absAmt = Math.abs(Number(txn.amount));
+      setData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          groups: prev.groups.map(g => {
+            const kind = g.kind === "income" ? "income" : "expense";
+            const contribution = txn.transaction_type === kind ? absAmt : -absAmt;
+            const lines = g.budget_lines.map(l => {
+              const has = l.budget_line_transactions?.some(bt => bt.transaction_id === txId) ?? false;
+              if (l.id === lineId) {
+                return has
+                  ? l
+                  : {
+                      ...l,
+                      actual: (l.actual ?? 0) + contribution,
+                      budget_line_transactions: [
+                        ...(l.budget_line_transactions ?? []),
+                        { transaction_id: txId },
+                      ],
+                    };
+              }
+              if (has) {
+                return {
+                  ...l,
+                  actual: (l.actual ?? 0) - contribution,
+                  budget_line_transactions: (l.budget_line_transactions ?? []).filter(
+                    bt => bt.transaction_id !== txId
+                  ),
+                };
+              }
+              return l;
+            });
+            return { ...g, budget_lines: lines };
+          }),
+        };
+      });
+    }
 
     const res = await fetch("/api/budget/assign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ transaction_id: txId, budget_line_id: lineId }),
     });
-    if (!res.ok) return;
 
-    // Immediately remove from the unassigned sidebar list so the UI responds
-    // without waiting for the full loadBudget round-trip
-    setTxns(prev => prev.filter(t => t.id !== txId));
-
+    // Reconcile with server truth either way (also reverts the optimistic update
+    // if the assignment failed).
     loadBudget(month);
+    if (showOtherMonths) loadOtherMonths(month, searchQ);
   }
 
   function handleDragStart(e: React.DragEvent, txId: string) {
@@ -961,7 +1093,7 @@ export function BudgetPageClient() {
 
       <div className="budget-layout">
         {/* ── Left: budget groups ── */}
-        <main className="budget-main">
+        <main className="budget-main" ref={budgetMainRef}>
           {showEmptyState ? (
             /* Empty state */
             <div className="card" style={{ padding: "48px 32px", textAlign: "center" }}>
@@ -1253,7 +1385,7 @@ export function BudgetPageClient() {
                       <div className="txnlist__empty">
                         <div>{searchQ ? "No matches" : "All transactions assigned"}</div>
                         <div className="txnlist__empty-sub">
-                          {searchQ ? "Try a different search" : "Great work — every dollar has a job."}
+                          {searchQ ? "Try a different search" : "Great work"}
                         </div>
                       </div>
                     ) : (
@@ -1275,6 +1407,51 @@ export function BudgetPageClient() {
                         />
                       ))
                     )}
+
+                    {/* Other months — bring in unassigned transactions from outside this month */}
+                    <div className="txnlist__other">
+                      <button
+                        type="button"
+                        className="txnlist__other-toggle"
+                        aria-expanded={showOtherMonths}
+                        onClick={() => setShowOtherMonths(v => !v)}
+                      >
+                        {showOtherMonths ? <IChevronD size={13} /> : <IChevronR size={13} />}
+                        <span>Other months</span>
+                        {showOtherMonths && filteredOtherMonths.length > 0 && (
+                          <span className="txnlist__other-count">{filteredOtherMonths.length}</span>
+                        )}
+                      </button>
+
+                      {showOtherMonths && (
+                        otherMonthsLoading ? (
+                          <div className="txnlist__other-note">Loading…</div>
+                        ) : filteredOtherMonths.length === 0 ? (
+                          <div className="txnlist__other-note">
+                            {searchQ ? "No matches in other months" : "No unassigned transactions in other months"}
+                          </div>
+                        ) : (
+                          filteredOtherMonths.map(tx => (
+                            <TxnCard
+                              key={tx.id}
+                              tx={tx}
+                              showYear
+                              dragging={draggingTxId === tx.id}
+                              markerPopOpen={markerPopTxId === tx.id}
+                              onDragStart={handleDragStart}
+                              onDragEnd={handleDragEnd}
+                              onQuickTag={(m) => quickTagMarker(tx.id, m)}
+                              onOpenPartialEditor={() =>
+                                setMarkerPopTxId(markerPopTxId === tx.id ? null : tx.id)
+                              }
+                              onCloseMarkerPop={() => setMarkerPopTxId(null)}
+                              onSaveMarker={(marker, pct) => saveMarker(tx.id, marker, pct)}
+                              onDelete={() => requestDeleteTxn(tx.id)}
+                            />
+                          ))
+                        )
+                      )}
+                    </div>
                   </div>
 
                   <div className="txnlist__footer">
@@ -2233,6 +2410,7 @@ interface TxnCardProps {
   tx: Txn;
   dragging: boolean;
   markerPopOpen: boolean;
+  showYear?: boolean;
   onDragStart: (e: React.DragEvent, id: string) => void;
   onDragEnd: () => void;
   onQuickTag: (marker: Marker) => void;
@@ -2246,6 +2424,7 @@ function TxnCard({
   tx,
   dragging,
   markerPopOpen,
+  showYear = false,
   onDragStart,
   onDragEnd,
   onQuickTag,
@@ -2255,6 +2434,7 @@ function TxnCard({
   onDelete,
 }: TxnCardProps) {
   const { day, mon } = fmtDate(tx.date);
+  const year = showYear ? new Date(tx.date + "T12:00:00").getFullYear() : null;
   const isPos = tx.transaction_type === "income";
 
   return (
@@ -2270,6 +2450,7 @@ function TxnCard({
         <div className="txn__date">
           <em>{mon}</em>
           {day}
+          {year != null && <span className="txn__date-year">{year}</span>}
         </div>
 
         {/* Vendor + hint */}
