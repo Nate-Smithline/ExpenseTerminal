@@ -33,58 +33,64 @@ export async function GET(req: Request) {
     .eq("transaction_type", "income")
     .order("date", { ascending: false });
 
-  // Expenses: keep the reviewed-only filter so only confirmed expenses are deducted
+  // Expenses: reviewed triage items plus any Business/Partial budget tags (may still be pending)
   const { data: expenseTx } = await (supabase as any)
     .from("transactions")
     .select(txCols)
     .eq("user_id", userId)
     .eq("tax_year", taxYear)
     .eq("transaction_type", "expense")
-    .in("status", ["completed", "auto_sorted"])
+    .or("status.in.(completed,auto_sorted),marker.in.(Business,Partial)")
     .order("date", { ascending: false });
 
-  // For income transactions, check if they belong to a budget line with a default_marker
-  // so the line assignment can override the transaction's own marker.
-  const incomeIds = (incomeTx ?? []).map((t: { id: string }) => t.id);
-  let lineMarkerMap: Map<string, { marker: string; pct: number }> = new Map();
+  type LineMarker = { marker: string; pct: number };
 
-  if (incomeIds.length > 0) {
+  async function buildBudgetLineMarkerMap(
+    transactionIds: string[],
+  ): Promise<Map<string, LineMarker>> {
+    const lineMarkerMap = new Map<string, LineMarker>();
+    if (transactionIds.length === 0) return lineMarkerMap;
+
     const { data: links } = await (supabase as any)
       .from("budget_line_transactions")
       .select("transaction_id, budget_line_id")
       .eq("user_id", userId)
-      .in("transaction_id", incomeIds);
+      .in("transaction_id", transactionIds);
 
-    if (links && links.length > 0) {
-      const lineIds = [...new Set(links.map((l: { budget_line_id: string }) => l.budget_line_id))];
-      const { data: lines } = await (supabase as any)
-        .from("budget_lines")
-        .select("id, default_marker, default_business_pct")
-        .eq("user_id", userId)
-        .in("id", lineIds)
-        .in("default_marker", ["Business", "Partial", "Personal"]);
+    if (!links?.length) return lineMarkerMap;
 
-      const lineById = new Map(
-        (lines ?? []).map((l: { id: string; default_marker: string; default_business_pct: number | null }) => {
-          const pct = l.default_marker === "Personal" ? 0 : (l.default_business_pct ?? 100);
-          return [l.id, { marker: l.default_marker, pct }];
-        })
-      );
+    const lineIds = [...new Set(links.map((l: { budget_line_id: string }) => l.budget_line_id))];
+    const { data: lines } = await (supabase as any)
+      .from("budget_lines")
+      .select("id, default_marker, default_business_pct")
+      .eq("user_id", userId)
+      .in("id", lineIds)
+      .in("default_marker", ["Business", "Partial", "Personal"]);
 
-      for (const link of links) {
-        const lineInfo = lineById.get(link.budget_line_id) as { marker: string; pct: number } | undefined;
-        if (lineInfo && !lineMarkerMap.has(link.transaction_id)) {
-          lineMarkerMap.set(link.transaction_id, lineInfo);
-        }
+    const lineById = new Map(
+      (lines ?? []).map((l: { id: string; default_marker: string; default_business_pct: number | null }) => {
+        const pct = l.default_marker === "Personal" ? 0 : (l.default_business_pct ?? 100);
+        return [l.id, { marker: l.default_marker, pct }];
+      }),
+    );
+
+    for (const link of links) {
+      const lineInfo = lineById.get(link.budget_line_id) as LineMarker | undefined;
+      if (lineInfo && !lineMarkerMap.has(link.transaction_id)) {
+        lineMarkerMap.set(link.transaction_id, lineInfo);
       }
     }
+    return lineMarkerMap;
   }
+
+  const incomeIds = (incomeTx ?? []).map((t: { id: string }) => t.id);
+  const incomeLineMarkerMap = await buildBudgetLineMarkerMap(incomeIds);
 
   // Annotate income transactions: budget line assignment wins over the transaction's own marker.
   // This ensures a Personal line always excludes the transaction from taxable income,
   // even if it previously had a Business/Partial marker from an earlier assignment.
   const annotatedIncome = (incomeTx ?? []).map((t: Record<string, unknown> & { id: string; marker?: string | null; business_pct?: number | null }) => {
-    const lineInfo = lineMarkerMap.get(t.id);
+    const lineInfo = incomeLineMarkerMap.get(t.id);
     if (lineInfo) {
       return { ...t, marker: lineInfo.marker, business_pct: lineInfo.pct };
     }
@@ -94,7 +100,19 @@ export async function GET(req: Request) {
     return { ...t, marker: "Personal" };
   });
 
-  const allTransactions = [...annotatedIncome, ...(expenseTx ?? [])];
+  const expenseIds = (expenseTx ?? []).map((t: { id: string }) => t.id);
+  const expenseLineMarkerMap = await buildBudgetLineMarkerMap(expenseIds);
+
+  // Budget line assignment wins over the transaction's own marker (same as income).
+  const annotatedExpenses = (expenseTx ?? []).map((t: Record<string, unknown> & { id: string; marker?: string | null; business_pct?: number | null }) => {
+    const lineInfo = expenseLineMarkerMap.get(t.id);
+    if (lineInfo) {
+      return { ...t, marker: lineInfo.marker, business_pct: lineInfo.pct };
+    }
+    return t;
+  });
+
+  const allTransactions = [...annotatedIncome, ...annotatedExpenses];
 
   const { data: pendingTx } = await (supabase as any)
     .from("transactions")

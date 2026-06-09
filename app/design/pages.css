@@ -550,13 +550,9 @@
   padding-top: 14px;
   position: relative;
 }
-.acc__chart-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 6px;
-  min-height: 30px;
+.acc__chart--fidelity {
+  --chart-line: #2f6fed;
+  --chart-line-muted: rgba(47, 111, 237, 0.42);
 }
 .acc__chart-hover {
   display: flex;
@@ -564,46 +560,170 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+.acc__chart-hover--float {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  z-index: 2;
+}
 .acc__chart-hover-value {
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: -.01em;
+  color: var(--ink);
 }
 .acc__chart-hover-date {
   font-size: 12px;
   color: var(--ink-3);
 }
-.acc__chart-change {
+.acc__chart-period-change {
+  margin-top: 10px;
+  text-align: center;
   font-size: 12px;
   font-weight: 600;
 }
-.acc__chart-change.is-up { color: var(--forest-deep); }
-.acc__chart-change.is-down { color: var(--ember-deep, var(--clay)); }
+.acc__chart-period-change.is-up { color: var(--forest-deep); }
+.acc__chart-period-change.is-down { color: var(--ember-deep, var(--clay)); }
 
-.seg--sm .seg__btn { height: 24px; padding: 0 9px; font-size: 11.5px; }
-
+.acc__chart-plot {
+  width: 100%;
+  min-height: 200px;
+  max-height: 260px;
+  aspect-ratio: 3.6 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .acc__chart-svg {
   display: block;
-  height: 200px;
   width: 100%;
+  height: 100%;
+  max-height: 260px;
   overflow: visible;
 }
 .acc__chart-svg rect[fill="transparent"] { cursor: crosshair; }
+.acc__chart-grid {
+  stroke: #d8dde6;
+  stroke-width: 1;
+  stroke-dasharray: 4 6;
+}
+.acc__chart-y-label {
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--ink-2);
+  font-family: var(--font-sans);
+}
+.acc__chart-x-label {
+  font-size: 12px;
+  fill: var(--ink-3);
+  font-family: var(--font-sans);
+}
+.acc__chart-line {
+  stroke: var(--chart-line);
+  stroke-width: 2.5;
+  stroke-linejoin: miter;
+  stroke-linecap: butt;
+  vector-effect: non-scaling-stroke;
+}
+.acc__chart-line--muted {
+  stroke: var(--chart-line-muted);
+  stroke-dasharray: 5 4;
+}
+.acc__chart-crosshair {
+  stroke: #c5cad3;
+  stroke-width: 1;
+}
+.acc__chart-dot {
+  fill: var(--chart-line);
+  stroke: #fff;
+  stroke-width: 1.5;
+  opacity: 0.85;
+}
+.acc__chart-dot--active {
+  opacity: 1;
+  stroke-width: 2;
+}
+
+.acc__chart-ranges {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+  margin-top: 12px;
+}
+.acc__chart-range {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background .15s var(--ease), color .15s var(--ease);
+}
+.acc__chart-range:hover {
+  color: var(--ink);
+}
+.acc__chart-range.is-active {
+  background: var(--forest);
+  color: #fff;
+}
+
+.acc__chart-skeleton {
+  height: 220px;
+  border-radius: var(--r-2);
+  background: linear-gradient(
+    180deg,
+    var(--bone) 0%,
+    rgba(63, 81, 71, 0.04) 45%,
+    var(--bone) 100%
+  );
+  position: relative;
+  overflow: hidden;
+}
+.acc__chart-skeleton-line {
+  position: absolute;
+  left: 54px;
+  right: 12px;
+  bottom: 36px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(63, 81, 71, 0.12);
+}
+.acc__chart-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 100%
+  );
+  animation: acc-chart-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes acc-chart-shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
+
+.acc__chart-sparse {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ink-4);
+  text-align: center;
+  line-height: 1.45;
+}
 
 .acc__chart-empty {
-  height: 200px;
+  height: 220px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--ink-4);
   font-size: 13.5px;
-}
-.acc__chart-yaxis {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--ink-4);
-  margin-top: 2px;
 }
 
 .acc__list { display: flex; flex-direction: column; gap: 22px; }

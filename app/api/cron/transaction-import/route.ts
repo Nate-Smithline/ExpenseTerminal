@@ -4,6 +4,7 @@ import { runSyncForDataSource } from "@/lib/data-sources/sync-runner";
 import { runAnalysisForIds } from "@/lib/ai/analyze-transactions";
 import { applyAllAutoSortRulesForUser } from "@/lib/auto-sort";
 import { applyAllMarkerRulesForUser } from "@/lib/triage/marker-rules";
+import { snapshotAllUsersNetWorth } from "@/lib/accounts/net-worth-snapshots";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -96,7 +97,10 @@ export async function GET(req: Request) {
     results.push(entry);
   }
 
-  return NextResponse.json({ ok: true, results });
+  // Step 4: Record per-account balance snapshots for net worth history.
+  const snapshotResult = await snapshotAllUsersNetWorth(supabase);
+
+  return NextResponse.json({ ok: true, results, snapshots: snapshotResult });
 }
 
 /**

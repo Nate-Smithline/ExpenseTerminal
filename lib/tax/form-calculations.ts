@@ -39,6 +39,13 @@ interface Deduction {
   amount: string | number;
 }
 
+/** Schedule C expense line key — matches DB values; empty/null → Line 27. */
+export function scheduleCLineKey(raw: string | null | undefined): string {
+  if (!raw) return "27";
+  const trimmed = String(raw).trim();
+  return trimmed || "27";
+}
+
 /**
  * Calculate deductible amount considering meal rule, deduction percent, and business_pct for Partial.
  */
@@ -52,24 +59,33 @@ function deductibleAmount(t: Transaction): number {
   return amt * effectivePct;
 }
 
+function passesExpenseDeductionFilters(t: Transaction): boolean {
+  const pct = t.deduction_percent ?? 100;
+  if (pct <= 0) return false;
+
+  const status = (t.status ?? "").toLowerCase();
+  if (status === "personal") return false;
+
+  const label = (t.quick_label ?? "").trim().toLowerCase();
+  if (label === "personal") return false;
+
+  return true;
+}
+
 export function filterDeductibleTransactions(transactions: Transaction[]): Transaction[] {
   return transactions.filter((t) => {
     if (!(t.transaction_type === "expense" || !t.transaction_type)) return false;
 
-    // Respect marker: Personal-marked expenses are not deductible
     const marker = t.marker ?? null;
     if (marker === "Personal") return false;
+    if (!passesExpenseDeductionFilters(t)) return false;
 
-    const pct = t.deduction_percent ?? 100;
-    if (pct <= 0) return false;
+    // Budget-tagged Business/Partial expenses count toward Schedule C regardless of triage status
+    if (marker === "Business" || marker === "Partial") return true;
 
+    // Legacy: reviewed expenses without an explicit budget marker
     const status = (t.status ?? "").toLowerCase();
-    if (status === "personal") return false;
-
-    const label = (t.quick_label ?? "").trim().toLowerCase();
-    if (label === "personal") return false;
-
-    return true;
+    return status === "completed" || status === "auto_sorted";
   });
 }
 
@@ -130,7 +146,7 @@ export function calculateTaxSummary(
 
   for (const t of expenses) {
     const amt = deductibleAmount(t);
-    const line = t.schedule_c_line || "27";
+    const line = scheduleCLineKey(t.schedule_c_line);
     lineBreakdown[line] = (lineBreakdown[line] || 0) + amt;
 
     const cat = t.category || "Uncategorized";

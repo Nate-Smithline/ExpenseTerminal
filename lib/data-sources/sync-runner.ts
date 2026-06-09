@@ -3,6 +3,8 @@ import type { StripeMode } from "@/lib/stripe";
 import { getStripeClient } from "@/lib/stripe";
 import { getPlaidClient, decryptAccessToken, extractPlaidError } from "@/lib/plaid";
 import { normalizeVendor } from "@/lib/vendor-matching";
+import { signedAccountBalance } from "@/lib/accounts/net-worth";
+import { upsertNetWorthSnapshots } from "@/lib/accounts/net-worth-snapshots";
 import { plaidPrimaryFromTransaction } from "@/lib/ai/categorize-shared";
 
 /**
@@ -476,7 +478,7 @@ export async function runSyncForDataSource(
     try {
       const { data: row, error: fetchError } = await (supabase as any)
         .from("data_sources")
-        .select("id, plaid_access_token, plaid_item_id, plaid_cursor, plaid_sync_start_date, plaid_account_id, pull_transactions")
+        .select("id, plaid_access_token, plaid_item_id, plaid_cursor, plaid_sync_start_date, plaid_account_id, pull_transactions, account_type")
         .eq("id", dataSourceId)
         .eq("user_id", userId)
         .single();
@@ -639,7 +641,10 @@ export async function runSyncForDataSource(
       }
 
       const balanceUpdate = freshBalance !== null
-        ? { balance: freshBalance, balance_updated_at: new Date().toISOString() }
+        ? {
+            balance: signedAccountBalance(row.account_type as string | null, freshBalance),
+            balance_updated_at: new Date().toISOString(),
+          }
         : {};
 
       // If ANY insert failed, keep the cursor we started from so the next sync
@@ -663,6 +668,16 @@ export async function runSyncForDataSource(
         })
         .eq("id", dataSourceId)
         .eq("user_id", userId);
+
+      if (freshBalance !== null) {
+        await upsertNetWorthSnapshots(supabase, userId, [
+          {
+            id: dataSourceId,
+            account_type: row.account_type as string | null,
+            balance: signedAccountBalance(row.account_type as string | null, freshBalance),
+          },
+        ]);
+      }
 
       const plaidDiagnostics: PlaidSyncDiagnostics = {
         plaidItemId: (row.plaid_item_id as string) ?? "",

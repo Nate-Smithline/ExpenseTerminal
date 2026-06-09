@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
+import { signedAccountBalance } from "@/lib/accounts/net-worth";
+import { upsertNetWorthSnapshots } from "@/lib/accounts/net-worth-snapshots";
 import { getPlaidClient, encryptAccessToken } from "@/lib/plaid";
 
 function getRequestHostname(req: Request): string {
@@ -209,7 +211,7 @@ export async function POST(req: Request) {
 
       const { data: createdRows } = await (supabase as any)
         .from("data_sources")
-        .select("id, plaid_account_id")
+        .select("id, plaid_account_id, account_type")
         .in("id", createdIds);
 
       for (const row of createdRows ?? []) {
@@ -218,10 +220,16 @@ export async function POST(req: Request) {
           (plaidAccounts.length === 1 ? (plaidAccounts[0] as PlaidAccount) : undefined);
         if (!match) continue;
 
+        const rawBalance = match.balances?.current ?? null;
+        const balance =
+          rawBalance === null
+            ? null
+            : signedAccountBalance(row.account_type as string | null, rawBalance);
+
         const { error: balErr } = await (supabase as any)
           .from("data_sources")
           .update({
-            balance: match.balances?.current ?? null,
+            balance,
             balance_updated_at: now2,
             mask: match.mask ?? null,
           })
@@ -234,6 +242,13 @@ export async function POST(req: Request) {
     } catch (balanceErr) {
       console.warn("[plaid/exchange-token] Balance fetch failed:", balanceErr instanceof Error ? balanceErr.message : String(balanceErr));
     }
+
+    const { data: snapshotSources } = await (supabase as any)
+      .from("data_sources")
+      .select("id, account_type, balance")
+      .eq("user_id", userId)
+      .in("id", createdIds);
+    await upsertNetWorthSnapshots(supabase, userId, snapshotSources ?? []);
 
     return NextResponse.json({
       success: true,

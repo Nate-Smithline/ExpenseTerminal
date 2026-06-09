@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { IExport, IChevronD, IChevronR } from "@/components/ui/icons";
 import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
+import { scheduleCLineKey } from "@/lib/tax/form-calculations";
+import { normalizeScheduleLineKey, scheduleLineByKey } from "@/lib/triage/schedule-c-display";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -65,6 +67,118 @@ function currentYear(): number {
   return new Date().getFullYear();
 }
 
+type RawTxn = Record<string, unknown> & {
+  id: string;
+  vendor?: string;
+  amount?: string | number;
+  date?: string;
+  transaction_type?: string;
+  schedule_c_line?: string | null;
+  marker?: string | null;
+  business_pct?: number | null;
+  deduction_percent?: number | null;
+  is_meal?: boolean | null;
+  status?: string | null;
+  quick_label?: string | null;
+};
+
+function incomeAmountForTxn(t: RawTxn): number {
+  const amt = Math.abs(Number(t.amount ?? 0));
+  if (t.marker === "Partial") return amt * ((t.business_pct ?? 50) / 100);
+  return amt;
+}
+
+function deductibleAmountForTxn(t: RawTxn): number {
+  const amt = Math.abs(Number(t.amount ?? 0));
+  const markerPct = t.marker === "Partial" ? (t.business_pct ?? 50) / 100 : 1;
+  const deductPct = (t.deduction_percent ?? 100) / 100;
+  const effectivePct = markerPct * deductPct;
+  if (t.is_meal) return amt * 0.5 * effectivePct;
+  return amt * effectivePct;
+}
+
+function toScheduleCTxn(t: RawTxn, amount: number): ScheduleCTxn {
+  const pct =
+    t.marker === "Partial"
+      ? Number(t.business_pct ?? 50)
+      : t.deduction_percent != null && Number(t.deduction_percent) < 100
+        ? Number(t.deduction_percent)
+        : undefined;
+  return {
+    id: String(t.id),
+    date: String(t.date ?? "").slice(0, 10),
+    vendor: String(t.vendor ?? "Unknown"),
+    amount,
+    deduction_percent: pct,
+  };
+}
+
+function buildScheduleC(raw: Record<string, unknown>): ScheduleCSection {
+  const allTxns = (raw.transactions ?? []) as RawTxn[];
+  const deductibleTxns = (raw.deductibleTransactions ?? []) as RawTxn[];
+
+  const incomeTxns = allTxns.filter(
+    (t) => t.transaction_type === "income" && t.marker !== "Personal",
+  );
+
+  const income: ScheduleCLine[] =
+    incomeTxns.length > 0
+      ? [
+          {
+            line: "1",
+            label: "Line 1 · Gross receipts or sales",
+            amount: incomeTxns.reduce((sum, t) => sum + incomeAmountForTxn(t), 0),
+            transactionCount: incomeTxns.length,
+            transactions: incomeTxns
+              .slice()
+              .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")))
+              .map((t) => toScheduleCTxn(t, incomeAmountForTxn(t))),
+          },
+        ]
+      : [];
+
+  const expenseTxns = deductibleTxns.filter((t) => t.transaction_type === "expense");
+  const groups = new Map<string, RawTxn[]>();
+  for (const t of expenseTxns) {
+    const key = scheduleCLineKey(t.schedule_c_line);
+    const list = groups.get(key) ?? [];
+    list.push(t);
+    groups.set(key, list);
+  }
+
+  const lineOrder = new Map(SCHEDULE_C_LINES.map((l, i) => [l.line, i]));
+  const expenseLines: ScheduleCLine[] = [];
+  for (const [lineKey, lineTxns] of groups.entries()) {
+    const amount = lineTxns.reduce((sum, t) => sum + deductibleAmountForTxn(t), 0);
+    if (amount <= 0) continue;
+    const def = scheduleLineByKey(lineKey);
+    const sorted = lineTxns
+      .slice()
+      .sort((a, b) => String(b.date ?? "").localeCompare(String(a.date ?? "")));
+    expenseLines.push({
+      line: lineKey,
+      label: def ? `Line ${def.line} · ${def.label}` : `Line ${lineKey}`,
+      amount,
+      transactionCount: sorted.length,
+      transactions: sorted.map((t) => toScheduleCTxn(t, deductibleAmountForTxn(t))),
+    });
+  }
+
+  const expenses = expenseLines.sort((a, b) => {
+      const oa =
+        lineOrder.get(a.line) ??
+        lineOrder.get(normalizeScheduleLineKey(a.line) ?? "") ??
+        999;
+      const ob =
+        lineOrder.get(b.line) ??
+        lineOrder.get(normalizeScheduleLineKey(b.line) ?? "") ??
+        999;
+      return oa - ob;
+    });
+
+  return { income, expenses };
+}
+
 function normalizeTaxSummary(raw: Record<string, unknown>): TaxSummary & { quarterlyEstimates: { quarter: number; amount: number }[] } {
   const grossIncome = Number(raw.grossIncome ?? raw.totalIncome ?? 0);
   const totalExpenses = Number(raw.totalExpenses ?? 0);
@@ -91,7 +205,7 @@ function normalizeTaxSummary(raw: Record<string, unknown>): TaxSummary & { quart
     effectiveRate: Number(raw.effectiveTaxRate ?? 0),
     taxRate: taxRatePct,
     quarterlyPayments: [],
-    scheduleC: { income: [], expenses: [] },
+    scheduleC: buildScheduleC(raw),
     quarterlyEstimates,
   };
 }
@@ -404,11 +518,7 @@ export function TaxPageClient() {
 
           {openParts.has("income") && (
             <div className="tax__part-body">
-              {incomeLines.length === 0 ? (
-                <div style={{ padding: "24px", textAlign: "center", color: "var(--ink-4)", fontSize: 13 }}>
-                  No income tagged as Business yet
-                </div>
-              ) : (
+              {incomeLines.length > 0 ? (
                 incomeLines.map(line => (
                   <ScheduleLine
                     key={line.line}
@@ -417,7 +527,11 @@ export function TaxPageClient() {
                     onToggle={() => toggleLine(line.line)}
                   />
                 ))
-              )}
+              ) : income === 0 ? (
+                <div style={{ padding: "24px", textAlign: "center", color: "var(--ink-4)", fontSize: 13 }}>
+                  No income tagged as Business yet
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -434,11 +548,7 @@ export function TaxPageClient() {
 
           {openParts.has("expenses") && (
             <div className="tax__part-body">
-              {expenseLines.length === 0 ? (
-                <div style={{ padding: "24px", textAlign: "center", color: "var(--ink-4)", fontSize: 13 }}>
-                  Tag transactions as Business or Partial in the Budget page to populate this automatically
-                </div>
-              ) : (
+              {expenseLines.length > 0 ? (
                 expenseLines.map(line => (
                   <ScheduleLine
                     key={line.line}
@@ -447,10 +557,14 @@ export function TaxPageClient() {
                     onToggle={() => toggleLine(line.line)}
                   />
                 ))
-              )}
+              ) : expenses === 0 ? (
+                <div style={{ padding: "24px", textAlign: "center", color: "var(--ink-4)", fontSize: 13 }}>
+                  Tag transactions as Business or Partial in the Budget page to populate this automatically
+                </div>
+              ) : null}
 
               {/* All Schedule C lines as zero stubs when no data */}
-              {expenseLines.length === 0 && (
+              {expenseLines.length === 0 && expenses === 0 && (
                 <div style={{ padding: "8px 24px 16px", display: "flex", flexDirection: "column", gap: 0 }}>
                   {SCHEDULE_C_LINES.map(def => (
                     <div
