@@ -442,14 +442,6 @@ export function AccountsPageClient() {
           </div>
         )}
 
-        <div className="acc-note">
-          <IInfo size={14} />
-          <span>
-            Use <strong>Edit</strong> on any account to sync, manage transaction imports, mark a tax savings account, or delete.
-            <strong>Balance only</strong> mode keeps balance &amp; net worth live without importing transactions.
-          </span>
-        </div>
-
         <div className="card acc__chart-card">
           <div className="acc__chart-stats">
             <div>
