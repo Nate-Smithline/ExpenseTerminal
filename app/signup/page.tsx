@@ -90,6 +90,22 @@ export default function SignupPage() {
         });
       } catch { /* best-effort */ }
 
+      if (userId) {
+        try {
+          await fetch("/api/email/notify-signup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: emailValue,
+              userId,
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
+              phone: parseUSPhone(phone) || null,
+            }),
+          });
+        } catch { /* best-effort */ }
+      }
+
       const params = new URLSearchParams({ email: emailValue });
       if (userId) params.set("userId", userId);
       router.push("/auth/verify-pending?" + params.toString());
