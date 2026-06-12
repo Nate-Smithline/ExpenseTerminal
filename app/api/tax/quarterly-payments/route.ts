@@ -22,6 +22,17 @@ const patchSchema = z.object({
   amount_paid: z.number().min(0).optional(),
 });
 
+function quarterlyPaymentsErrorMessage(
+  message: string,
+  code?: string,
+  fallback = "Failed to update payment",
+): string {
+  if (code === "PGRST205" || message.includes("quarterly_tax_payments")) {
+    return "Quarterly payments storage is not set up yet. Apply supabase/migrations/20260530_quarterly_tax_payments.sql in Supabase.";
+  }
+  return safeErrorMessage(message, fallback);
+}
+
 /**
  * GET /api/tax/quarterly-payments?tax_year=2026&estimated_per_quarter=1234.56
  * Returns quarterly rows with estimate + paid state.
@@ -55,7 +66,12 @@ export async function GET(req: NextRequest) {
     .eq("user_id", userId)
     .eq("tax_year", taxYear);
 
-  if (error) return NextResponse.json({ error: safeErrorMessage(error.message, "Failed to load payments") }, { status: 500 });
+  if (error) {
+    return NextResponse.json(
+      { error: quarterlyPaymentsErrorMessage(error.message, error.code, "Failed to load payments") },
+      { status: 500 },
+    );
+  }
 
   const byQuarter = new Map((rows ?? []).map((r: { quarter: number }) => [r.quarter, r]));
 
@@ -128,7 +144,10 @@ export async function PATCH(req: NextRequest) {
     .upsert(payload, { onConflict: "user_id,tax_year,quarter" });
 
   if (error) {
-    return NextResponse.json({ error: safeErrorMessage(error.message, "Failed to update payment") }, { status: 500 });
+    return NextResponse.json(
+      { error: quarterlyPaymentsErrorMessage(error.message, error.code) },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ ok: true });

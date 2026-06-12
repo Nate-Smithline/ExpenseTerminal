@@ -218,6 +218,7 @@ export function TaxPageClient() {
   const [qPayments, setQPayments] = useState<QuarterlyPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [markingQuarter, setMarkingQuarter] = useState<number | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [openParts, setOpenParts] = useState<Set<string>>(new Set(["income", "expenses"]));
   const [openLines, setOpenLines] = useState<Set<string>>(new Set());
 
@@ -273,20 +274,30 @@ export function TaxPageClient() {
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   }
 
-  const loadQuarterly = useCallback(async (y: number, quarterlyEstimates: { quarter: number; amount: number }[]) => {
+  const loadQuarterly = useCallback(async (
+    y: number,
+    quarterlyEstimates: { quarter: number; amount: number }[],
+    options?: { preservePaidOnError?: boolean },
+  ) => {
     const qParams = quarterlyEstimates.map((e) => `q${e.quarter}=${e.amount}`).join("&");
     const res = await fetch(`/api/tax/quarterly-payments?tax_year=${y}&${qParams}`);
     if (!res.ok) {
-      setQPayments(quarterlyEstimates.map(({ quarter, amount }) => ({
-        quarter,
-        dueDate: QUARTERLY_DUE[quarter],
-        amount,
-        paid: false,
-      })));
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      setPaymentError(body.error ?? "Couldn't load quarterly payment status.");
+      setQPayments((prev) => {
+        if (options?.preservePaidOnError && prev.length === 4) return prev;
+        return quarterlyEstimates.map(({ quarter, amount }) => ({
+          quarter,
+          dueDate: QUARTERLY_DUE[quarter],
+          amount,
+          paid: false,
+        }));
+      });
       return;
     }
     const { payments } = await res.json();
     setQPayments(payments ?? []);
+    setPaymentError(null);
   }, []);
 
   const load = useCallback(async (y: number) => {
@@ -314,6 +325,7 @@ export function TaxPageClient() {
 
   async function toggleQuarterPaid(quarter: number, paid: boolean, estimate: number) {
     setMarkingQuarter(quarter);
+    setPaymentError(null);
     try {
       const res = await fetch("/api/tax/quarterly-payments", {
         method: "PATCH",
@@ -325,10 +337,26 @@ export function TaxPageClient() {
           amount_paid: paid ? estimate : undefined,
         }),
       });
-      if (res.ok) {
-        const estimates = qPayments.map((p) => ({ quarter: p.quarter, amount: p.amount }));
-        await loadQuarterly(year, estimates);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        setPaymentError(body.error ?? "Couldn't save payment status. Try again.");
+        return;
       }
+
+      setQPayments((prev) =>
+        prev.map((p) =>
+          p.quarter === quarter
+            ? {
+                ...p,
+                paid,
+                amountPaid: paid ? estimate : 0,
+              }
+            : p,
+        ),
+      );
+
+      const estimates = qPayments.map((p) => ({ quarter: p.quarter, amount: p.amount }));
+      await loadQuarterly(year, estimates, { preservePaidOnError: true });
     } finally {
       setMarkingQuarter(null);
     }
@@ -453,6 +481,11 @@ export function TaxPageClient() {
             <p style={{ fontSize: 13, color: "var(--ink-3)", margin: 0, lineHeight: 1.5 }}>
               Quarterly IRS due dates for {year}. Estimates are based on your categorized business activity.
             </p>
+            {paymentError && (
+              <p style={{ fontSize: 13, color: "var(--ember)", margin: "10px 0 0", lineHeight: 1.5 }}>
+                {paymentError}
+              </p>
+            )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {qPayments.map((row) => (

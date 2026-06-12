@@ -102,6 +102,68 @@ function currentMonthKey(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function budgetLineIdAtPoint(x: number, y: number): string | null {
+  for (const el of document.elementsFromPoint(x, y)) {
+    if (!(el instanceof HTMLElement)) continue;
+    const lineEl = el.closest("[data-budget-line-id]");
+    if (lineEl instanceof HTMLElement) {
+      const id = lineEl.dataset.budgetLineId;
+      if (id) return id;
+    }
+  }
+  return null;
+}
+
+function nearestLineInGroup(
+  groupId: string,
+  clientY: number
+): { lineId: string; before: boolean } | null {
+  const groupEl = document.querySelector(`[data-budget-group-id="${groupId}"]`);
+  if (!groupEl) return null;
+  const lineEls = groupEl.querySelectorAll<HTMLElement>("[data-budget-line-id]");
+  if (lineEls.length === 0) return null;
+
+  for (const el of lineEls) {
+    const rect = el.getBoundingClientRect();
+    if (clientY >= rect.top && clientY <= rect.bottom) {
+      return {
+        lineId: el.dataset.budgetLineId!,
+        before: clientY < rect.top + rect.height / 2,
+      };
+    }
+  }
+
+  let best: { lineId: string; before: boolean; dist: number } | null = null;
+  for (const el of lineEls) {
+    const rect = el.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    const dist = Math.abs(clientY - mid);
+    const before = clientY < mid;
+    if (!best || dist < best.dist) {
+      best = { lineId: el.dataset.budgetLineId!, before, dist };
+    }
+  }
+  return best;
+}
+
+function resolveLineTarget(
+  e: React.DragEvent,
+  groupId: string
+): { lineId: string; before: boolean } | null {
+  const direct = budgetLineIdAtPoint(e.clientX, e.clientY);
+  if (direct) {
+    const el = document.querySelector<HTMLElement>(`[data-budget-line-id="${direct}"]`);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      return {
+        lineId: direct,
+        before: e.clientY < rect.top + rect.height / 2,
+      };
+    }
+  }
+  return nearestLineInGroup(groupId, e.clientY);
+}
+
 function applyLineUpdates(
   data: BudgetData,
   updates: { id: string; budget_group_id: string; position: number }[]
@@ -955,14 +1017,96 @@ export function BudgetPageClient() {
         clearLineDrag();
         return;
       }
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      const before = e.clientY < rect.top + rect.height / 2;
-      const toIndex = computeLineInsertIndex(group, dragId, lineId, before);
+      const resolved = resolveLineTarget(e, groupId);
+      const targetLineId = resolved?.lineId ?? lineId;
+      let before = resolved?.before;
+      if (before == null) {
+        const el = document.querySelector<HTMLElement>(
+          `[data-budget-line-id="${targetLineId}"]`
+        );
+        const rect = el?.getBoundingClientRect();
+        before = rect ? e.clientY < rect.top + rect.height / 2 : false;
+      }
+      const toIndex = computeLineInsertIndex(group, dragId, targetLineId, before);
       void handleLineDrop(e, groupId, toIndex, groupKind);
       return;
     }
-    const txId = e.dataTransfer.getData("txId");
-    if (txId) {
+    const txId = e.dataTransfer.getData("txId") || draggingTxId;
+    const targetLineId =
+      resolveLineTarget(e, groupId)?.lineId ?? lineId ?? dropTargetLineId;
+    if (txId && targetLineId) {
+      assignTxn(txId, targetLineId);
+    }
+    setDropTargetLineId(null);
+    setDraggingTxId(null);
+  }
+
+  function handleDragOverGroupBody(
+    e: React.DragEvent,
+    groupId: string,
+    groupKind?: string
+  ) {
+    e.preventDefault();
+    if (draggingLineId) {
+      if (groupKind && draggingLineKind && groupKind !== draggingLineKind) return;
+      const target = resolveLineTarget(e, groupId);
+      const group = data?.groups.find((g) => g.id === groupId);
+      if (target && group) {
+        const toIndex = computeLineInsertIndex(
+          group,
+          draggingLineId,
+          target.lineId,
+          target.before
+        );
+        e.dataTransfer.dropEffect = "move";
+        setLineDropTarget({ groupId, index: toIndex });
+      } else {
+        handleLineDragOverGroup(
+          e,
+          groupId,
+          group?.budget_lines.length ?? 0,
+          groupKind
+        );
+      }
+      return;
+    }
+    if (draggingTxId) {
+      const target = resolveLineTarget(e, groupId);
+      if (target) {
+        e.dataTransfer.dropEffect = "copy";
+        setDropTargetLineId(target.lineId);
+      }
+    }
+  }
+
+  function handleDropOnGroupBody(
+    e: React.DragEvent,
+    groupId: string,
+    groupKind?: string
+  ) {
+    e.preventDefault();
+    const lineDragId = e.dataTransfer.getData("budgetLineId");
+    if (lineDragId || draggingLineId) {
+      const group = data?.groups.find((g) => g.id === groupId);
+      const dragId = lineDragId || draggingLineId;
+      if (!group || !dragId) {
+        clearLineDrag();
+        return;
+      }
+      if (groupKind && draggingLineKind && groupKind !== draggingLineKind) {
+        clearLineDrag();
+        return;
+      }
+      const target = resolveLineTarget(e, groupId);
+      const toIndex = target
+        ? computeLineInsertIndex(group, dragId, target.lineId, target.before)
+        : group.budget_lines.length;
+      void handleLineDrop(e, groupId, toIndex, groupKind);
+      return;
+    }
+    const txId = e.dataTransfer.getData("txId") || draggingTxId;
+    const lineId = resolveLineTarget(e, groupId)?.lineId ?? dropTargetLineId;
+    if (txId && lineId) {
       assignTxn(txId, lineId);
     }
     setDropTargetLineId(null);
@@ -1093,7 +1237,28 @@ export function BudgetPageClient() {
 
       <div className="budget-layout">
         {/* ── Left: budget groups ── */}
-        <main className="budget-main" ref={budgetMainRef}>
+        <main
+          className="budget-main"
+          ref={budgetMainRef}
+          onDragOver={(e) => {
+            if (!draggingTxId) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            const lineId = budgetLineIdAtPoint(e.clientX, e.clientY);
+            if (lineId) setDropTargetLineId(lineId);
+          }}
+          onDrop={(e) => {
+            if (!draggingTxId) return;
+            const txId = e.dataTransfer.getData("txId") || draggingTxId;
+            const lineId =
+              budgetLineIdAtPoint(e.clientX, e.clientY) ?? dropTargetLineId;
+            if (!txId || !lineId) return;
+            e.preventDefault();
+            assignTxn(txId, lineId);
+            setDropTargetLineId(null);
+            setDraggingTxId(null);
+          }}
+        >
           {showEmptyState ? (
             /* Empty state */
             <div className="card" style={{ padding: "48px 32px", textAlign: "center" }}>
@@ -1244,6 +1409,8 @@ export function BudgetPageClient() {
                     onLineDragEnd={handleLineDragEnd}
                     onLineDragOverGroup={handleLineDragOverGroup}
                     onLineDrop={handleLineDrop}
+                    onDragOverGroupBody={handleDragOverGroupBody}
+                    onDropOnGroupBody={handleDropOnGroupBody}
                     onStartAddLine={() => addLine(group.id)}
                   />
                 ))}
@@ -2108,6 +2275,8 @@ interface BudgetGroupProps {
   onLineDragEnd: () => void;
   onLineDragOverGroup: (e: React.DragEvent, groupId: string, index: number, groupKind?: string) => void;
   onLineDrop: (e: React.DragEvent, groupId: string, index: number, groupKind?: string) => void;
+  onDragOverGroupBody: (e: React.DragEvent, groupId: string, groupKind?: string) => void;
+  onDropOnGroupBody: (e: React.DragEvent, groupId: string, groupKind?: string) => void;
   onStartAddLine: () => void;
   secondCol: "remaining" | "actual";
   onChangeSecondCol: (v: "remaining" | "actual") => void;
@@ -2123,6 +2292,7 @@ function BudgetGroup({
   dropTargetLineId, onDragOverLine, onDropOnLine,
   draggingLineId, draggingLineKind, lineDropTarget,
   onLineDragStart, onLineDragEnd, onLineDragOverGroup, onLineDrop,
+  onDragOverGroupBody, onDropOnGroupBody,
   onStartAddLine,
   secondCol, onChangeSecondCol,
 }: BudgetGroupProps) {
@@ -2151,7 +2321,10 @@ function BudgetGroup({
     lineDropTarget.index === group.budget_lines.length;
 
   return (
-    <div className={`group${canAcceptLineDrop ? " group--line-drop-ok" : ""}${draggingLineId && !canAcceptLineDrop ? " group--line-drop-no" : ""}`}>
+    <div
+      className={`group${canAcceptLineDrop ? " group--line-drop-ok" : ""}${draggingLineId && !canAcceptLineDrop ? " group--line-drop-no" : ""}`}
+      data-budget-group-id={group.id}
+    >
       {/* Group header */}
       <div className="group__head" onClick={!isEditingThisGroup ? onToggle : undefined}>
         <div className="group__head-l">
@@ -2182,7 +2355,11 @@ function BudgetGroup({
 
       {/* Expanded body */}
       {expanded && (
-        <div className="group__body">
+        <div
+          className="group__body"
+          onDragOver={e => onDragOverGroupBody(e, group.id, groupKind)}
+          onDrop={e => onDropOnGroupBody(e, group.id, groupKind)}
+        >
           {/* Column headers */}
           {group.budget_lines.length > 0 && (
             <div className="group__columns">
@@ -2339,10 +2516,15 @@ function BudgetLine({
     <div
       className={`line${selected ? " is-active" : ""}${isDropTarget ? " is-drop-target" : ""}${isDragging ? " is-line-dragging" : ""}${isLineDropBefore ? " is-line-drop-before" : ""}${isLineDropAfter ? " is-line-drop-after" : ""}`}
       data-kind={isIncome ? "income" : "expense"}
+      data-budget-line-id={line.id}
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
-      <div className="line__row" onClick={onSelect}>
+      <div
+        className="line__row"
+        onClick={onSelect}
+        onDragOver={e => e.preventDefault()}
+      >
         <button
           type="button"
           className="line__drag"
