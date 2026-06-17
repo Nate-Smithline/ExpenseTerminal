@@ -86,8 +86,7 @@ export function LandingPage() {
       {/* ── HERO ── */}
       <header className="lp-hero">
         <div className="wrap">
-          <span className="lp-hero__pill"><span className="dot" /> Built for the W-2 + side-hustle life</span>
-          <h1>One ledger for your <em>life</em> and your <em>hustle</em>.</h1>
+          <h1>Save More on <em>Taxes</em>. Stress Less on <em>Finances</em>.</h1>
           <p className="lp-hero__sub">
             ExpenseTerminal tags every transaction as personal, business, or a split — so the same click that balances your budget also files your taxes. Stop doing the books twice.
           </p>

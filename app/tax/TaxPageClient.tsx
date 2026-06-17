@@ -2,9 +2,22 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { HelpTooltip } from "@/components/HelpTooltip";
+import {
+  TransactionDetailPanel,
+  type PartialTransaction,
+  type TransactionDetailUpdate,
+} from "@/components/TransactionDetailPanel";
 import { IExport, IChevronD, IChevronR } from "@/components/ui/icons";
 import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
 import { scheduleCLineKey } from "@/lib/tax/form-calculations";
+import { MEAL_50_PCT_TOOLTIP, TAX_GOOD_FAITH_DISCLAIMER } from "@/lib/tax/disclaimer";
+import {
+  EXPENSE_RATE_BAND_LABELS,
+  EXPENSE_RATE_BAND_TOOLTIP,
+  expenseRateBand,
+  type ExpenseRateBand,
+} from "@/lib/tax/expense-benchmarks";
 import { normalizeScheduleLineKey, scheduleLineByKey } from "@/lib/triage/schedule-c-display";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -48,6 +61,8 @@ interface ScheduleCTxn {
   date: string;
   vendor: string;
   amount: number;
+  face_amount?: number;
+  is_meal?: boolean;
   deduction_percent?: number;
 }
 
@@ -63,6 +78,32 @@ function fmtMoney(n: number): string {
   return Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+function formatTxnDate(dateStr: string): string {
+  const iso = dateStr.length <= 10 ? `${dateStr}T12:00:00` : dateStr;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function rawToPartial(t: RawTxn): PartialTransaction {
+  return {
+    id: t.id,
+    vendor: String(t.vendor ?? ""),
+    amount: String(t.amount ?? 0),
+    date: String(t.date ?? "").slice(0, 10),
+    status: (t.status as PartialTransaction["status"]) ?? null,
+    transaction_type: t.transaction_type === "income" ? "income" : "expense",
+    category: (t.category as string | null) ?? null,
+    schedule_c_line: (t.schedule_c_line as string | null) ?? null,
+    deduction_percent: t.deduction_percent != null ? Number(t.deduction_percent) : null,
+    business_purpose: (t.business_purpose as string | null) ?? null,
+    quick_label: (t.quick_label as string | null) ?? null,
+    notes: (t.notes as string | null) ?? null,
+    is_meal: t.is_meal ?? null,
+    is_travel: t.is_travel ?? null,
+  };
+}
+
 function currentYear(): number {
   return new Date().getFullYear();
 }
@@ -74,12 +115,16 @@ type RawTxn = Record<string, unknown> & {
   date?: string;
   transaction_type?: string;
   schedule_c_line?: string | null;
+  category?: string | null;
   marker?: string | null;
   business_pct?: number | null;
   deduction_percent?: number | null;
   is_meal?: boolean | null;
+  is_travel?: boolean | null;
   status?: string | null;
   quick_label?: string | null;
+  business_purpose?: string | null;
+  notes?: string | null;
 };
 
 function incomeAmountForTxn(t: RawTxn): number {
@@ -88,13 +133,26 @@ function incomeAmountForTxn(t: RawTxn): number {
   return amt;
 }
 
-function deductibleAmountForTxn(t: RawTxn): number {
+function isMealTransaction(t: RawTxn): boolean {
+  if (t.is_meal) return true;
+  const key = normalizeScheduleLineKey(t.schedule_c_line);
+  if (key === "24b") return true;
+  const line = (t.schedule_c_line ?? "").toLowerCase();
+  if (line.includes("meal")) return true;
+  return String(t.category ?? "").toLowerCase().includes("meal");
+}
+
+function faceAmountForTxn(t: RawTxn): number {
   const amt = Math.abs(Number(t.amount ?? 0));
   const markerPct = t.marker === "Partial" ? (t.business_pct ?? 50) / 100 : 1;
+  return amt * markerPct;
+}
+
+function deductibleAmountForTxn(t: RawTxn): number {
+  const face = faceAmountForTxn(t);
   const deductPct = (t.deduction_percent ?? 100) / 100;
-  const effectivePct = markerPct * deductPct;
-  if (t.is_meal) return amt * 0.5 * effectivePct;
-  return amt * effectivePct;
+  if (isMealTransaction(t)) return face * 0.5 * deductPct;
+  return face * deductPct;
 }
 
 function toScheduleCTxn(t: RawTxn, amount: number): ScheduleCTxn {
@@ -104,11 +162,15 @@ function toScheduleCTxn(t: RawTxn, amount: number): ScheduleCTxn {
       : t.deduction_percent != null && Number(t.deduction_percent) < 100
         ? Number(t.deduction_percent)
         : undefined;
+  const meal = isMealTransaction(t);
+  const face = faceAmountForTxn(t);
   return {
     id: String(t.id),
     date: String(t.date ?? "").slice(0, 10),
     vendor: String(t.vendor ?? "Unknown"),
     amount,
+    face_amount: meal && face > amount ? face : undefined,
+    is_meal: meal,
     deduction_percent: pct,
   };
 }
@@ -140,7 +202,7 @@ function buildScheduleC(raw: Record<string, unknown>): ScheduleCSection {
   const expenseTxns = deductibleTxns.filter((t) => t.transaction_type === "expense");
   const groups = new Map<string, RawTxn[]>();
   for (const t of expenseTxns) {
-    const key = scheduleCLineKey(t.schedule_c_line);
+    const key = normalizeScheduleLineKey(t.schedule_c_line) ?? scheduleCLineKey(t.schedule_c_line);
     const list = groups.get(key) ?? [];
     list.push(t);
     groups.set(key, list);
@@ -221,6 +283,8 @@ export function TaxPageClient() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [openParts, setOpenParts] = useState<Set<string>>(new Set(["income", "expenses"]));
   const [openLines, setOpenLines] = useState<Set<string>>(new Set());
+  const [txnRecords, setTxnRecords] = useState<RawTxn[]>([]);
+  const [selectedTxn, setSelectedTxn] = useState<PartialTransaction | null>(null);
 
   function exportCsv() {
     const rows: string[][] = [
@@ -308,14 +372,17 @@ export function TaxPageClient() {
       if (!res.ok) {
         setSummary(null);
         setQPayments([]);
+        setTxnRecords([]);
         return;
       }
       const normalized = normalizeTaxSummary(raw);
       setSummary(normalized);
+      setTxnRecords((raw.transactions ?? []) as RawTxn[]);
       await loadQuarterly(y, normalized.quarterlyEstimates);
     } catch {
       setSummary(null);
       setQPayments([]);
+      setTxnRecords([]);
     } finally {
       setLoading(false);
     }
@@ -377,6 +444,33 @@ export function TaxPageClient() {
       return next;
     });
   }
+
+  function handleSelectTransaction(id: string) {
+    const t = txnRecords.find((tx) => tx.id === id);
+    if (t) setSelectedTxn(rawToPartial(t));
+  }
+
+  async function handleSaveTransaction(id: string, update: TransactionDetailUpdate) {
+    const res = await fetch("/api/transactions/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...update }),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(body.error ?? "Failed to update");
+    }
+    await load(year);
+    setSelectedTxn((prev) => {
+      if (!prev || prev.id !== id) return prev;
+      const next = { ...prev, ...update };
+      const amount: string =
+        typeof next.amount === "number" ? String(next.amount) : next.amount ?? "";
+      return { ...next, amount };
+    });
+  }
+
+  const panelTaxRate = summary?.taxRate ? summary.taxRate / 100 : 0.24;
 
   const netProfit = summary?.netProfit ?? 0;
   const income = summary?.totalIncome ?? 0;
@@ -558,6 +652,8 @@ export function TaxPageClient() {
                     line={line}
                     open={openLines.has(line.line)}
                     onToggle={() => toggleLine(line.line)}
+                    selectedTxnId={selectedTxn?.id ?? null}
+                    onSelectTransaction={handleSelectTransaction}
                   />
                 ))
               ) : income === 0 ? (
@@ -586,8 +682,11 @@ export function TaxPageClient() {
                   <ScheduleLine
                     key={line.line}
                     line={line}
+                    grossIncome={income}
                     open={openLines.has(line.line)}
                     onToggle={() => toggleLine(line.line)}
+                    selectedTxnId={selectedTxn?.id ?? null}
+                    onSelectTransaction={handleSelectTransaction}
                   />
                 ))
               ) : expenses === 0 ? (
@@ -607,8 +706,9 @@ export function TaxPageClient() {
                     >
                       <div />
                       <div className="schedline__line">Line {def.line} · {def.label}</div>
-                      <div className="schedline__count">0 transactions</div>
-                      <div className="schedline__amount">$0.00</div>
+                      <div className="schedline__meta">
+                        <div className="schedline__amount">$0.00</div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -616,6 +716,8 @@ export function TaxPageClient() {
             </div>
           )}
         </div>
+
+        <p className="tax__disclaimer">{TAX_GOOD_FAITH_DISCLAIMER}</p>
 
         {/* Footer — Net Profit (Line 31) */}
         <div className="tax__foot">
@@ -632,6 +734,17 @@ export function TaxPageClient() {
           </div>
         </div>
       </div>
+
+      {selectedTxn && (
+        <TransactionDetailPanel
+          transaction={selectedTxn}
+          onClose={() => setSelectedTxn(null)}
+          editable
+          onSave={handleSaveTransaction}
+          taxRate={panelTaxRate}
+          variant="tax"
+        />
+      )}
     </div>
   );
 }
@@ -640,33 +753,116 @@ export function TaxPageClient() {
 
 interface ScheduleLineProps {
   line: ScheduleCLine;
+  grossIncome?: number;
   open: boolean;
   onToggle: () => void;
+  selectedTxnId?: string | null;
+  onSelectTransaction?: (id: string) => void;
 }
 
-function ScheduleLine({ line, open, onToggle }: ScheduleLineProps) {
+function MealCapBadge() {
+  return (
+    <span className="schedline__meal-cap" onClick={(e) => e.stopPropagation()}>
+      <span className="schedline__cap-badge">50%</span>
+      <HelpTooltip text={MEAL_50_PCT_TOOLTIP} label="Meal deduction limit" />
+    </span>
+  );
+}
+
+function ExpenseRateBadge({ band }: { band: ExpenseRateBand }) {
+  return (
+    <span
+      className={`schedline__rate schedline__rate--${band}`}
+      onClick={(e) => e.stopPropagation()}
+      title={EXPENSE_RATE_BAND_TOOLTIP}
+    >
+      {EXPENSE_RATE_BAND_LABELS[band]}
+    </span>
+  );
+}
+
+function ScheduleLine({
+  line,
+  grossIncome = 0,
+  open,
+  onToggle,
+  selectedTxnId = null,
+  onSelectTransaction,
+}: ScheduleLineProps) {
+  const lineDef = scheduleLineByKey(line.line);
+  const isMealLine = lineDef?.mealRule || line.line === "24b";
+  const rateBand = expenseRateBand(line.line, line.amount, grossIncome);
+
   return (
     <div className={`schedline${open ? " is-open" : ""}`}>
       <div className="schedline__row" onClick={onToggle}>
         <div className="schedline__chev">
           {open ? <IChevronD size={13} /> : <IChevronR size={13} />}
         </div>
-        <div className="schedline__line">{line.label}</div>
-        <div className="schedline__count">{line.transactionCount} transaction{line.transactionCount !== 1 ? "s" : ""}</div>
-        <div className="schedline__amount">{fmtMoney(line.amount)}</div>
+        <div className="schedline__line">
+          {line.label}
+          {isMealLine && (
+            <span style={{ marginLeft: 8 }}>
+              <MealCapBadge />
+            </span>
+          )}
+        </div>
+        <div className="schedline__meta">
+          {rateBand && <ExpenseRateBadge band={rateBand} />}
+          <div className="schedline__amount">{fmtMoney(line.amount)}</div>
+        </div>
       </div>
 
       {open && line.transactions && line.transactions.length > 0 && (
         <div className="schedline__txns">
           {line.transactions.map(tx => (
-            <div key={tx.id} className="schedline__txn">
-              <div className="schedline__txn-date">{tx.date}</div>
+            <div
+              key={tx.id}
+              className={[
+                "schedline__txn",
+                onSelectTransaction ? "schedline__txn--clickable" : "",
+                selectedTxnId === tx.id ? "is-selected" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={
+                onSelectTransaction
+                  ? (e) => {
+                      e.stopPropagation();
+                      onSelectTransaction(tx.id);
+                    }
+                  : undefined
+              }
+              onKeyDown={
+                onSelectTransaction
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onSelectTransaction(tx.id);
+                      }
+                    }
+                  : undefined
+              }
+              role={onSelectTransaction ? "button" : undefined}
+              tabIndex={onSelectTransaction ? 0 : undefined}
+            >
+              <div className="schedline__txn-date">{formatTxnDate(tx.date)}</div>
               <div>{tx.vendor}</div>
-              <div className="schedline__txn-amount">
-                {tx.deduction_percent && tx.deduction_percent < 100
-                  ? `${tx.deduction_percent}% of `
-                  : ""}
-                {fmtMoney(tx.amount)}
+              <div className="schedline__txn-amount-wrap">
+                {tx.is_meal && <MealCapBadge />}
+                <span className="schedline__txn-amount">
+                  {tx.deduction_percent && tx.deduction_percent < 100
+                    ? `${tx.deduction_percent}% of `
+                    : ""}
+                  {fmtMoney(tx.amount)}
+                  {tx.face_amount != null && (
+                    <span className="schedline__face-note">
+                      {" "}
+                      of {fmtMoney(tx.face_amount)}
+                    </span>
+                  )}
+                </span>
               </div>
             </div>
           ))}

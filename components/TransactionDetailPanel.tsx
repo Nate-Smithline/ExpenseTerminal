@@ -4,6 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Database } from "@/lib/types/database";
 import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
+import { MEAL_50_PCT_TOOLTIP } from "@/lib/tax/disclaimer";
+import { HelpTooltip } from "@/components/HelpTooltip";
+import { IBolt } from "@/components/ui/icons";
+import {
+  categoryLabelForLine,
+  formatScheduleCLineShort,
+} from "@/lib/triage/schedule-c-display";
 
 type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
 
@@ -43,6 +50,8 @@ interface TransactionDetailPanelProps {
   editable?: boolean;
   onSave?: (id: string, update: TransactionDetailUpdate) => Promise<void>;
   taxRate?: number;
+  /** Tax page: triage-card layout, fixed viewport sidebar */
+  variant?: "default" | "tax";
 }
 
 const PANEL_MIN_WIDTH = 360;
@@ -52,6 +61,22 @@ const COLLAPSED_WIDTH = 72;
 function formatDate(date: string) {
   const d = new Date(date);
   return d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+}
+
+function formatShortDate(dateStr: string): string {
+  const iso = dateStr.length <= 10 ? `${dateStr}T12:00:00` : dateStr;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function formatPanelAmount(value: number, income: boolean): string {
+  const abs = Math.abs(value);
+  const formatted = abs.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return income ? `+$${formatted}` : `−$${formatted}`;
 }
 
 function PropertyRow({ label, children, alignTop = false }: { label: string; children: React.ReactNode; alignTop?: boolean }) {
@@ -88,8 +113,12 @@ export function TransactionDetailPanel({
   editable = false,
   onSave,
   taxRate = 0.24,
+  variant = "default",
 }: TransactionDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const isTaxVariant = variant === "tax";
+  const [taxEditing, setTaxEditing] = useState<"schedule" | "reason" | null>(null);
+  const [customReason, setCustomReason] = useState("");
 
   const [editCategory, setEditCategory] = useState(transaction.category ?? "");
   const [editScheduleLine, setEditScheduleLine] = useState(transaction.schedule_c_line ?? "");
@@ -244,10 +273,22 @@ export function TransactionDetailPanel({
   ]);
 
   useEffect(() => {
+    setTaxEditing(null);
+    setCustomReason("");
+  }, [transaction.id]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (isEscapedDocked) return;
-      // While the delete confirmation is open, ignore outside clicks so the
-      // panel doesn't close behind the modal (which is portaled to body).
       if (confirmingDelete) return;
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         onClose();
@@ -261,6 +302,10 @@ export function TransactionDetailPanel({
           if (!deleting) setConfirmingDelete(false);
           return;
         }
+        if (isTaxVariant) {
+          onClose();
+          return;
+        }
         setIsEscapedDocked(true);
       }
     }
@@ -270,7 +315,7 @@ export function TransactionDetailPanel({
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
     };
-  }, [onClose, isEscapedDocked, confirmingDelete, deleting]);
+  }, [onClose, isEscapedDocked, confirmingDelete, deleting, isTaxVariant]);
 
   function startResize(e: React.MouseEvent<HTMLButtonElement>) {
     if (isCollapsed) return;
@@ -290,23 +335,243 @@ export function TransactionDetailPanel({
     window.addEventListener("mouseup", onUp);
   }
 
-  return (
-    <>
-    <div
-      className={`fixed inset-0 min-h-[100dvh] z-50 flex justify-end ${isEscapedDocked ? "pointer-events-none" : ""}`}
-    >
-      {/* Backdrop */}
-      {!isEscapedDocked && <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />}
+  const isIncome = transaction.transaction_type === "income";
+  const reasonChips = [
+    ...new Set(
+      [transaction.quick_label, transaction.business_purpose, editBusinessPurpose].filter(
+        (s): s is string => Boolean(s?.trim()),
+      ),
+    ),
+  ].slice(0, 4);
 
-      {/* Panel */}
+  function applyScheduleLine(line: string) {
+    const label = categoryLabelForLine(line);
+    setEditScheduleLine(line);
+    if (label) setEditCategory(label);
+    setTaxEditing(null);
+  }
+
+  function applyReason(text: string) {
+    const trimmed = text.trim();
+    setEditBusinessPurpose(trimmed);
+    setTaxEditing(null);
+    setCustomReason("");
+  }
+
+  const showMealCap =
+    !transaction.is_travel &&
+    (transaction.is_meal ||
+      editScheduleLine === "24b" ||
+      (transaction.category ?? "").toLowerCase().includes("meal"));
+
+  const taxPanel = isTaxVariant ? (
+    <div className="txpanel-root">
+      <div className="txpanel-backdrop" aria-hidden onClick={onClose} />
+      <aside ref={panelRef} className="txpanel txpanel--tax" role="dialog" aria-modal="true">
+        <article className="tcard tcard--panel">
+          <div className="tcard__head">
+            <span className="tcard__cat">{editCategory || transaction.category || "Uncategorized"}</span>
+            <button type="button" className="txpanel__close" onClick={onClose} aria-label="Close">
+              <span className="material-symbols-rounded text-[20px]">close</span>
+            </button>
+          </div>
+
+          <div className="tcard__vendor">{transaction.vendor || "Unknown"}</div>
+          <div className="tcard__date">{formatShortDate(transaction.date)}</div>
+          <div className={`tcard__amount tcard__amount--panel${isIncome ? " is-in" : ""}`}>
+            {formatPanelAmount(amount, isIncome)}
+          </div>
+
+          {!isIncome && (
+            <div className="tcard__ai tcard__ai--panel" data-suggest="business">
+              <div className="tcard__ai-head">
+                <span className="tcard__ai-tag">
+                  <IBolt size={11} /> Tax details
+                </span>
+              </div>
+
+              <div className="tcard__ai-tax">
+                {showMealCap && (
+                  <div className="tcard__meal-cap">
+                    <span className="schedline__cap-badge">50%</span>
+                    <span className="tcard__meal-cap-text">Meal deduction cap</span>
+                    <HelpTooltip text={MEAL_50_PCT_TOOLTIP} label="Meal deduction limit" />
+                  </div>
+                )}
+
+                {taxEditing === "schedule" ? (
+                  <div className="tcard__ai-tax tcard__ai-tax--edit">
+                    <select
+                      className="tcard__ai-tax-select"
+                      value={editScheduleLine}
+                      onChange={(e) => applyScheduleLine(e.target.value)}
+                      autoFocus
+                    >
+                      <option value="">Schedule C line…</option>
+                      {SCHEDULE_C_LINES.map((l) => (
+                        <option key={l.line} value={l.line}>
+                          {l.line} — {l.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="tcard__ai-tax-btn"
+                      onClick={() => setTaxEditing(null)}
+                    >
+                      Done
+                    </button>
+                  </div>
+                ) : (
+                  <div className="tcard__ai-tax-line">
+                    <span className="tcard__ai-tax-k">Sch.&nbsp;C</span>
+                    <span className="tcard__ai-tax-v">
+                      {editScheduleLine
+                        ? formatScheduleCLineShort(editScheduleLine)
+                        : "—"}
+                    </span>
+                    {editable && onSave && (
+                      <button
+                        type="button"
+                        className="tcard__ai-tax-btn"
+                        onClick={() => setTaxEditing("schedule")}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {taxEditing === "reason" ? (
+                  <div className="tcard__ai-tax tcard__ai-tax--edit tcard__ai-tax--reason">
+                    {reasonChips.length > 0 && (
+                      <div className="tcard__ai-tax-chips">
+                        {reasonChips.map((label) => (
+                          <button
+                            key={label}
+                            type="button"
+                            className={`tcard__ai-tax-chip${
+                              editBusinessPurpose === label ? " is-active" : ""
+                            }`}
+                            onClick={() => applyReason(label)}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="tcard__ai-tax-reason-row">
+                      <input
+                        type="text"
+                        className="tcard__ai-tax-input"
+                        placeholder="Custom reason"
+                        value={customReason}
+                        onChange={(e) => setCustomReason(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            applyReason(customReason);
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        className="tcard__ai-tax-btn"
+                        onClick={() => applyReason(customReason || editBusinessPurpose)}
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="tcard__ai-tax-line">
+                    <span className="tcard__ai-tax-k">Reason</span>
+                    <span className="tcard__ai-tax-v tcard__ai-tax-v--reason">
+                      {editBusinessPurpose?.trim() || <em>—</em>}
+                    </span>
+                    {editable && onSave && (
+                      <button
+                        type="button"
+                        className="tcard__ai-tax-btn"
+                        onClick={() => {
+                          setCustomReason(editBusinessPurpose ?? "");
+                          setTaxEditing("reason");
+                        }}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <div className="tcard__ai-tax-line tcard__ai-tax-line--stack">
+                  <span className="tcard__ai-tax-k">Deduct</span>
+                  <div className="tcard__ai-tax-v tcard__ai-tax-v--deduct">
+                    {editable && onSave ? (
+                      <>
+                        <div className="tcard__ai-tax-chips">
+                          {SNAP_POINTS.map((pct) => (
+                            <button
+                              key={pct}
+                              type="button"
+                              className={`tcard__ai-tax-chip${
+                                editDeductionPct === pct ? " is-active" : ""
+                              }`}
+                              onClick={() => setEditDeductionPct(pct)}
+                            >
+                              {pct}%
+                            </button>
+                          ))}
+                        </div>
+                        <span className="tcard__deduct-note">
+                          ${((amount * editDeductionPct) / 100).toFixed(2)} deductible
+                          {showMealCap ? " before meal cap" : ""}
+                        </span>
+                      </>
+                    ) : (
+                      <span>
+                        {deductionPct}% · ${deductibleAmount.toFixed(2)} deductible
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {editable && onSave && (
+            <div className="txpanel__save">
+              {saveError ? (
+                <p className="txpanel__save-err">{saveError}</p>
+              ) : (
+                <p className="txpanel__save-ok">
+                  {saveState === "saving" || saving
+                    ? "Saving…"
+                    : saveState === "saved"
+                      ? "Saved"
+                      : "Changes save automatically"}
+                </p>
+              )}
+            </div>
+          )}
+        </article>
+      </aside>
+    </div>
+  ) : null;
+
+  const defaultPanel = !isTaxVariant ? (
+    <div
+      className={`txpanel-root ${isEscapedDocked ? "pointer-events-none" : ""}`}
+    >
+      {!isEscapedDocked && <div className="txpanel-backdrop" aria-hidden onClick={onClose} />}
+
       <div
         ref={panelRef}
-        className="relative bg-white border-l border-[#F0F1F7] shadow-xl h-full overflow-y-auto animate-in pointer-events-auto"
+        className="txpanel txpanel--default"
         style={{
-          animation: "slideInRight 0.2s ease-out",
           width: isCollapsed ? COLLAPSED_WIDTH : `min(${panelWidth}px, 100vw)`,
           transform: isEscapedDocked ? "translateX(100%)" : "translateX(0)",
-          transition: "transform 220ms ease-out",
         }}
       >
         <button
@@ -326,29 +591,31 @@ export function TransactionDetailPanel({
             >
               <span className="material-symbols-rounded text-[18px] text-mono-medium">keyboard_double_arrow_right</span>
             </button>
-            {!isCollapsed && (
+            {!isCollapsed && (onMarkPersonal || onDelete) && (
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void onMarkPersonal?.()}
-                  className="h-8 px-3 border border-warm-stock text-black text-xs font-medium flex items-center justify-center transition hover:bg-warm-stock"
-                  title="Mark as personal"
-                >
-                  Mark Personal
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!onDelete) return;
-                    setDeleteError(null);
-                    setConfirmingDelete(true);
-                  }}
-                  disabled={!onDelete}
-                  className="h-8 w-8 text-black flex items-center justify-center transition hover:bg-warm-stock disabled:opacity-40"
-                  title="Delete transaction"
-                >
-                  <span className="material-symbols-rounded text-[12px]">delete</span>
-                </button>
+                {onMarkPersonal && (
+                  <button
+                    type="button"
+                    onClick={() => void onMarkPersonal()}
+                    className="h-8 px-3 border border-warm-stock text-black text-xs font-medium flex items-center justify-center transition hover:bg-warm-stock"
+                    title="Mark as personal"
+                  >
+                    Mark Personal
+                  </button>
+                )}
+                {onDelete && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteError(null);
+                      setConfirmingDelete(true);
+                    }}
+                    className="h-8 w-8 text-black flex items-center justify-center transition hover:bg-warm-stock"
+                    title="Delete transaction"
+                  >
+                    <span className="material-symbols-rounded text-[12px]">delete</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -639,8 +906,16 @@ export function TransactionDetailPanel({
         </div>}
       </div>
     </div>
+  ) : null;
 
-    {confirmingDelete && createPortal(
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <>
+      {taxPanel}
+      {defaultPanel}
+
+    {confirmingDelete && (
       <div
         data-tx-confirm
         className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 px-4"
@@ -689,9 +964,9 @@ export function TransactionDetailPanel({
             </button>
           </div>
         </div>
-      </div>,
-      document.body
+      </div>
     )}
-    </>
+    </>,
+    document.body,
   );
 }

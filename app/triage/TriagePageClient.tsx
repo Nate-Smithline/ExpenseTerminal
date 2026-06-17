@@ -5,9 +5,11 @@ import Link from "next/link";
 import { PageHead } from "@/components/PageHead";
 import { PartialDial } from "@/components/PartialDial";
 import { MarkerPill, type Marker } from "@/components/MarkerPill";
+import { HelpTooltip } from "@/components/HelpTooltip";
 import { IBolt, ICheck, IRules, ITax, IReview } from "@/components/ui/icons";
 import { RULE_OFFER_TIMEOUT_MS, RULE_SEEN_THRESHOLD } from "@/lib/triage/constants";
 import { triageTransactionImpact } from "@/lib/triage/tax-rate";
+import { MEAL_50_PCT_TOOLTIP, TAX_GOOD_FAITH_DISCLAIMER } from "@/lib/tax/disclaimer";
 import type { TaxDraft, TriageQueueItem } from "@/lib/triage/queue-map";
 import { taxDraftFromQueueItem } from "@/lib/triage/queue-map";
 import {
@@ -673,6 +675,10 @@ export function TriagePageClient() {
         }
       />
 
+      <p className="tax__disclaimer" style={{ margin: "0 36px 0" }}>
+        {TAX_GOOD_FAITH_DISCLAIMER}
+      </p>
+
       <div className="triage">
         <section className="triage__main">
           {loading ? (
@@ -781,11 +787,15 @@ function TriageTaxDetails({
   onDraftChange,
   reasonSuggestions,
   enriching,
+  isMeal,
+  isTravel,
 }: {
   draft: TaxDraft | undefined;
   onDraftChange: (draft: TaxDraft) => void;
   reasonSuggestions: string[];
   enriching: boolean;
+  isMeal?: boolean;
+  isTravel?: boolean;
 }) {
   const [editing, setEditing] = useState<"schedule" | "reason" | null>(null);
   const [customReason, setCustomReason] = useState("");
@@ -836,6 +846,8 @@ function TriageTaxDetails({
   };
 
   const reasonText = draft.businessPurpose?.trim();
+  const showMealCap =
+    !isTravel && (isMeal || draft.scheduleCLine === "24b");
 
   if (editing === "schedule") {
     return (
@@ -926,6 +938,13 @@ function TriageTaxDetails({
 
   return (
     <div className="tcard__ai-tax">
+      {showMealCap && (
+        <div className="tcard__meal-cap">
+          <span className="schedline__cap-badge">50%</span>
+          <span className="tcard__meal-cap-text">Meal deduction cap</span>
+          <HelpTooltip text={MEAL_50_PCT_TOOLTIP} label="Meal deduction limit" />
+        </div>
+      )}
       <div className="tcard__ai-tax-line">
         <span className="tcard__ai-tax-k">Sch.&nbsp;C</span>
         <span className="tcard__ai-tax-v">
@@ -1041,6 +1060,8 @@ const TriageCard = memo(function TriageCard({
             onDraftChange={onTaxDraftChange}
             reasonSuggestions={reasonSuggestions}
             enriching={enriching}
+            isMeal={item.isMeal}
+            isTravel={item.isTravel}
           />
         ) : null}
       </div>
