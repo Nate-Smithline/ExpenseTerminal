@@ -18,7 +18,9 @@ import {
   expenseRateBand,
   type ExpenseRateBand,
 } from "@/lib/tax/expense-benchmarks";
+import { effectiveDisplayPercent, panelChipDeductionPercent } from "@/lib/triage/deduction-percent";
 import { normalizeScheduleLineKey, scheduleLineByKey } from "@/lib/triage/schedule-c-display";
+import { categoryForTaxDraftLine, normalizedTaxDraftLine } from "@/lib/triage/tax-draft";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -61,7 +63,8 @@ interface ScheduleCTxn {
   date: string;
   vendor: string;
   amount: number;
-  face_amount?: number;
+  display_percent?: number;
+  display_base?: number;
   is_meal?: boolean;
   deduction_percent?: number;
 }
@@ -85,7 +88,15 @@ function formatTxnDate(dateStr: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function chipPercentForTxn(t: RawTxn, listDisplayPercent?: number): number {
+  if (listDisplayPercent != null && Number.isFinite(listDisplayPercent)) {
+    return Math.min(100, Math.max(0, Math.round(listDisplayPercent)));
+  }
+  return panelChipDeductionPercent(t);
+}
+
 function rawToPartial(t: RawTxn): PartialTransaction {
+  const line = normalizedTaxDraftLine(t.schedule_c_line as string | null);
   return {
     id: t.id,
     vendor: String(t.vendor ?? ""),
@@ -93,9 +104,11 @@ function rawToPartial(t: RawTxn): PartialTransaction {
     date: String(t.date ?? "").slice(0, 10),
     status: (t.status as PartialTransaction["status"]) ?? null,
     transaction_type: t.transaction_type === "income" ? "income" : "expense",
-    category: (t.category as string | null) ?? null,
-    schedule_c_line: (t.schedule_c_line as string | null) ?? null,
+    category: (t.category as string | null) ?? categoryForTaxDraftLine(line) ?? null,
+    schedule_c_line: line,
     deduction_percent: t.deduction_percent != null ? Number(t.deduction_percent) : null,
+    marker: (t.marker as PartialTransaction["marker"]) ?? null,
+    business_pct: t.business_pct != null ? Number(t.business_pct) : null,
     business_purpose: (t.business_purpose as string | null) ?? null,
     quick_label: (t.quick_label as string | null) ?? null,
     notes: (t.notes as string | null) ?? null,
@@ -155,23 +168,29 @@ function deductibleAmountForTxn(t: RawTxn): number {
   return face * deductPct;
 }
 
+function rawAmountForTxn(t: RawTxn): number {
+  return Math.abs(Number(t.amount ?? 0));
+}
+
+function txnDisplayParts(t: RawTxn): { percent?: number; base?: number } {
+  const raw = rawAmountForTxn(t);
+  const percent = effectiveDisplayPercent(t);
+  if (percent == null) return {};
+  return { percent, base: raw };
+}
+
 function toScheduleCTxn(t: RawTxn, amount: number): ScheduleCTxn {
-  const pct =
-    t.marker === "Partial"
-      ? Number(t.business_pct ?? 50)
-      : t.deduction_percent != null && Number(t.deduction_percent) < 100
-        ? Number(t.deduction_percent)
-        : undefined;
   const meal = isMealTransaction(t);
-  const face = faceAmountForTxn(t);
+  const { percent, base } = txnDisplayParts(t);
   return {
     id: String(t.id),
     date: String(t.date ?? "").slice(0, 10),
     vendor: String(t.vendor ?? "Unknown"),
     amount,
-    face_amount: meal && face > amount ? face : undefined,
+    display_percent: percent,
+    display_base: base,
     is_meal: meal,
-    deduction_percent: pct,
+    deduction_percent: percent,
   };
 }
 
@@ -285,6 +304,7 @@ export function TaxPageClient() {
   const [openLines, setOpenLines] = useState<Set<string>>(new Set());
   const [txnRecords, setTxnRecords] = useState<RawTxn[]>([]);
   const [selectedTxn, setSelectedTxn] = useState<PartialTransaction | null>(null);
+  const [selectedChipPercent, setSelectedChipPercent] = useState<number | undefined>(undefined);
 
   function exportCsv() {
     const rows: string[][] = [
@@ -373,16 +393,19 @@ export function TaxPageClient() {
         setSummary(null);
         setQPayments([]);
         setTxnRecords([]);
-        return;
+        return null;
       }
       const normalized = normalizeTaxSummary(raw);
+      const records = (raw.transactions ?? []) as RawTxn[];
       setSummary(normalized);
-      setTxnRecords((raw.transactions ?? []) as RawTxn[]);
+      setTxnRecords(records);
       await loadQuarterly(y, normalized.quarterlyEstimates);
+      return records;
     } catch {
       setSummary(null);
       setQPayments([]);
       setTxnRecords([]);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -445,9 +468,11 @@ export function TaxPageClient() {
     });
   }
 
-  function handleSelectTransaction(id: string) {
+  function handleSelectTransaction(id: string, listDisplayPercent?: number) {
     const t = txnRecords.find((tx) => tx.id === id);
-    if (t) setSelectedTxn(rawToPartial(t));
+    if (!t) return;
+    setSelectedTxn(rawToPartial(t));
+    setSelectedChipPercent(chipPercentForTxn(t, listDisplayPercent));
   }
 
   async function handleSaveTransaction(id: string, update: TransactionDetailUpdate) {
@@ -460,7 +485,13 @@ export function TaxPageClient() {
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(body.error ?? "Failed to update");
     }
-    await load(year);
+    const records = await load(year);
+    const fresh = records?.find((tx) => tx.id === id);
+    if (fresh) {
+      setSelectedTxn(rawToPartial(fresh));
+      setSelectedChipPercent(chipPercentForTxn(fresh, effectiveDisplayPercent(fresh) ?? undefined));
+      return;
+    }
     setSelectedTxn((prev) => {
       if (!prev || prev.id !== id) return prev;
       const next = { ...prev, ...update };
@@ -737,8 +768,13 @@ export function TaxPageClient() {
 
       {selectedTxn && (
         <TransactionDetailPanel
+          key={selectedTxn.id}
           transaction={selectedTxn}
-          onClose={() => setSelectedTxn(null)}
+          initialDeductionPercent={selectedChipPercent}
+          onClose={() => {
+            setSelectedTxn(null);
+            setSelectedChipPercent(undefined);
+          }}
           editable
           onSave={handleSaveTransaction}
           taxRate={panelTaxRate}
@@ -757,7 +793,7 @@ interface ScheduleLineProps {
   open: boolean;
   onToggle: () => void;
   selectedTxnId?: string | null;
-  onSelectTransaction?: (id: string) => void;
+  onSelectTransaction?: (id: string, displayPercent?: number) => void;
 }
 
 function MealCapBadge() {
@@ -829,7 +865,7 @@ function ScheduleLine({
                 onSelectTransaction
                   ? (e) => {
                       e.stopPropagation();
-                      onSelectTransaction(tx.id);
+                      onSelectTransaction(tx.id, tx.display_percent);
                     }
                   : undefined
               }
@@ -839,7 +875,7 @@ function ScheduleLine({
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         e.stopPropagation();
-                        onSelectTransaction(tx.id);
+                        onSelectTransaction(tx.id, tx.display_percent);
                       }
                     }
                   : undefined
@@ -852,15 +888,13 @@ function ScheduleLine({
               <div className="schedline__txn-amount-wrap">
                 {tx.is_meal && <MealCapBadge />}
                 <span className="schedline__txn-amount">
-                  {tx.deduction_percent && tx.deduction_percent < 100
-                    ? `${tx.deduction_percent}% of `
-                    : ""}
-                  {fmtMoney(tx.amount)}
-                  {tx.face_amount != null && (
-                    <span className="schedline__face-note">
-                      {" "}
-                      of {fmtMoney(tx.face_amount)}
-                    </span>
+                  {tx.display_percent != null && tx.display_base != null ? (
+                    <>
+                      {tx.display_percent}% of {fmtMoney(tx.display_base)}
+                      <span className="schedline__face-note"> · {fmtMoney(tx.amount)}</span>
+                    </>
+                  ) : (
+                    fmtMoney(tx.amount)
                   )}
                 </span>
               </div>

@@ -7,17 +7,20 @@ import { SCHEDULE_C_LINES } from "@/lib/tax/schedule-c-lines";
 import { MEAL_50_PCT_TOOLTIP } from "@/lib/tax/disclaimer";
 import { HelpTooltip } from "@/components/HelpTooltip";
 import { IBolt } from "@/components/ui/icons";
+import { transactionDeductibleAmount } from "@/lib/tax/form-calculations";
+import { panelChipDeductionPercent } from "@/lib/triage/deduction-percent";
 import {
   categoryLabelForLine,
   formatScheduleCLineShort,
 } from "@/lib/triage/schedule-c-display";
+import { categoryForTaxDraftLine, normalizedTaxDraftLine } from "@/lib/triage/tax-draft";
 
 type TransactionRow = Database["public"]["Tables"]["transactions"]["Row"];
 
 /** Partial transaction shape from tax details summary (no description, ai_* etc.) */
 export type PartialTransaction = Pick<
   TransactionRow,
-  "id" | "vendor" | "amount" | "date" | "status" | "transaction_type" | "category" | "schedule_c_line" | "deduction_percent" | "business_purpose" | "quick_label" | "notes" | "is_meal" | "is_travel"
+  "id" | "vendor" | "amount" | "date" | "status" | "transaction_type" | "category" | "schedule_c_line" | "deduction_percent" | "business_purpose" | "quick_label" | "notes" | "is_meal" | "is_travel" | "marker" | "business_pct"
 > & {
   ai_confidence?: number | null;
   ai_reasoning?: string | null;
@@ -30,6 +33,7 @@ export type TransactionDetailUpdate = {
   category?: string | null;
   schedule_c_line?: string | null;
   deduction_percent?: number | null;
+  business_pct?: number | null;
   business_purpose?: string | null;
   notes?: string | null;
   vendor?: string;
@@ -52,6 +56,8 @@ interface TransactionDetailPanelProps {
   taxRate?: number;
   /** Tax page: triage-card layout, fixed viewport sidebar */
   variant?: "default" | "tax";
+  /** Pre-select chip % (e.g. from tax list row display_percent) */
+  initialDeductionPercent?: number | null;
 }
 
 const PANEL_MIN_WIDTH = 360;
@@ -104,6 +110,24 @@ function Tag({ children, variant = "default" }: { children: React.ReactNode; var
 
 const SNAP_POINTS = [0, 25, 50, 75, 100];
 
+function panelScheduleLine(transaction: TransactionRow | PartialTransaction): string {
+  return normalizedTaxDraftLine(transaction.schedule_c_line) ?? "";
+}
+
+function panelDeductionPercent(
+  transaction: TransactionRow | PartialTransaction,
+  initialPercent?: number | null,
+): number {
+  if (initialPercent != null && Number.isFinite(initialPercent)) {
+    return Math.min(100, Math.max(0, Math.round(initialPercent)));
+  }
+  return panelChipDeductionPercent(transaction);
+}
+
+function baselineChipPercent(transaction: TransactionRow | PartialTransaction): number {
+  return panelChipDeductionPercent(transaction);
+}
+
 export function TransactionDetailPanel({
   transaction,
   onClose,
@@ -114,15 +138,20 @@ export function TransactionDetailPanel({
   onSave,
   taxRate = 0.24,
   variant = "default",
+  initialDeductionPercent,
 }: TransactionDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const isTaxVariant = variant === "tax";
   const [taxEditing, setTaxEditing] = useState<"schedule" | "reason" | null>(null);
   const [customReason, setCustomReason] = useState("");
 
-  const [editCategory, setEditCategory] = useState(transaction.category ?? "");
-  const [editScheduleLine, setEditScheduleLine] = useState(transaction.schedule_c_line ?? "");
-  const [editDeductionPct, setEditDeductionPct] = useState(transaction.deduction_percent ?? 100);
+  const [editCategory, setEditCategory] = useState(
+    () => transaction.category ?? categoryForTaxDraftLine(transaction.schedule_c_line) ?? "",
+  );
+  const [editScheduleLine, setEditScheduleLine] = useState(() => panelScheduleLine(transaction));
+  const [editDeductionPct, setEditDeductionPct] = useState(() =>
+    panelDeductionPercent(transaction, initialDeductionPercent),
+  );
   const [editBusinessPurpose, setEditBusinessPurpose] = useState(transaction.business_purpose ?? "");
   const [editNotes, setEditNotes] = useState(transaction.notes ?? "");
   const [editVendor, setEditVendor] = useState(transaction.vendor ?? "");
@@ -163,8 +192,35 @@ export function TransactionDetailPanel({
   }
 
   const amount = Math.abs(Number(transaction.amount));
-  const deductionPct = transaction.deduction_percent ?? 100;
-  const deductibleAmount = amount * deductionPct / 100;
+  const resolveMealFlag = (scheduleLine: string | null, category: string | null) =>
+    !transaction.is_travel &&
+    (Boolean(transaction.is_meal) ||
+      scheduleLine === "24b" ||
+      String(category ?? "").toLowerCase().includes("meal"));
+  const deductionPct = panelDeductionPercent(transaction, initialDeductionPercent);
+  const deductibleForPercent = (chipPercent: number) => {
+    const scheduleLine = editScheduleLine || panelScheduleLine(transaction) || transaction.schedule_c_line;
+    const category = editCategory || transaction.category;
+    const isPartial = transaction.marker === "Partial";
+    return transactionDeductibleAmount({
+      amount: transaction.amount,
+      transaction_type: transaction.transaction_type ?? "expense",
+      schedule_c_line: scheduleLine,
+      category,
+      is_meal: resolveMealFlag(scheduleLine, category),
+      is_travel: transaction.is_travel ?? null,
+      deduction_percent: isPartial
+        ? (transaction.deduction_percent ?? 100)
+        : chipPercent,
+      date: transaction.date,
+      status: transaction.status,
+      quick_label: transaction.quick_label,
+      business_purpose: transaction.business_purpose,
+      marker: transaction.marker ?? null,
+      business_pct: isPartial ? chipPercent : (transaction.business_pct ?? 100),
+    });
+  };
+  const deductibleAmount = deductibleForPercent(deductionPct);
   const confidence = transaction.ai_confidence != null ? Number(transaction.ai_confidence) : null;
   const confPct = confidence != null ? Math.round(confidence * 100) : null;
 
@@ -178,8 +234,16 @@ export function TransactionDetailPanel({
   function getPendingUpdate(): TransactionDetailUpdate {
     const update: TransactionDetailUpdate = {};
     if (editCategory !== (transaction.category ?? "")) update.category = editCategory || null;
-    if (editScheduleLine !== (transaction.schedule_c_line ?? "")) update.schedule_c_line = editScheduleLine || null;
-    if (editDeductionPct !== (transaction.deduction_percent ?? 100)) update.deduction_percent = editDeductionPct;
+    if (editScheduleLine !== panelScheduleLine(transaction)) {
+      update.schedule_c_line = editScheduleLine || null;
+    }
+    if (editDeductionPct !== baselineChipPercent(transaction)) {
+      if (transaction.marker === "Partial") {
+        update.business_pct = editDeductionPct;
+      } else {
+        update.deduction_percent = editDeductionPct;
+      }
+    }
     if (editBusinessPurpose !== (transaction.business_purpose ?? "")) update.business_purpose = editBusinessPurpose || null;
     if (editNotes !== (transaction.notes ?? "")) update.notes = editNotes || null;
     if (editVendor !== (transaction.vendor ?? "")) update.vendor = editVendor.trim();
@@ -217,9 +281,10 @@ export function TransactionDetailPanel({
   }
 
   useEffect(() => {
-    setEditCategory(transaction.category ?? "");
-    setEditScheduleLine(transaction.schedule_c_line ?? "");
-    setEditDeductionPct(transaction.deduction_percent ?? 100);
+    const line = panelScheduleLine(transaction);
+    setEditCategory(transaction.category ?? categoryForTaxDraftLine(line) ?? "");
+    setEditScheduleLine(line);
+    setEditDeductionPct(panelDeductionPercent(transaction, initialDeductionPercent));
     setEditBusinessPurpose(transaction.business_purpose ?? "");
     setEditNotes(transaction.notes ?? "");
     setEditVendor(transaction.vendor ?? "");
@@ -235,6 +300,8 @@ export function TransactionDetailPanel({
     transaction.category,
     transaction.schedule_c_line,
     transaction.deduction_percent,
+    transaction.marker,
+    transaction.business_pct,
     transaction.business_purpose,
     transaction.notes,
     transaction.vendor,
@@ -243,6 +310,9 @@ export function TransactionDetailPanel({
     transaction.transaction_type,
     transaction.status,
     transaction.source,
+    transaction.is_meal,
+    transaction.is_travel,
+    initialDeductionPercent,
   ]);
 
   useEffect(() => {
@@ -525,7 +595,7 @@ export function TransactionDetailPanel({
                           ))}
                         </div>
                         <span className="tcard__deduct-note">
-                          ${((amount * editDeductionPct) / 100).toFixed(2)} deductible
+                          ${deductibleForPercent(editDeductionPct).toFixed(2)} deductible
                           {showMealCap ? " before meal cap" : ""}
                         </span>
                       </>
@@ -764,7 +834,7 @@ export function TransactionDetailPanel({
                   </button>
                 ))}
                 <span className="text-xs text-mono-light ml-1">
-                  (${((amount * editDeductionPct) / 100).toFixed(2)} deductible)
+                  (${deductibleForPercent(editDeductionPct).toFixed(2)} deductible)
                 </span>
               </div>
             ) : (

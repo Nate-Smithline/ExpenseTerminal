@@ -12,6 +12,7 @@ import { triageTransactionImpact } from "@/lib/triage/tax-rate";
 import { MEAL_50_PCT_TOOLTIP, TAX_GOOD_FAITH_DISCLAIMER } from "@/lib/tax/disclaimer";
 import type { TaxDraft, TriageQueueItem } from "@/lib/triage/queue-map";
 import { taxDraftFromQueueItem } from "@/lib/triage/queue-map";
+import { isExpenseTriageComplete, normalizedTaxDraftLine } from "@/lib/triage/tax-draft";
 import {
   formatScheduleCLineShort,
   SCHEDULE_C_LINES,
@@ -174,6 +175,7 @@ export function TriagePageClient() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [taxDrafts, setTaxDrafts] = useState<Record<string, TaxDraft>>({});
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
+  const [triageHint, setTriageHint] = useState<string | null>(null);
   const enrichedRef = useRef<Set<string>>(new Set());
   const busy = useRef(false);
 
@@ -224,6 +226,13 @@ export function TriagePageClient() {
   const stack = remaining.slice(0, 1);
   const hasPartial = mode === "expenses";
   const done = !loading && remaining.length === 0;
+  const currentTaxDraft = current ? taxDrafts[current.id] : undefined;
+  const expenseTaxReady =
+    mode !== "expenses" || isExpenseTriageComplete(currentTaxDraft);
+
+  useEffect(() => {
+    if (expenseTaxReady) setTriageHint(null);
+  }, [expenseTaxReady, current?.id]);
 
   useEffect(() => {
     if (!current || current.transactionType !== "expense") return;
@@ -258,7 +267,10 @@ export function TriagePageClient() {
         setTaxDrafts((prev) => ({
           ...prev,
           [txnId]: {
-            scheduleCLine: data.scheduleCLine ?? prev[txnId]?.scheduleCLine ?? null,
+            scheduleCLine:
+              normalizedTaxDraftLine(data.scheduleCLine) ??
+              prev[txnId]?.scheduleCLine ??
+              null,
             category: data.category ?? prev[txnId]?.category ?? null,
             quickLabel: data.quickLabels?.[0] ?? prev[txnId]?.quickLabel ?? null,
             businessPurpose:
@@ -352,8 +364,15 @@ export function TriagePageClient() {
     }
   };
 
+  const requireExpenseTaxReady = (): boolean => {
+    if (expenseTaxReady) return true;
+    setTriageHint("Add a Schedule C line and reason before marking as business.");
+    return false;
+  };
+
   const decide = (marker: Marker, pct?: number) => {
     if (busy.current || !current || !marker) return;
+    if (mode === "expenses" && marker !== "Personal" && !requireExpenseTaxReady()) return;
     const cur = current;
     const businessPct =
       marker === "Business" ? 100 : marker === "Personal" ? 0 : (pct ?? 50);
@@ -589,7 +608,7 @@ export function TriagePageClient() {
       if (partial !== null) {
         if (e.key === "Enter") {
           e.preventDefault();
-          decide("Partial", partial);
+          if (requireExpenseTaxReady()) decide("Partial", partial);
         }
         if (e.key === "Escape") {
           e.preventDefault();
@@ -602,13 +621,13 @@ export function TriagePageClient() {
         decide("Personal");
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        decide("Business");
+        if (requireExpenseTaxReady()) decide("Business");
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
         openPartial();
       } else if (e.key === "Enter") {
         e.preventDefault();
-        acceptAI();
+        if (requireExpenseTaxReady()) acceptAI();
       } else if (k === "s") {
         e.preventDefault();
         skip();
@@ -728,10 +747,14 @@ export function TriagePageClient() {
               </div>
 
               <div className="triage__dock">
+                {triageHint && (
+                  <p className="triage__hint">{triageHint}</p>
+                )}
                 <TriageActions
                   mode={mode}
                   current={current}
                   partial={partial}
+                  expenseTaxReady={expenseTaxReady}
                   onPersonal={() => decide("Personal")}
                   onBusiness={() => decide("Business")}
                   onPartialOpen={openPartial}
@@ -1081,6 +1104,7 @@ function TriageActions({
   mode,
   current,
   partial,
+  expenseTaxReady = true,
   onPersonal,
   onBusiness,
   onPartialOpen,
@@ -1092,6 +1116,7 @@ function TriageActions({
   mode: Mode;
   current?: TriageQueueItem;
   partial: number | null;
+  expenseTaxReady?: boolean;
   onPersonal: () => void;
   onBusiness: () => void;
   onPartialOpen: () => void;
@@ -1101,6 +1126,7 @@ function TriageActions({
   onSkip: () => void;
 }) {
   const hasPartial = mode === "expenses";
+  const needsTax = mode === "expenses" && !expenseTaxReady;
   const sugLabel = current
     ? markerLabel(current.suggest, Math.round(current.pct * 100))
     : "";
@@ -1115,6 +1141,7 @@ function TriageActions({
           type="button"
           className="tbtn tbtn--business tbtn--wide"
           onClick={onPartialCommit}
+          disabled={needsTax}
         >
           Apply split <kbd>⏎</kbd>
         </button>
@@ -1143,6 +1170,7 @@ function TriageActions({
             type="button"
             className={`tbtn tbtn--partial${current?.suggest === "Partial" ? " is-suggested" : ""}`}
             onClick={onPartialOpen}
+            disabled={needsTax}
           >
             <kbd>↓</kbd>
             <span className="tbtn__lbl">Partial</span>
@@ -1152,6 +1180,7 @@ function TriageActions({
           type="button"
           className={`tbtn tbtn--business${current?.suggest === "Business" ? " is-suggested" : ""}`}
           onClick={onBusiness}
+          disabled={needsTax}
         >
           <span className="tbtn__lbl">
             Business
@@ -1161,7 +1190,12 @@ function TriageActions({
         </button>
       </div>
       <div className="triage__accept">
-        <button type="button" className="triage__accept-btn" onClick={onAccept}>
+        <button
+          type="button"
+          className="triage__accept-btn"
+          onClick={onAccept}
+          disabled={needsTax}
+        >
           <IBolt size={12} /> Accept AI — <strong>{sugLabel}</strong> <kbd>⏎</kbd>
         </button>
         <button type="button" className="triage__skip" onClick={onSkip}>

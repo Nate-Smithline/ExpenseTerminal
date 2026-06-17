@@ -2,6 +2,7 @@ import type { Marker } from "@/components/MarkerPill";
 import { normalizeVendor } from "@/lib/vendor-matching";
 import { suggestionFromAiFields } from "@/lib/triage/suggestions";
 import { parseAiSuggestions } from "@/lib/triage/schedule-c-display";
+import { normalizedTaxDraftLine, categoryForTaxDraftLine } from "@/lib/triage/tax-draft";
 
 export type TriageQueueItem = {
   id: string;
@@ -115,14 +116,15 @@ export type TaxDraft = {
 };
 
 export function taxDraftFromQueueItem(item: TriageQueueItem): TaxDraft {
+  const line = normalizedTaxDraftLine(item.scheduleCLine);
   const purpose =
     item.businessPurpose?.trim() ||
     item.quickLabel?.trim() ||
     item.reasonSuggestions[0] ||
     null;
   return {
-    scheduleCLine: item.scheduleCLine,
-    category: item.category,
+    scheduleCLine: line,
+    category: item.category ?? categoryForTaxDraftLine(line),
     quickLabel: item.quickLabel ?? item.reasonSuggestions[0] ?? null,
     businessPurpose: purpose,
   };

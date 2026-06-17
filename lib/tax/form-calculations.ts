@@ -49,7 +49,7 @@ export function scheduleCLineKey(raw: string | null | undefined): string {
 /**
  * Calculate deductible amount considering meal rule, deduction percent, and business_pct for Partial.
  */
-function deductibleAmount(t: Transaction): number {
+export function transactionDeductibleAmount(t: Transaction): number {
   const amt = Math.abs(Number(t.amount));
   // Partial marker: apply business_pct first, then any other deduction rules
   const markerPct = t.marker === "Partial" ? (t.business_pct ?? 50) / 100 : 1;
@@ -145,7 +145,7 @@ export function calculateTaxSummary(
   const categoryBreakdown: Record<string, number> = {};
 
   for (const t of expenses) {
-    const amt = deductibleAmount(t);
+    const amt = transactionDeductibleAmount(t);
     const line = scheduleCLineKey(t.schedule_c_line);
     lineBreakdown[line] = (lineBreakdown[line] || 0) + amt;
 

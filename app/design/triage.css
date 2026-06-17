@@ -31,6 +31,23 @@
   margin-top: 18px;
   padding-top: 0;
 }
+.triage__hint {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--wheat-deep);
+  text-align: center;
+}
+.tbtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: var(--shadow-card) !important;
+}
+.triage__accept-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 /* ─── Deck ─────────────────────────────────────────────────── */
 .tdeck {

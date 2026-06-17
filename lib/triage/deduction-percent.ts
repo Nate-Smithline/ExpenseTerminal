@@ -34,6 +34,100 @@ export function defaultDeductionPercent(input: {
   return CATEGORY_DEDUCTION_DEFAULTS[key] ?? 100;
 }
 
+/** Stored deduction % for editing, or line default — not scaled by Partial business_pct. */
+export function storedDeductionPercent(input: {
+  deduction_percent?: number | null;
+  schedule_c_line?: string | null;
+  is_meal?: boolean | null;
+  is_travel?: boolean | null;
+}): number {
+  if (input.deduction_percent != null && Number.isFinite(Number(input.deduction_percent))) {
+    return Math.min(100, Math.max(0, Math.round(Number(input.deduction_percent))));
+  }
+  return defaultDeductionPercent({
+    scheduleCLine: input.schedule_c_line,
+    isMeal: Boolean(input.is_meal),
+    isTravel: Boolean(input.is_travel),
+  });
+}
+
+/** % to show in tax sidebar chips — matches tax list "Y% of $X" display. */
+export function effectivePanelDeductionPercent(input: {
+  marker?: string | null;
+  business_pct?: number | null;
+  deduction_percent?: number | null;
+  schedule_c_line?: string | null;
+  is_meal?: boolean | null;
+  is_travel?: boolean | null;
+}): number {
+  const stored =
+    input.deduction_percent != null && Number.isFinite(Number(input.deduction_percent))
+      ? Math.min(100, Math.max(0, Math.round(Number(input.deduction_percent))))
+      : null;
+
+  if (stored != null && stored < 100) return stored;
+
+  if (input.marker === "Partial") {
+    return Math.min(100, Math.max(0, Math.round(Number(input.business_pct ?? 50))));
+  }
+
+  return storedDeductionPercent(input);
+}
+
+export function effectiveDisplayPercent(input: {
+  marker?: string | null;
+  business_pct?: number | null;
+  deduction_percent?: number | null;
+}): number | null {
+  const stored =
+    input.deduction_percent != null && Number.isFinite(Number(input.deduction_percent))
+      ? Math.min(100, Math.max(0, Math.round(Number(input.deduction_percent))))
+      : null;
+
+  if (stored != null && stored < 100) return stored;
+
+  if (input.marker === "Partial") {
+    const biz = Math.min(100, Math.max(0, Math.round(Number(input.business_pct ?? 50))));
+    if (biz < 100) return biz;
+  }
+
+  return null;
+}
+
+/** Deduction % for sidebar chips — matches list display when present, else line defaults. */
+export function panelChipDeductionPercent(input: {
+  marker?: string | null;
+  business_pct?: number | null;
+  deduction_percent?: number | null;
+  schedule_c_line?: string | null;
+  is_meal?: boolean | null;
+  is_travel?: boolean | null;
+}): number {
+  return effectiveDisplayPercent(input) ?? effectivePanelDeductionPercent(input);
+}
+
+export function resolveTransactionDeductionPercent(input: {
+  marker?: string | null;
+  business_pct?: number | null;
+  deduction_percent?: number | null;
+  schedule_c_line?: string | null;
+  is_meal?: boolean | null;
+  is_travel?: boolean | null;
+}): number {
+  if (input.deduction_percent != null && Number.isFinite(Number(input.deduction_percent))) {
+    return Math.min(100, Math.max(0, Math.round(Number(input.deduction_percent))));
+  }
+  const marker = input.marker ?? "Business";
+  if (marker === "Personal") return 0;
+  return resolveTriageDeductionPercent({
+    marker: marker as "Personal" | "Business" | "Partial",
+    businessPct: marker === "Partial" ? (input.business_pct ?? 50) : 100,
+    scheduleCLine: input.schedule_c_line,
+    isMeal: Boolean(input.is_meal),
+    isTravel: Boolean(input.is_travel),
+  });
+}
+
 export function resolveTriageDeductionPercent(input: {
   marker: "Personal" | "Business" | "Partial";
   businessPct: number;

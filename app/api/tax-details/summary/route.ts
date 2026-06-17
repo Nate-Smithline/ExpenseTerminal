@@ -169,6 +169,7 @@ export async function GET(req: Request) {
   return NextResponse.json(
     {
       ...summary,
+      taxRate,
       taxYear,
       quarter,
       filingType: orgSettings?.filing_type ?? null,
