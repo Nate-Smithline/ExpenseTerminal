@@ -78,7 +78,7 @@ export function LandingPage() {
           </div>
           <div className="lp-nav__cta">
             <Link href="/login" className="lp-btn lp-btn--ghost">Sign in</Link>
-            <Link href="/signup" className="lp-btn lp-btn--primary">Start free</Link>
+            <Link href="/signup" className="lp-btn lp-btn--primary">Start saving</Link>
           </div>
         </div>
       </nav>
@@ -92,7 +92,7 @@ export function LandingPage() {
           </p>
           <div className="lp-hero__cta">
             <Link href="/signup" className="lp-btn lp-btn--primary lp-btn--lg">
-              Start free for 15 days <ArrowRight />
+              Start saving <ArrowRight />
             </Link>
             <a href="#how" className="lp-btn lp-btn--ghost lp-btn--lg">See how it works</a>
           </div>
@@ -382,17 +382,13 @@ export function LandingPage() {
       <section className="lp-final">
         <div className="wrap">
           <div className="reveal">
-            <h2>Your books, finally caught up — and staying that way.</h2>
-            <p>Join the side-hustlers who stopped dreading tax season.</p>
+            <h2>Keep <em>more</em> of what you earn. Less stress. Less <em>time</em>.</h2>
             <div className="lp-hero__cta">
               <Link href="/signup" className="lp-btn lp-btn--primary lp-btn--lg">
-                Start free for 15 days <ArrowRight />
+                Start saving <ArrowRight />
               </Link>
               <a href="#how" className="lp-btn lp-btn--ghost lp-btn--lg">See how it works</a>
             </div>
-            <p className="lp-hero__note" style={{ justifyContent: "center" }}>
-              No card required · Cancel anytime
-            </p>
           </div>
         </div>
       </section>
@@ -411,9 +407,7 @@ export function LandingPage() {
               <Link href="/request-demo">Support</Link>
             </div>
           </div>
-          <p className="lp-foot__copy">
-            &copy; 2026 ExpenseTerminal. Bank connections secured by Plaid. Tax figures are estimates — confirm with your CPA.
-          </p>
+          <p className="lp-foot__copy">&copy; 2026 ExpenseTerminal</p>
         </div>
       </footer>
     </div>
