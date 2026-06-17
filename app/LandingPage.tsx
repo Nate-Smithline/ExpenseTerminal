@@ -321,7 +321,7 @@ export function LandingPage() {
             <div className="lp-card lp-step reveal">
               <span className="lp-step__n">STEP 02</span>
               <h3>Tag in seconds</h3>
-              <p>Personal, business, or a split. Most are pre-sorted for you; you just confirm. The drag-and-drop budget keeps every dollar accounted for.</p>
+              <p>Personal, business, or a split. Pre-sorted automatically — you confirm. The drag-and-drop budget keeps every dollar accounted for.</p>
             </div>
             <div className="lp-card lp-step reveal">
               <span className="lp-step__n">STEP 03</span>
@@ -363,7 +363,7 @@ export function LandingPage() {
             </div>
             <div className="lp-card lp-worth reveal">
               <h3>Why it&rsquo;s worth it</h3>
-              <p>A freelance bookkeeper runs $200–400 a month. A tax-prep firm charges hundreds to untangle a year of mixed transactions. ExpenseTerminal keeps it clean all year — and usually pays for itself with a single deduction you&rsquo;d have missed.</p>
+              <p>A freelance bookkeeper runs $200–400 a month. A tax-prep firm charges hundreds to untangle a year of mixed transactions. ExpenseTerminal keeps it clean all year — and pays for itself with a single deduction you&rsquo;d have missed.</p>
               <div className="lp-worth__math">
                 <div className="r"><span className="l">Bookkeeper, monthly</span><span className="v neg">$250</span></div>
                 <div className="r"><span className="l">Year-end tax cleanup</span><span className="v neg">$400</span></div>
