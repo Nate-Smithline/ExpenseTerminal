@@ -3,12 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePlaidLink } from "react-plaid-link";
-import { IPlus, IInfo, ITrendUp, IClose } from "@/components/ui/icons";
-import { computeNetWorth } from "@/lib/accounts/net-worth";
-import {
-  buildNetWorthChartGeometry,
-  splitPathsAtIndex,
-} from "@/lib/accounts/net-worth-chart";
+import { IPlus, IInfo, IClose } from "@/components/ui/icons";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -20,8 +15,6 @@ interface DataSource {
   institution_name: string | null;
   institution: string | null;
   mask: string | null;
-  balance: number | null;
-  balance_updated_at: string | null;
   last_successful_sync_at: string | null;
   is_active: boolean;
   is_mixed_account: boolean;
@@ -33,15 +26,9 @@ interface DataSource {
 interface AccountGroup {
   label: string;
   accounts: DataSource[];
-  total: number;
-  isLiability: boolean;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
-
-function fmtCurrency(n: number): string {
-  return Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD" });
-}
 
 function initials(name: string): string {
   return name
@@ -64,10 +51,10 @@ function groupAccounts(sources: DataSource[]): AccountGroup[] {
   const other     = sources.filter(s => !["checking", "savings", "credit"].includes(s.account_type ?? ""));
 
   const groups: AccountGroup[] = [];
-  if (checking.length > 0) groups.push({ label: "Checking", accounts: checking, total: checking.reduce((s, a) => s + (a.balance ?? 0), 0), isLiability: false });
-  if (savings.length > 0)  groups.push({ label: "Savings",  accounts: savings,  total: savings.reduce((s, a) => s + (a.balance ?? 0), 0),  isLiability: false });
-  if (credit.length > 0)   groups.push({ label: "Credit cards", accounts: credit, total: credit.reduce((s, a) => s + (a.balance ?? 0), 0), isLiability: true });
-  if (other.length > 0)    groups.push({ label: "Other",    accounts: other,    total: other.reduce((s, a) => s + (a.balance ?? 0), 0),    isLiability: false });
+  if (checking.length > 0) groups.push({ label: "Checking", accounts: checking });
+  if (savings.length > 0)  groups.push({ label: "Savings",  accounts: savings });
+  if (credit.length > 0)   groups.push({ label: "Credit cards", accounts: credit });
+  if (other.length > 0)    groups.push({ label: "Other",    accounts: other });
   return groups;
 }
 
@@ -113,7 +100,6 @@ function lookbackStartDate(opt: LookbackOption): string | null {
 const LOAD_STEPS = [
   "Connecting to your accounts…",
   "Loading account details…",
-  "Fetching balances…",
   "Almost ready…",
 ];
 
@@ -121,7 +107,6 @@ const IMPORT_STEPS = [
   "Securely connecting to your bank…",
   "Verifying account credentials…",
   "Pulling account details…",
-  "Fetching current balance…",
   "Setting up transaction history…",
   "Importing transactions…",
   "Organizing your data…",
@@ -270,7 +255,7 @@ export function AccountsPageClient() {
       const syncIds: string[] = exchangeBody?.syncIds ?? exchangeBody?.dataSourceIds ?? [];
 
       if (syncIds.length > 0) {
-        setImportStep(5); // "Importing transactions…"
+        setImportStep(4); // "Importing transactions…"
         setImportPct(72);
 
         // Sync opted-in accounts in parallel — fire and collect results
@@ -379,7 +364,6 @@ export function AccountsPageClient() {
   // ── Derived ─────────────────────────────────────────────────────────────
 
   const groups = groupAccounts(sources);
-  const { assets, liabilities, netWorth } = computeNetWorth(sources);
 
   const hasAccounts = sources.length > 0;
   const connected = sources.filter(s => s.source_type === "plaid" || s.is_active).length;
@@ -394,10 +378,8 @@ export function AccountsPageClient() {
               ● {connected > 0 ? `${connected} connected` : "not connected"}
             </span>
           </div>
-          <h1 className="pagehead__title">
-            Net worth <em>{hasAccounts ? fmtCurrency(netWorth) : "—"}</em>
-          </h1>
-          <div className="pagehead__sub">Everything you own, everything you owe, in one place.</div>
+          <h1 className="pagehead__title">Accounts</h1>
+          <div className="pagehead__sub">Connect and manage your linked bank accounts.</div>
         </div>
         <div className="pagehead__right">
           <button
@@ -442,45 +424,6 @@ export function AccountsPageClient() {
           </div>
         )}
 
-        <div className="card acc__chart-card">
-          <div className="acc__chart-stats">
-            <div>
-              <div className="uppercase-label">Net worth · today</div>
-              <div className="money money--xl" style={{ marginTop: 6 }}>
-                {hasAccounts ? fmtCurrency(netWorth) : "—"}
-              </div>
-              {hasAccounts && (
-                <div className="acc__chart-delta">
-                  <ITrendUp size={14} />
-                  Tracking live
-                </div>
-              )}
-            </div>
-            <div className="acc__chart-meta">
-              <div>
-                <div className="uppercase-label">Assets</div>
-                <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>
-                  {hasAccounts ? fmtCurrency(assets) : "—"}
-                </div>
-              </div>
-              <div>
-                <div className="uppercase-label">Liabilities</div>
-                <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2, color: "var(--ink-3)" }}>
-                  {hasAccounts ? fmtCurrency(liabilities) : "—"}
-                </div>
-              </div>
-              <div>
-                <div className="uppercase-label">Accounts</div>
-                <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>
-                  {sources.length}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <NetWorthChart hasAccounts={hasAccounts} currentNetWorth={netWorth} reloadToken={sources.length} />
-        </div>
-
         {!hasAccounts ? (
           <div className="card" style={{ padding: "48px 32px", textAlign: "center" }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>🏦</div>
@@ -488,8 +431,7 @@ export function AccountsPageClient() {
               Connect your first account
             </div>
             <div style={{ fontSize: 14, color: "var(--ink-3)", marginBottom: 24, maxWidth: 360, margin: "0 auto 24px" }}>
-              Link your bank, credit cards, and investment accounts via Plaid.
-              Balances sync nightly; net worth is snapshotted once per day after sync.
+              Link your bank and credit card accounts via Plaid to import transactions.
             </div>
             <button className="btn btn--primary" onClick={openPlaidLink} disabled={linking}>
               <IPlus size={14} /> {linking ? "Connecting…" : "Add account"}
@@ -504,10 +446,6 @@ export function AccountsPageClient() {
                     <h3 className="acc__group-title">{group.label}</h3>
                     <div className="acc__group-sub">
                       {group.accounts.length} account{group.accounts.length !== 1 ? "s" : ""}
-                      {" · "}
-                      <span style={{ fontWeight: 600 }}>
-                        {group.total < 0 ? "−" : "+"}{fmtCurrency(Math.abs(group.total))}
-                      </span>
                     </div>
                   </div>
                 </div>
@@ -659,7 +597,7 @@ export function AccountsPageClient() {
                         className={`acc-txn-pref-btn${!wantsTxn ? " is-active" : ""}`}
                         onClick={() => setAccountTxnPrefs(p => ({ ...p, [key]: false }))}
                       >
-                        Balance only
+                        Transactions off
                       </button>
                     </div>
                   </div>
@@ -844,12 +782,12 @@ function AccountEditModal({
         <div className="acc-modal__body">
           <div className="acc-modal__row">
             <div>
-              <div className="acc-modal__row-label">Balance only</div>
+              <div className="acc-modal__row-label">Transactions off</div>
               <div className="acc-modal__row-hint">
-                When on, balance still syncs but no transactions are imported
+                When on, this account is linked but no transactions are imported
               </div>
             </div>
-            <label className="acct__toggle" title="Balance only mode">
+            <label className="acct__toggle" title="Disable transaction import">
               <input
                 type="checkbox"
                 checked={!account.pull_transactions}
@@ -906,274 +844,6 @@ function AccountEditModal({
   , document.body);
 }
 
-// ─── NetWorthChart ───────────────────────────────────────────────────────────
-
-interface NetWorthPoint {
-  date: string;
-  netWorth: number;
-  source?: "snapshot" | "live" | "synthetic";
-}
-
-interface NetWorthHistory {
-  points: NetWorthPoint[];
-  change: { absolute: number; pct: number | null };
-  current: number;
-  sparse?: boolean;
-  syntheticPrefix?: number;
-  snapshotDays?: number;
-}
-
-type ChartRange = { label: string; months: number; ytd?: boolean };
-
-const CHART_RANGES: ChartRange[] = [
-  { label: "1M", months: 1 },
-  { label: "YTD", months: 0, ytd: true },
-  { label: "1Y", months: 12 },
-  { label: "3Y", months: 36 },
-];
-
-function fmtChartAxisDate(date: string): string {
-  return new Date(date + "T12:00:00").toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function NetWorthChart({
-  hasAccounts,
-  currentNetWorth,
-  reloadToken,
-}: {
-  hasAccounts: boolean;
-  currentNetWorth: number;
-  reloadToken: number;
-}) {
-  const [history, setHistory] = useState<NetWorthHistory | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [rangeIdx, setRangeIdx] = useState(2); // 1Y
-  const [hover, setHover] = useState<number | null>(null);
-
-  const loadHistory = useCallback(async (range: ChartRange, signal: { cancelled: boolean }) => {
-    setLoading(true);
-    try {
-      await fetch("/api/net-worth/snapshot", { method: "POST" });
-      const params = range.ytd ? "ytd=1" : `months=${range.months}`;
-      const res = await fetch(`/api/net-worth/history?${params}`, { cache: "no-store" });
-      const json: NetWorthHistory | null = res.ok ? await res.json() : null;
-      if (!signal.cancelled) setHistory(json);
-    } catch {
-      if (!signal.cancelled) setHistory(null);
-    } finally {
-      if (!signal.cancelled) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!hasAccounts) return;
-    const signal = { cancelled: false };
-    void loadHistory(CHART_RANGES[rangeIdx] ?? CHART_RANGES[2], signal);
-    return () => {
-      signal.cancelled = true;
-    };
-  }, [hasAccounts, rangeIdx, reloadToken, loadHistory]);
-
-  if (!hasAccounts) {
-    return (
-      <div className="acc__chart-empty">
-        Connect a bank account to start tracking net worth
-      </div>
-    );
-  }
-
-  const points = history?.points ?? [];
-  const snapshotDays = history?.snapshotDays ?? points.filter((p) => p.source === "snapshot").length;
-  const hasSeries = points.length >= 1;
-  const isSparse = history?.sparse ?? points.length < 2;
-  const syntheticPrefix = history?.syntheticPrefix ?? 0;
-  const activeRange = CHART_RANGES[rangeIdx] ?? CHART_RANGES[2];
-  const geometry = buildNetWorthChartGeometry(points, {
-    rangeMonths: activeRange.months,
-    ytd: activeRange.ytd,
-    sparse: isSparse,
-  });
-  const paths =
-    geometry && syntheticPrefix > 0
-      ? splitPathsAtIndex(geometry, points, syntheticPrefix)
-      : null;
-
-  const change = history?.change;
-  const isUp = (change?.absolute ?? 0) >= 0;
-  const activeIdx = hover ?? (points.length - 1);
-  const activePoint = points[activeIdx];
-
-  return (
-    <div className="acc__chart acc__chart--fidelity">
-      {hover !== null && activePoint && (
-        <div className="acc__chart-hover acc__chart-hover--float">
-          <span className="acc__chart-hover-value">{fmtCurrency(activePoint.netWorth)}</span>
-          <span className="acc__chart-hover-date">{fmtChartAxisDate(activePoint.date)}</span>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="acc__chart-skeleton" aria-hidden="true">
-          <div className="acc__chart-skeleton-line" />
-        </div>
-      ) : !hasSeries || !geometry ? (
-        <div className="acc__chart-empty">
-          Connect an account to see your net worth trend.
-        </div>
-      ) : (
-        <>
-        <div className="acc__chart-plot">
-        <svg
-          viewBox={`0 0 ${geometry.layout.width} ${geometry.layout.height}`}
-          className="acc__chart-svg"
-          preserveAspectRatio="xMidYMid meet"
-          onMouseLeave={() => setHover(null)}
-        >
-          {geometry.ticks.map((tick) => (
-            <g key={tick.value}>
-              <line
-                x1={geometry.layout.padLeft}
-                y1={tick.y}
-                x2={geometry.layout.width - geometry.layout.padRight}
-                y2={tick.y}
-                className="acc__chart-grid"
-              />
-              <text
-                x={geometry.layout.width - geometry.layout.padRight + 10}
-                y={tick.y + 4}
-                textAnchor="start"
-                className="acc__chart-y-label"
-              >
-                {tick.label}
-              </text>
-            </g>
-          ))}
-
-          {paths?.dashedPath ? (
-            <>
-              <path
-                d={paths.dashedPath}
-                fill="none"
-                className="acc__chart-line acc__chart-line--muted"
-              />
-              <path
-                d={paths.solidPath}
-                fill="none"
-                className="acc__chart-line"
-              />
-            </>
-          ) : (
-            <path
-              d={geometry.linePath}
-              fill="none"
-              className="acc__chart-line"
-            />
-          )}
-
-          {points.map((p, i) =>
-            p.source !== "synthetic" ? (
-              <circle
-                key={`${p.date}-${i}`}
-                cx={geometry.xAt(i)}
-                cy={geometry.yAt(p.netWorth)}
-                r={hover === i ? 4.5 : 3}
-                className={`acc__chart-dot${hover === i ? " acc__chart-dot--active" : ""}`}
-              />
-            ) : null,
-          )}
-
-          {hover !== null && activePoint && (
-            <line
-              x1={geometry.xAt(activeIdx)}
-              y1={geometry.layout.padTop}
-              x2={geometry.xAt(activeIdx)}
-              y2={geometry.layout.padTop + geometry.layout.plotH}
-              className="acc__chart-crosshair"
-            />
-          )}
-
-          {geometry.xLabels.map((label) => (
-            <text
-              key={label.date}
-              x={label.x}
-              y={geometry.layout.height - 6}
-              textAnchor={label.anchor}
-              className="acc__chart-x-label"
-            >
-              {fmtChartAxisDate(label.date)}
-            </text>
-          ))}
-
-          {points.map((_, i) => (
-            <rect
-              key={i}
-              x={
-                i === 0
-                  ? 0
-                  : (geometry.xAt(i) + geometry.xAt(i - 1)) / 2
-              }
-              y={0}
-              width={
-                i === 0
-                  ? points.length > 1
-                    ? (geometry.xAt(0) + geometry.xAt(1)) / 2
-                    : geometry.layout.width
-                  : i === points.length - 1
-                    ? geometry.layout.width - (geometry.xAt(i) + geometry.xAt(i - 1)) / 2
-                    : (geometry.xAt(i + 1) - geometry.xAt(i - 1)) / 2
-              }
-              height={geometry.layout.height}
-              fill="transparent"
-              onMouseEnter={() => setHover(i)}
-            />
-          ))}
-        </svg>
-        </div>
-
-        <div className="acc__chart-ranges">
-          {CHART_RANGES.map((r, i) => (
-            <button
-              key={r.label}
-              type="button"
-              className={`acc__chart-range${rangeIdx === i ? " is-active" : ""}`}
-              onClick={() => setRangeIdx(i)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-
-        {change && hasSeries && !isSparse && (
-          <div className={`acc__chart-period-change${isUp ? " is-up" : " is-down"}`}>
-            {isUp ? "▲" : "▼"} {fmtCurrency(change.absolute)}
-            {change.pct !== null && ` (${isUp ? "+" : ""}${change.pct}%)`} over period
-          </div>
-        )}
-        {isSparse && (
-          <div className="acc__chart-sparse">
-            {snapshotDays === 1 ? (
-              <>
-                1 daily snapshot so far
-                {points.find((p) => p.source === "snapshot") && (
-                  <> ({fmtChartAxisDate(points.find((p) => p.source === "snapshot")!.date)} is when balances were first recorded)</>
-                )}
-                . A new point is added each night after sync.
-              </>
-            ) : (
-              `${snapshotDays} daily snapshots recorded. Dashed line is estimated until more nights accumulate.`
-            )}
-          </div>
-        )}
-        </>
-      )}
-    </div>
-  );
-}
-
 // ─── AccountCard ─────────────────────────────────────────────────────────────
 
 function AccountCard({
@@ -1184,7 +854,6 @@ function AccountCard({
   onEdit: () => void;
 }) {
   const displayName = accountLabel(account);
-  const balance = account.balance ?? 0;
   const isPlaid = account.source_type === "plaid";
   const lastSync = account.last_successful_sync_at
     ? new Date(account.last_successful_sync_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })
@@ -1211,14 +880,10 @@ function AccountCard({
         {account.name ?? account.account_type ?? "Account"}
       </div>
 
-      <div className="acct__balance">
-        {balance < 0 ? "−" : ""}{fmtCurrency(Math.abs(balance))}
-      </div>
-
       <div className="acct__foot">
         <span>
           {isPlaid && lastSync ? `Synced ${lastSync}` : "Manual"}
-          {!account.pull_transactions && " · Balance only"}
+          {!account.pull_transactions && " · Transactions off"}
         </span>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
           {account.is_tax_fund && (

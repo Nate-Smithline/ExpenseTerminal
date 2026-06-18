@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { createSupabaseRouteClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/middleware/auth";
 import { rateLimitForRequest, generalApiLimit } from "@/lib/middleware/rate-limit";
-import { signedAccountBalance } from "@/lib/accounts/net-worth";
-import { upsertNetWorthSnapshots } from "@/lib/accounts/net-worth-snapshots";
 import { getPlaidClient, encryptAccessToken } from "@/lib/plaid";
 
 function getRequestHostname(req: Request): string {
@@ -196,59 +194,6 @@ export async function POST(req: Request) {
       console.error("[plaid/exchange-token] All inserts failed:", detail);
       return NextResponse.json({ error: detail }, { status: 500 });
     }
-
-    // Fetch live balances from Plaid and persist them (non-fatal — requires balance+mask columns)
-    try {
-      const balanceRes = await plaid.accountsGet({ access_token: accessToken });
-      const plaidAccounts = balanceRes.data.accounts;
-      const now2 = new Date().toISOString();
-
-      type PlaidAccount = { account_id: string; mask?: string | null; balances?: { current?: number | null } };
-      // Build a lookup by account_id so we can match multi-account items
-      const byPlaidId = new Map(
-        plaidAccounts.map((a: PlaidAccount) => [a.account_id, a])
-      );
-
-      const { data: createdRows } = await (supabase as any)
-        .from("data_sources")
-        .select("id, plaid_account_id, account_type")
-        .in("id", createdIds);
-
-      for (const row of createdRows ?? []) {
-        const match: PlaidAccount | undefined =
-          (row.plaid_account_id ? byPlaidId.get(row.plaid_account_id) : undefined) ??
-          (plaidAccounts.length === 1 ? (plaidAccounts[0] as PlaidAccount) : undefined);
-        if (!match) continue;
-
-        const rawBalance = match.balances?.current ?? null;
-        const balance =
-          rawBalance === null
-            ? null
-            : signedAccountBalance(row.account_type as string | null, rawBalance);
-
-        const { error: balErr } = await (supabase as any)
-          .from("data_sources")
-          .update({
-            balance,
-            balance_updated_at: now2,
-            mask: match.mask ?? null,
-          })
-          .eq("id", row.id)
-          .eq("user_id", userId);
-        if (balErr) {
-          console.warn("[plaid/exchange-token] Balance update skipped (run migration):", balErr.message);
-        }
-      }
-    } catch (balanceErr) {
-      console.warn("[plaid/exchange-token] Balance fetch failed:", balanceErr instanceof Error ? balanceErr.message : String(balanceErr));
-    }
-
-    const { data: snapshotSources } = await (supabase as any)
-      .from("data_sources")
-      .select("id, account_type, balance")
-      .eq("user_id", userId)
-      .in("id", createdIds);
-    await upsertNetWorthSnapshots(supabase, userId, snapshotSources ?? []);
 
     return NextResponse.json({
       success: true,
