@@ -114,6 +114,13 @@ function budgetLineIdAtPoint(x: number, y: number): string | null {
   return null;
 }
 
+function budgetLineElementById(lineId: string): HTMLElement | null {
+  for (const el of document.querySelectorAll<HTMLElement>("[data-budget-line-id]")) {
+    if (el.dataset.budgetLineId === lineId) return el;
+  }
+  return null;
+}
+
 function nearestLineInGroup(
   groupId: string,
   clientY: number
@@ -248,9 +255,10 @@ export function BudgetPageClient() {
 
   // Drag state (transactions → line assignment; lines → reorder / move group)
   const [draggingTxId, setDraggingTxId] = useState<string | null>(null);
-  const [dropTargetLineId, setDropTargetLineId] = useState<string | null>(null);
   const [draggingLineId, setDraggingLineId] = useState<string | null>(null);
   const [lineDropTarget, setLineDropTarget] = useState<{ groupId: string; index: number } | null>(null);
+  const txDropTargetLineIdRef = useRef<string | null>(null);
+  const txnDragImageRef = useRef<HTMLElement | null>(null);
 
   // Marker editor popover
   const [markerPopTxId, setMarkerPopTxId] = useState<string | null>(null);
@@ -801,6 +809,25 @@ export function BudgetPageClient() {
     ? (data?.groups.find((g) => g.budget_lines.some((l) => l.id === draggingLineId))?.kind ?? "expense")
     : null;
 
+  function setTxnDropTargetLineId(lineId: string | null) {
+    const prev = txDropTargetLineIdRef.current;
+    if (prev === lineId) return;
+    if (prev) budgetLineElementById(prev)?.classList.remove("is-drop-target");
+    txDropTargetLineIdRef.current = lineId;
+    if (lineId) budgetLineElementById(lineId)?.classList.add("is-drop-target");
+  }
+
+  function clearTxnDragImage() {
+    txnDragImageRef.current?.remove();
+    txnDragImageRef.current = null;
+  }
+
+  function resetTxnDrag() {
+    setDraggingTxId(null);
+    setTxnDropTargetLineId(null);
+    clearTxnDragImage();
+  }
+
   function clearLineDrag() {
     setDraggingLineId(null);
     setLineDropTarget(null);
@@ -838,7 +865,7 @@ export function BudgetPageClient() {
     e.dataTransfer.setData("budgetLineId", lineId);
     e.dataTransfer.effectAllowed = "move";
     setDraggingLineId(lineId);
-    setDropTargetLineId(null);
+    setTxnDropTargetLineId(null);
   }
 
   function handleLineDragEnd() {
@@ -967,13 +994,30 @@ export function BudgetPageClient() {
   }
 
   function handleDragStart(e: React.DragEvent, txId: string) {
+    const txn =
+      txns.find(t => t.id === txId) ??
+      otherMonthsTxns.find(t => t.id === txId) ??
+      lineActivityTxns.find(t => t.id === txId) ??
+      txnMap.current.get(txId);
+
     e.dataTransfer.setData("txId", txId);
+    e.dataTransfer.effectAllowed = "copyMove";
+
+    clearTxnDragImage();
+    const dragImage = document.createElement("div");
+    dragImage.className = "txn-drag-preview";
+    dragImage.textContent = txn
+      ? `${txn.vendor || txn.description?.trim() || "Transaction"} · ${fmtMoney(Math.abs(txn.amount))}`
+      : "Move transaction";
+    document.body.appendChild(dragImage);
+    e.dataTransfer.setDragImage(dragImage, 16, 16);
+    txnDragImageRef.current = dragImage;
+
     setDraggingTxId(txId);
   }
 
   function handleDragEnd() {
-    setDraggingTxId(null);
-    setDropTargetLineId(null);
+    resetTxnDrag();
   }
 
   function handleDragOverLine(
@@ -995,7 +1039,7 @@ export function BudgetPageClient() {
       return;
     }
     e.dataTransfer.dropEffect = "copy";
-    setDropTargetLineId(lineId);
+    setTxnDropTargetLineId(lineId);
   }
 
   function handleDropOnLine(
@@ -1033,12 +1077,11 @@ export function BudgetPageClient() {
     }
     const txId = e.dataTransfer.getData("txId") || draggingTxId;
     const targetLineId =
-      resolveLineTarget(e, groupId)?.lineId ?? lineId ?? dropTargetLineId;
+      resolveLineTarget(e, groupId)?.lineId ?? lineId ?? txDropTargetLineIdRef.current;
     if (txId && targetLineId) {
       assignTxn(txId, targetLineId);
     }
-    setDropTargetLineId(null);
-    setDraggingTxId(null);
+    resetTxnDrag();
   }
 
   function handleDragOverGroupBody(
@@ -1074,7 +1117,7 @@ export function BudgetPageClient() {
       const target = resolveLineTarget(e, groupId);
       if (target) {
         e.dataTransfer.dropEffect = "copy";
-        setDropTargetLineId(target.lineId);
+        setTxnDropTargetLineId(target.lineId);
       }
     }
   }
@@ -1105,12 +1148,11 @@ export function BudgetPageClient() {
       return;
     }
     const txId = e.dataTransfer.getData("txId") || draggingTxId;
-    const lineId = resolveLineTarget(e, groupId)?.lineId ?? dropTargetLineId;
+    const lineId = resolveLineTarget(e, groupId)?.lineId ?? txDropTargetLineIdRef.current;
     if (txId && lineId) {
       assignTxn(txId, lineId);
     }
-    setDropTargetLineId(null);
-    setDraggingTxId(null);
+    resetTxnDrag();
   }
 
   // ── Marker updates ────────────────────────────────────────────────────────
@@ -1245,18 +1287,17 @@ export function BudgetPageClient() {
             e.preventDefault();
             e.dataTransfer.dropEffect = "copy";
             const lineId = budgetLineIdAtPoint(e.clientX, e.clientY);
-            if (lineId) setDropTargetLineId(lineId);
+            setTxnDropTargetLineId(lineId);
           }}
           onDrop={(e) => {
             if (!draggingTxId) return;
             const txId = e.dataTransfer.getData("txId") || draggingTxId;
             const lineId =
-              budgetLineIdAtPoint(e.clientX, e.clientY) ?? dropTargetLineId;
+              budgetLineIdAtPoint(e.clientX, e.clientY) ?? txDropTargetLineIdRef.current;
             if (!txId || !lineId) return;
             e.preventDefault();
             assignTxn(txId, lineId);
-            setDropTargetLineId(null);
-            setDraggingTxId(null);
+            resetTxnDrag();
           }}
         >
           {showEmptyState ? (
@@ -1399,7 +1440,7 @@ export function BudgetPageClient() {
                     onSaveGroupName={renameGroup}
                     onCancelEditGroupName={() => setEditingGroupName(null)}
                     onRequestDeleteGroup={setDeleteGroupId}
-                    dropTargetLineId={dropTargetLineId}
+                    dropTargetLineId={null}
                     onDragOverLine={handleDragOverLine}
                     onDropOnLine={handleDropOnLine}
                     draggingLineId={draggingLineId}
@@ -2743,30 +2784,41 @@ function DonutChart({ segments, centerLabel, centerValue }: {
   const total = segments.reduce((s, x) => s + Math.max(0, x.value), 0);
   if (total === 0) return null;
 
-  let accumulated = 0;
+  const donutSegments = segments.reduce<{
+    accumulated: number;
+    items: Array<{ segment: DonutSegment; dash: number; offset: number; index: number }>;
+  }>(
+    (acc, segment, index) => {
+      const value = Math.max(0, segment.value);
+      if (value === 0) return acc;
+      const dash = (value / total) * C;
+      return {
+        accumulated: acc.accumulated + dash,
+        items: [
+          ...acc.items,
+          { segment, dash, offset: C / 4 - acc.accumulated, index },
+        ],
+      };
+    },
+    { accumulated: 0, items: [] }
+  ).items;
+
   return (
     <div className="summary__donut-wrap" style={{ width: 120, height: 120, flexShrink: 0 }}>
       <svg width="120" height="120" viewBox="0 0 100 100" aria-hidden="true">
         {/* Track */}
         <circle cx="50" cy="50" r={R} fill="none" stroke="var(--bone-3)" strokeWidth="13" />
-        {segments.map((seg, i) => {
-          const v = Math.max(0, seg.value);
-          if (v === 0) return null;
-          const dash = (v / total) * C;
-          const offset = C / 4 - accumulated;
-          accumulated += dash;
-          return (
-            <circle
-              key={i}
-              cx="50" cy="50" r={R}
-              fill="none"
-              stroke={seg.color}
-              strokeWidth="13"
-              strokeDasharray={`${dash} ${C}`}
-              strokeDashoffset={offset}
-            />
-          );
-        })}
+        {donutSegments.map(({ segment, dash, offset, index }) => (
+          <circle
+            key={index}
+            cx="50" cy="50" r={R}
+            fill="none"
+            stroke={segment.color}
+            strokeWidth="13"
+            strokeDasharray={`${dash} ${C}`}
+            strokeDashoffset={offset}
+          />
+        ))}
       </svg>
       <div className="summary__donut-center">
         <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--ink-3)" }}>

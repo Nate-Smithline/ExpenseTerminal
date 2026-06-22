@@ -53,9 +53,10 @@ function LoginContent() {
       }
 
       const user = data.user;
+      const metadata = user?.user_metadata as { email_confirm?: boolean } | undefined;
       const emailConfirmed =
         !!user &&
-        (user.email_confirmed_at != null || (user.user_metadata as any)?.email_confirm === true);
+        (user.email_confirmed_at != null || metadata?.email_confirm === true);
 
       if (!emailConfirmed) {
         try {
@@ -78,8 +79,13 @@ function LoginContent() {
         try {
           await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
         } catch { /* non-fatal */ }
+        const nextParam = searchParams.get("next");
+        const destination =
+          nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+            ? nextParam
+            : "/triage";
         router.refresh();
-        router.push("/inbox");
+        router.push(destination);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not connect. Check your network and try again.";
@@ -96,7 +102,7 @@ function LoginContent() {
           Welcome back
         </h1>
         <p style={{ fontSize: 14, color: "var(--ink-3)", marginTop: 4 }}>
-          Sign in to your ExpenseTerminal account.
+          Keep swiping transactions into deductions, budgets, and your live Schedule C.
         </p>
       </div>
 

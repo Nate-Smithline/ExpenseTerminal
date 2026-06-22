@@ -7,10 +7,10 @@ import { FaqJsonLd } from "@/components/SeoJsonLd";
 
 export const metadata: Metadata = {
   title: {
-    absolute: "ExpenseTerminal — AI-powered expense tracking for self‑employed tax deductions",
+    absolute: "ExpenseTerminal — Tax deductions that sort themselves, for creators & small businesses",
   },
   description:
-    "Inbox-first expense tracking and tax deduction software that helps self-employed professionals and small businesses categorize transactions, track write-offs, and export audit-ready reports.",
+    "ExpenseTerminal is bookkeeping and tax software for creators, freelancers, and small businesses. Swipe each transaction personal or business and your deductions, budget, and IRS Schedule C build themselves — with automatic quarterly tax set-aside.",
   alternates: {
     canonical: "https://expenseterminal.com/",
   },
@@ -31,17 +31,17 @@ export default async function Home() {
           {
             question: "What is ExpenseTerminal?",
             answer:
-              "ExpenseTerminal is an AI-powered expense tracking and tax deduction platform for self-employed professionals and small businesses. It helps you categorize transactions, organize receipts, and prepare audit-ready reports so you can keep more of what you earn at tax time.",
+              "ExpenseTerminal is bookkeeping and tax software for creators, freelancers, and small businesses. You sort each transaction as personal, business, or a percentage split with a quick swipe, and that single tag builds both your monthly budget and your IRS Schedule C, so you never do tax bookkeeping twice.",
           },
           {
-            question: "Who is ExpenseTerminal for?",
+            question: "Who is it for?",
             answer:
-              "ExpenseTerminal is built for self-employed professionals, freelancers, and small business owners who want a simple way to track expenses and capture every eligible tax deduction without building complex spreadsheets.",
+              "Creators, freelancers, contractors, and small business owners — designers, photographers, coaches, consultants, drivers, sellers, and content creators. If your personal and business spending share the same bank accounts and cards, ExpenseTerminal is built for exactly that mix.",
           },
           {
-            question: "How does ExpenseTerminal help with tax deductions?",
+            question: "Does it calculate my quarterly taxes?",
             answer:
-              "ExpenseTerminal connects to your financial data or CSV uploads, uses AI to map transactions to IRS-friendly categories, and tracks key deduction areas like mileage, home office, and health insurance. It then generates audit-friendly reports that mirror what tax preparers expect.",
+              "Yes. As income and expenses are tagged, ExpenseTerminal maintains a live estimate of self-employment and federal income tax and tells you how much to set aside for each quarter, and emails you before each deadline. These are estimates to guide your set-aside; confirm final figures with your CPA.",
           },
         ]}
       />

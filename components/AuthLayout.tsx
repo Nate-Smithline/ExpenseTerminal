@@ -47,22 +47,21 @@ export function AuthLayout({ children, isLoading = false }: AuthLayoutProps) {
             color: "#fff", fontSize: 26, fontWeight: 700, lineHeight: 1.2,
             letterSpacing: "-.025em", maxWidth: "22ch", marginBottom: 18, marginTop: 0,
           }}>
-            One ledger for your{" "}
-            <em style={{ fontStyle: "normal", color: "var(--forest-mid)" }}>life</em>{" "}
-            and your{" "}
-            <em style={{ fontStyle: "normal", color: "var(--forest-mid)" }}>hustle</em>.
+            Swipe right on the{" "}
+            <em style={{ fontStyle: "normal", color: "var(--forest-mid)" }}>write-offs</em>.
+            We do the rest.
           </p>
           <p style={{ color: "var(--ink-5)", fontSize: 14, lineHeight: 1.6, maxWidth: "38ch", margin: 0 }}>
-            Tag every transaction as personal, business, or a split — and watch your Schedule C write itself.
+            Swipe transactions personal or business. ExpenseTerminal turns each choice into deductions, budgets, and a live Schedule C.
           </p>
         </div>
 
         {/* Trust badges */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {[
-            "Connects to 12,000+ banks via Plaid",
+            "Swiping for Savings",
             "Live Schedule C as you tag",
-            "15-day free trial — no card required",
+            "15-day free trial before your first charge",
           ].map((t) => (
             <div key={t} style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--forest-mid)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">

@@ -3,27 +3,36 @@ import { getResendClient, getFromAddress, RESEND_TIMEOUT_MS } from "@/lib/email/
 import { withRetry } from "@/lib/api/retry";
 import { isValidEmail } from "@/lib/validation/email";
 
-const DEMO_REQUEST_TO =
-  process.env.REQUEST_DEMO_TO || "expenseterminal@outlook.com";
+const DEMO_REQUEST_TO = Array.from(
+  new Set(
+    [process.env.REQUEST_DEMO_TO, "expenseterminal@outlook.com"].filter(
+      (email): email is string => Boolean(email)
+    )
+  )
+);
 
 function demoRequestEmailHtml(body: {
-  companyName: string;
+  companyName?: string;
   contactName: string;
   email: string;
   businessType?: string;
+  revenue?: string;
   message?: string;
+  source?: string;
 }) {
   const rows = [
-    ["Company / business", body.companyName],
+    ...(body.companyName ? [["Company / business", body.companyName]] : []),
     ["Contact name", body.contactName],
     ["Email", body.email],
     ...(body.businessType ? [["Business type", body.businessType]] : []),
+    ...(body.revenue ? [["Annual business income", body.revenue]] : []),
     ...(body.message ? [["Message", body.message]] : []),
+    ...(body.source ? [["Source", body.source]] : []),
   ];
   const tableRows = rows
     .map(
       ([label, value]) =>
-        `<tr><td style="padding:8px 12px 8px 0;vertical-align:top;color:#6b7280;font-size:14px;">${label}</td><td style="padding:8px 0;font-size:14px;color:#111;">${value.replace(/\n/g, "<br>")}</td></tr>`
+        `<tr><td style="padding:8px 12px 8px 0;vertical-align:top;color:#6b7280;font-size:14px;">${escapeHtml(label)}</td><td style="padding:8px 0;font-size:14px;color:#111;">${escapeHtml(value).replace(/\n/g, "<br>")}</td></tr>`
     )
     .join("");
   return `
@@ -40,20 +49,33 @@ function demoRequestEmailHtml(body: {
 }
 
 function demoRequestEmailText(body: {
-  companyName: string;
+  companyName?: string;
   contactName: string;
   email: string;
   businessType?: string;
+  revenue?: string;
   message?: string;
+  source?: string;
 }) {
   const lines = [
-    `Company: ${body.companyName}`,
+    ...(body.companyName ? [`Company: ${body.companyName}`] : []),
     `Contact: ${body.contactName}`,
     `Email: ${body.email}`,
     ...(body.businessType ? [`Business type: ${body.businessType}`] : []),
+    ...(body.revenue ? [`Annual business income: ${body.revenue}`] : []),
     ...(body.message ? [`Message:\n${body.message}`] : []),
+    ...(body.source ? [`Source: ${body.source}`] : []),
   ];
   return `New demo request\n\n${lines.join("\n")}\n\n---\nSent via ExpenseTerminal request-demo form.`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function confirmationEmailHtml(contactName: string) {
@@ -82,30 +104,32 @@ export async function POST(req: Request) {
     const {
       companyName,
       contactName,
+      name,
       email,
       businessType,
+      type,
+      revenue,
       message,
+      note,
+      source,
     } = body;
 
-    if (!companyName?.trim()) {
-      return NextResponse.json(
-        { error: "Company / business name is required" },
-        { status: 400 }
-      );
-    }
-    if (!contactName?.trim()) {
+    const resolvedContactName = String(contactName ?? name ?? "").trim();
+    const resolvedEmail = String(email ?? "").trim();
+
+    if (!resolvedContactName) {
       return NextResponse.json(
         { error: "Your name is required" },
         { status: 400 }
       );
     }
-    if (!email?.trim()) {
+    if (!resolvedEmail) {
       return NextResponse.json(
         { error: "Email is required" },
         { status: 400 }
       );
     }
-    if (!isValidEmail(email.trim())) {
+    if (!isValidEmail(resolvedEmail)) {
       return NextResponse.json(
         { error: "Please enter a valid email address" },
         { status: 400 }
@@ -113,11 +137,21 @@ export async function POST(req: Request) {
     }
 
     const payload = {
-      companyName: String(companyName).trim(),
-      contactName: String(contactName).trim(),
-      email: String(email).trim(),
-      businessType: businessType ? String(businessType).trim() : undefined,
-      message: message ? String(message).trim() : undefined,
+      companyName: companyName ? String(companyName).trim() : undefined,
+      contactName: resolvedContactName,
+      email: resolvedEmail,
+      businessType: businessType
+        ? String(businessType).trim()
+        : type
+          ? String(type).trim()
+          : undefined,
+      revenue: revenue ? String(revenue).trim() : undefined,
+      message: message
+        ? String(message).trim()
+        : note
+          ? String(note).trim()
+          : undefined,
+      source: source ? String(source).trim() : undefined,
     };
 
     const resend = getResendClient();
@@ -128,7 +162,7 @@ export async function POST(req: Request) {
       from,
       to: DEMO_REQUEST_TO,
       replyTo: payload.email,
-      subject: `Demo request: ${payload.companyName}`,
+      subject: `Demo request: ${payload.companyName || payload.contactName}`,
       html: demoRequestEmailHtml(payload),
       text: demoRequestEmailText(payload),
     });

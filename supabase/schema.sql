@@ -420,6 +420,8 @@ CREATE TABLE IF NOT EXISTS public.subscriptions (
   status TEXT,
   current_period_end TIMESTAMPTZ,
   cancel_at_period_end BOOLEAN DEFAULT FALSE,
+  -- When the "your trial is ending" reminder email was sent (prevents duplicates).
+  trial_ending_email_sent_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id)

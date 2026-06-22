@@ -88,5 +88,7 @@ export async function GET(request: Request) {
     console.error("Failed to send welcome email after verification:", err);
   }
 
-  return NextResponse.redirect(new URL("/login?verified=true", origin));
+  return NextResponse.redirect(
+    new URL("/login?verified=true&next=/onboarding", origin)
+  );
 }

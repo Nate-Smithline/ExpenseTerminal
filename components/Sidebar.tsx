@@ -8,7 +8,6 @@ import {
   ICash,
   ITax,
   ITriage,
-  IReview,
   IAccounts,
   ISettings,
 } from "./ui/icons";
@@ -19,7 +18,6 @@ const NAV = [
   { id: "triage",   label: "Triage",    href: "/triage",   Icon: ITriage, triageBadge: true },
   { id: "cashflow", label: "Cash Flow", href: "/cashflow", Icon: ICash },
   { id: "tax",      label: "Tax",       href: "/tax",      Icon: ITax,     badge: "Q2" },
-  { id: "review",   label: "Review",    href: "/review",   Icon: IReview,  badgeCount: true },
   { id: "accounts", label: "Accounts",  href: "/accounts", Icon: IAccounts },
 ] as const;
 
@@ -30,7 +28,6 @@ type SidebarProps = {
 
 export function Sidebar({ className, onNavigate }: SidebarProps) {
   const pathname = usePathname();
-  const [reviewCount, setReviewCount] = useState<number | null>(null);
   const [triageCount, setTriageCount] = useState<number | null>(null);
 
   const isActive = (href: string) =>
@@ -39,10 +36,6 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
   const onSettings = isActive("/settings");
 
   useEffect(() => {
-    fetch("/api/review?count_only=true")
-      .then((r) => r.json())
-      .then((d) => setReviewCount(d.count ?? 0))
-      .catch(() => {});
     fetch("/api/triage/queue?count_only=true")
       .then((r) => r.json())
       .then((d) => setTriageCount(d.total ?? 0))
@@ -74,16 +67,6 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
                 {"badge" in n && n.badge && !active && (
                   <span className="nav__pill">{n.badge}</span>
                 )}
-
-                {"badgeCount" in n &&
-                  n.badgeCount &&
-                  !active &&
-                  reviewCount != null &&
-                  reviewCount > 0 && (
-                    <span className="nav__pill nav__pill--alert">
-                      {reviewCount > 99 ? "99+" : reviewCount}
-                    </span>
-                  )}
 
                 {"triageBadge" in n &&
                   n.triageBadge &&

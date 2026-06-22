@@ -6,7 +6,7 @@ import { PageHead } from "@/components/PageHead";
 import { PartialDial } from "@/components/PartialDial";
 import { MarkerPill, type Marker } from "@/components/MarkerPill";
 import { HelpTooltip } from "@/components/HelpTooltip";
-import { IBolt, ICheck, IRules, ITax, IReview } from "@/components/ui/icons";
+import { IBolt, ICheck, IRules, ITax, IReview, ITrash } from "@/components/ui/icons";
 import { RULE_OFFER_TIMEOUT_MS, RULE_SEEN_THRESHOLD } from "@/lib/triage/constants";
 import { triageTransactionImpact } from "@/lib/triage/tax-rate";
 import { MEAL_50_PCT_TOOLTIP, TAX_GOOD_FAITH_DISCLAIMER } from "@/lib/tax/disclaimer";
@@ -527,6 +527,17 @@ export function TriagePageClient() {
     setRuleOffer(null);
   };
 
+  const deleteRule = async (ruleId: string) => {
+    const prevRules = rules;
+    setRules((r) => r.filter((rule) => rule.id !== ruleId));
+    const res = await fetch(`/api/triage/rule?id=${encodeURIComponent(ruleId)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      setRules(prevRules);
+    }
+  };
+
   const undo = async () => {
     if (busy.current || history.length === 0) return;
     const last = history[history.length - 1];
@@ -790,7 +801,7 @@ export function TriagePageClient() {
               </div>
             </div>
           )}
-          <RulesPanel rules={modeRules} />
+          <RulesPanel rules={modeRules} onDelete={(id) => void deleteRule(id)} />
           <SortedLog
             items={items}
             decisions={decisions}
@@ -1374,7 +1385,13 @@ function TaxMeter({
   );
 }
 
-function RulesPanel({ rules }: { rules: RuleRow[] }) {
+function RulesPanel({
+  rules,
+  onDelete,
+}: {
+  rules: RuleRow[];
+  onDelete: (id: string) => void;
+}) {
   return (
     <div className="card trules">
       <div className="trules__head">
@@ -1397,6 +1414,15 @@ function RulesPanel({ rules }: { rules: RuleRow[] }) {
                 </span>
               </div>
               <MarkerPill marker={r.marker} businessPct={r.businessPct} />
+              <button
+                type="button"
+                className="trules__delete"
+                onClick={() => onDelete(r.id)}
+                aria-label={`Remove auto-sort rule for ${r.vendor}`}
+                title="Remove rule"
+              >
+                <ITrash size={13} />
+              </button>
             </div>
           ))}
         </div>

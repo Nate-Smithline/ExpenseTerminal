@@ -122,10 +122,10 @@ export default function SignupPage() {
     <AuthLayout isLoading={loading}>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-.02em", color: "var(--ink)", margin: 0 }}>
-          Create your account
+          Start Swiping for Savings
         </h1>
         <p style={{ fontSize: 14, color: "var(--ink-3)", marginTop: 4 }}>
-          Start your 15-day free trial — no card required.
+          Create your account, add a card, and start a 15-day free trial before your first charge.
         </p>
       </div>
 
@@ -246,7 +246,7 @@ export default function SignupPage() {
           onMouseOver={e => { if (!loading) (e.currentTarget as HTMLButtonElement).style.background = "var(--forest-deep)"; }}
           onMouseOut={e => { if (!loading) (e.currentTarget as HTMLButtonElement).style.background = "var(--forest)"; }}
         >
-          {loading ? "Creating account…" : "Start free trial"}
+          {loading ? "Creating account…" : "Create account"}
         </button>
 
         <p style={{ textAlign: "center", fontSize: 13, color: "var(--ink-3)", margin: 0 }}>

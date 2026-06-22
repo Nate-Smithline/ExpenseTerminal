@@ -96,7 +96,7 @@ const TASKS: Array<{
   { id: "tag",     t: "Tag your first transaction", d: "Learn the one-tap Personal / Business / Partial split.", ic: "onb-ic-forest", icon: "receipt", xp: "+15", reward: "Starts your Schedule C" },
   { id: "tax",     t: "Set up your tax profile", d: "Filing status + automatic quarterly set-aside.", ic: "onb-ic-wheat", icon: "shield", xp: "+10", reward: "Tax autopilot on" },
   { id: "budget",  t: "Build your first budget", d: "Give every dollar a job for the month.", ic: "onb-ic-ink", icon: "chart", xp: "+10", reward: "Zero-based budget ready" },
-  { id: "sub",     t: "Activate your membership", d: "Your free trial is live — lock in your plan anytime.", ic: "onb-ic-forest", icon: "star", xp: "+25", reward: "Full access, forever" },
+  { id: "sub",     t: "Activate your membership", d: "Add a card to start your 15-day free trial — no charge until it ends.", ic: "onb-ic-forest", icon: "star", xp: "+25", reward: "Full access, forever" },
 ];
 
 // ── Task sheet bodies ──────────────────────────────────────────
@@ -411,12 +411,14 @@ export default function OnboardingPage() {
               ? "Membership active — welcome aboard"
               : trial?.status === "trial"
               ? `You're on a free trial — ${trial.daysLeft} day${trial.daysLeft !== 1 ? "s" : ""} left`
-              : "Free preview — subscribe to unlock everything"}
+              : "Add a card to start your 15-day free trial"}
           </div>
           <div className="onb-trialbar__d">
             {isSubscribed
               ? "Full access to budgeting, tax, and exports."
-              : "Connect, tag, and explore. Subscribe anytime to keep it all."}
+              : trial?.status === "trial"
+              ? "Connect, tag, and explore. You won't be charged until your trial ends."
+              : "No charge for 15 days, then your plan begins. Cancel anytime."}
           </div>
         </div>
         {!isSubscribed && (

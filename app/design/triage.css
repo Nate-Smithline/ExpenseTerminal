@@ -701,7 +701,26 @@ kbd {
   gap: 10px;
   animation: pageIn .25s var(--ease-out);
 }
-.trules__row-l { min-width: 0; }
+.trules__row-l { min-width: 0; flex: 1; }
+.trules__delete {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background .15s var(--ease-out), color .15s var(--ease-out), border-color .15s var(--ease-out);
+}
+.trules__delete:hover {
+  background: var(--clay-tint, rgba(190, 80, 60, .1));
+  border-color: var(--clay, #be503c);
+  color: var(--clay, #be503c);
+}
 .trules__row-v {
   display: block;
   font-size: 13px;

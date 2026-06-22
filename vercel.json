@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/monthly-summary",
       "schedule": "0 14 1 * *"
+    },
+    {
+      "path": "/api/cron/trial-ending",
+      "schedule": "0 13 * * *"
     }
   ]
 }

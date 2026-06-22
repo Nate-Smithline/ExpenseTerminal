@@ -69,3 +69,34 @@ export async function POST(req: Request) {
     newBadges,
   });
 }
+
+export async function DELETE(req: Request) {
+  const supabase = await createSupabaseRouteClient();
+  const auth = await requireAuth(supabase);
+  if (!auth.authorized) {
+    return NextResponse.json(auth.body, { status: auth.status });
+  }
+  const userId = auth.userId;
+
+  const { success: rlOk } = await rateLimitForRequest(req, userId, generalApiLimit);
+  if (!rlOk) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
+  const ruleId = new URL(req.url).searchParams.get("id")?.trim();
+  if (!ruleId) {
+    return NextResponse.json({ error: "Rule id is required" }, { status: 400 });
+  }
+
+  const { error } = await (supabase as any)
+    .from("auto_sort_rules")
+    .delete()
+    .eq("id", ruleId)
+    .eq("user_id", userId);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}

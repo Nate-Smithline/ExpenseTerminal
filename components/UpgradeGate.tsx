@@ -30,10 +30,16 @@ export function UpgradeGate({ children }: { children: React.ReactNode }) {
 
   const isExempt = EXEMPT.some(p => pathname === p || pathname.startsWith(p + "/"));
 
+  // Block the app when the trial has ended ("expired") or hasn't started yet
+  // ("none" — the card-required trial needs a payment method first).
+  const blocked = status === "expired" || status === "none";
+
   // While loading, render children (avoid flash of gate)
-  if (!status || status !== "expired" || isExempt) {
+  if (!status || !blocked || isExempt) {
     return <>{children}</>;
   }
+
+  const notStarted = status === "none";
 
   const handleUpgrade = async () => {
     setLoading(true);
@@ -53,14 +59,22 @@ export function UpgradeGate({ children }: { children: React.ReactNode }) {
           <rect x="4" y="11" width="16" height="9" rx="2" />
         </svg>
       </div>
-      <h2 className="upgrade-gate__title">Your free trial has ended</h2>
+      <h2 className="upgrade-gate__title">
+        {notStarted ? "Start your 15-day free trial" : "Your free trial has ended"}
+      </h2>
       <p className="upgrade-gate__sub">
-        Subscribe to keep full access to your transactions, budgets, tax insights, and account sync.
+        {notStarted
+          ? "Add a card to unlock your transactions, budgets, tax insights, and account sync. You won't be charged for 15 days, and you can cancel anytime."
+          : "Subscribe to keep full access to your transactions, budgets, tax insights, and account sync."}
       </p>
       <div className="upgrade-gate__actions">
         <button type="button" className="onb-btn onb-btn--primary"
           disabled={loading} onClick={handleUpgrade}>
-          {loading ? "Redirecting…" : "Choose a plan — from $15/mo"}
+          {loading
+            ? "Redirecting…"
+            : notStarted
+            ? "Start free trial — from $15/mo"
+            : "Choose a plan — from $15/mo"}
         </button>
         <a href="/settings/billing"
           style={{ fontSize: 13, color: "var(--ink-3)", textDecoration: "none" }}>

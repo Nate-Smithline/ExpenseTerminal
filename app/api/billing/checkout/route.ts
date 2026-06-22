@@ -7,6 +7,7 @@ import {
   getStripePriceId,
 } from "@/lib/billing/stripe-prices";
 import { getStripeClient, getStripeMode } from "@/lib/stripe";
+import { TRIAL_DAYS } from "@/lib/billing/trial";
 
 function getBaseUrl(req: Request, hostname: string): string {
   const isLocal =
@@ -107,7 +108,7 @@ export async function POST(req: Request) {
     client_reference_id: auth.userId,
     customer_email: undefined,
     subscription_data: {
-      trial_period_days: 15,
+      trial_period_days: TRIAL_DAYS,
     },
     metadata: {
       plan: "plus",
