@@ -1,243 +1,289 @@
+import type { Metadata } from "next";
 import Link from "next/link";
-import { LandingHeader } from "@/components/LandingHeader";
+import { LandingNav } from "@/components/LandingNav";
 import { LegalBackLink } from "@/components/LegalBackLink";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy",
+  description:
+    "ExpenseTerminal Privacy Policy for Sociatty LLC, including financial data, AI processing, cookies, security, and privacy rights.",
+  alternates: {
+    canonical: "https://expenseterminal.com/privacy",
+  },
+};
+
+const EFFECTIVE_DATE = "June 23, 2026";
+const CONTACT_EMAIL = "expenseterminal@outlook.com";
+
+function LegalSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-none border border-[#E8EEF5] bg-white p-5 md:p-7 shadow-[0_14px_40px_rgba(13,31,53,0.04)]">
+      <h2 className="font-display text-xl md:text-2xl text-[#0D1F35] mb-4">
+        {title}
+      </h2>
+      <div className="space-y-4 text-sm md:text-[15px] leading-7 text-[#374151]">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function Highlight({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-none border-l-4 border-[#C9A84C] bg-[#F5F0E8] px-4 py-3 text-sm leading-6 text-[#0D1F35]">
+      {children}
+    </div>
+  );
+}
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-white">
-      <LandingHeader />
+    <div className="min-h-screen bg-[#F9FAFB]">
+      <LandingNav />
 
-      <main className="max-w-[880px] mx-auto px-6 md:px-12 py-10 md:py-16">
+      <main className="mx-auto max-w-5xl px-6 py-10 md:px-10 md:py-16">
         <LegalBackLink href="/signup" label="Back to signup" />
 
-        <h1 className="font-display text-3xl md:text-4xl text-[#0D1F35] mb-2">
-          Privacy Policy
-        </h1>
-        <p className="text-sm text-mono-medium mb-8">
-          <span className="inline-flex items-center gap-2">
+        <header className="mb-10 rounded-none bg-[#0D1F35] px-6 py-8 text-white md:px-10 md:py-12">
+          <p className="mb-4 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-[#E8EEF5]">
             <span className="h-2 w-2 rounded-full bg-[#C9A84C]" />
-            <span>Effective Date: February 20, 2026</span>
-          </span>
-        </p>
+            Effective {EFFECTIVE_DATE}
+          </p>
+          <h1 className="font-display text-4xl md:text-5xl">
+            Privacy Policy
+          </h1>
+          <p className="mt-4 max-w-3xl text-sm leading-7 text-[#E8EEF5] md:text-base">
+            This Privacy Policy explains how Sociatty LLC, doing business as ExpenseTerminal
+            (&ldquo;ExpenseTerminal,&rdquo; &ldquo;Company,&rdquo; &ldquo;we,&rdquo; &ldquo;us,&rdquo;
+            or &ldquo;our&rdquo;), collects, uses, shares, protects, and deletes information
+            when you use ExpenseTerminal, expenseterminal.com, and related services
+            (collectively, the &ldquo;Service&rdquo;).
+          </p>
+        </header>
 
-        <div className="space-y-8 text-sm text-mono-medium leading-relaxed border-t border-bg-tertiary pt-8">
-          <section>
-            <p className="mb-4">
-              Sociatty LLC (&ldquo;Company,&rdquo; &ldquo;we,&rdquo; &ldquo;us,&rdquo; or &ldquo;our&rdquo;) is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use the ExpenseTerminal platform (&ldquo;Platform&rdquo;), including when you connect financial accounts through third-party aggregators such as Plaid.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">1. Information We Collect</h2>
-            <h3 className="text-base text-mono-dark mb-2 mt-4">1.1 Information You Provide Directly</h3>
-            <ul className="list-disc pl-5 space-y-1 mb-3">
-              <li>Account registration data (name, email address, password, billing information)</li>
-              <li>User profile information you choose to provide</li>
-              <li>CSV files and other financial data files you upload to the Platform</li>
-              <li>Communications you send to us (support requests, feedback)</li>
-            </ul>
-            <h3 className="text-base text-mono-dark mb-2 mt-4">1.2 Financial Account Data via Third-Party Aggregators</h3>
-            <p className="mb-2">
-              When you connect financial accounts through Plaid or similar services, we may receive:
-            </p>
-            <ul className="list-disc pl-5 space-y-1 mb-3">
-              <li>Account balances and transaction histories</li>
-              <li>Account identifiers (account numbers, routing numbers as applicable)</li>
-              <li>Institution names and account types</li>
-              <li>Investment holdings and tax-relevant financial data</li>
-            </ul>
+        <div className="space-y-6">
+          <LegalSection title="1. Scope and Important Context">
             <p>
-              This data is retrieved only with your explicit authorization and is used solely to provide the Platform&apos;s tax analysis features.
+              ExpenseTerminal helps creators, freelancers, contractors, and small businesses
+              organize transaction data, identify potential deductions, prepare tax-ready
+              summaries, manage budgets, and estimate tax set-asides. The Service may process
+              sensitive financial information, so we design our practices around data
+              minimization, access control, and user control.
             </p>
-            <h3 className="text-base text-mono-dark mb-2 mt-4">1.3 Automatically Collected Data</h3>
-            <ul className="list-disc pl-5 space-y-1">
-              <li>Log data (IP address, browser type, pages visited, timestamps)</li>
-              <li>Device information (operating system, browser version, device identifiers)</li>
-              <li>Usage data (features used, session duration, clicks)</li>
-              <li>Cookies and similar tracking technologies (see Section 7 and our <Link href="/cookies" className="text-accent-navy underline">Cookie Policy</Link>)</li>
-            </ul>
-          </section>
+            <Highlight>
+              We are not a bank, accounting firm, CPA firm, law firm, tax preparer, broker,
+              investment adviser, or money transmitter. Privacy protections in this policy do
+              not convert ExpenseTerminal into a regulated financial institution or professional
+              adviser.
+            </Highlight>
+          </LegalSection>
 
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">2. How We Use Your Information</h2>
-            <p className="mb-2">We use the information we collect to:</p>
-            <ul className="list-disc pl-5 space-y-1 mb-3">
-              <li>Provide, operate, maintain, and improve the Platform</li>
-              <li>Process and analyze your uploaded financial data to generate tax insights</li>
-              <li>Manage your account, subscriptions, and billing</li>
-              <li>Send you service-related communications (account updates, security alerts)</li>
-              <li>Send you optional marketing communications (with your consent, where required)</li>
-              <li>Detect, prevent, and investigate fraud, abuse, and security incidents</li>
-              <li>Comply with legal obligations and enforce our Terms of Service</li>
-              <li>Conduct internal analytics and product development (using anonymized/aggregated data)</li>
-            </ul>
+          <LegalSection title="2. Information We Collect">
             <p>
-              We do <strong>NOT</strong> sell, rent, or lease your personal data or financial data to third parties. We do <strong>NOT</strong> use your uploaded financial data to train machine learning models without your explicit consent.
+              We collect information you provide directly, information generated through your
+              use of the Service, and information you authorize third parties to provide to us.
             </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">3. Legal Bases for Processing (For EEA/UK Users)</h2>
-            <p className="mb-2">
-              If you are located in the European Economic Area or United Kingdom, our legal bases for processing include:
-            </p>
-            <ul className="list-disc pl-5 space-y-1">
-              <li><strong>Contract performance</strong> — processing necessary to provide the Platform services</li>
-              <li><strong>Legitimate interests</strong> — security, fraud prevention, product improvement</li>
-              <li><strong>Legal compliance</strong> — meeting applicable regulatory requirements</li>
-              <li><strong>Consent</strong> — where you have provided explicit consent (e.g., optional analytics, marketing)</li>
+            <h3 className="font-semibold text-[#0D1F35]">Account and profile information</h3>
+            <ul className="list-disc space-y-2 pl-5">
+              <li>Name, email address, password credentials or authentication identifiers, business profile details, tax-year settings, notification preferences, and support messages.</li>
+              <li>Billing status, subscription plan, invoices, and payment metadata processed through our payment provider. We do not store full payment card numbers on our servers.</li>
             </ul>
-          </section>
+            <h3 className="font-semibold text-[#0D1F35]">Financial and tax workflow information</h3>
+            <ul className="list-disc space-y-2 pl-5">
+              <li>CSV, Excel, or other files you upload, including transaction descriptions, vendors, dates, categories, amounts, account labels, notes, deductions, receipts, and tags.</li>
+              <li>Financial account information you authorize through Plaid or similar providers, such as account names, account types, balances, transactions, institution identifiers, connection status, and related metadata.</li>
+              <li>Outputs and settings generated in the Service, including categories, Schedule C mappings, deduction percentages, audit notes, budgets, income entries, rules, automations, exports, and reports.</li>
+            </ul>
+            <h3 className="font-semibold text-[#0D1F35]">Device, usage, and security information</h3>
+            <ul className="list-disc space-y-2 pl-5">
+              <li>IP address, browser type, device type, operating system, referring pages, pages viewed, feature usage, timestamps, diagnostics, and log data.</li>
+              <li>Cookies, local storage, session identifiers, and similar technologies described in our <Link href="/cookies" className="text-[#5B82B4] underline">Cookie Policy</Link>.</li>
+            </ul>
+          </LegalSection>
 
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">4. Information Sharing &amp; Disclosure</h2>
-            <h3 className="text-base text-mono-dark mb-2 mt-4">4.1 Service Providers</h3>
-            <p className="mb-3">
-              We share data with trusted third-party service providers who assist in operating the Platform, including cloud hosting, payment processing, analytics, and customer support. These providers are contractually bound to use your data only as directed by us and in compliance with this Privacy Policy.
-            </p>
-            <h3 className="text-base text-mono-dark mb-2 mt-4">4.2 Financial Data Partners</h3>
-            <p className="mb-3">
-              Your financial account data may be shared with or retrieved through Plaid or other aggregators solely to facilitate account connectivity. These partners operate under their own privacy policies, which we encourage you to review.
-            </p>
-            <h3 className="text-base text-mono-dark mb-2 mt-4">4.3 Legal Requirements</h3>
-            <p className="mb-3">
-              We may disclose your information if required to do so by law, subpoena, court order, or other governmental request, or when we believe in good faith that disclosure is necessary to protect our rights, prevent fraud, or respond to an emergency.
-            </p>
-            <h3 className="text-base text-mono-dark mb-2 mt-4">4.4 Business Transfers</h3>
-            <p className="mb-3">
-              In the event of a merger, acquisition, bankruptcy, or sale of all or substantially all of our assets, your information may be transferred as part of that transaction. We will notify you via email and/or prominent notice on the Platform before your information is transferred and becomes subject to a different privacy policy.
-            </p>
-            <h3 className="text-base text-mono-dark mb-2 mt-4">4.5 Aggregate/Anonymized Data</h3>
+          <LegalSection title="3. How We Use Information">
+            <p>We use information for the following business and operational purposes:</p>
+            <ul className="list-disc space-y-2 pl-5">
+              <li>Provide, maintain, secure, troubleshoot, and improve the Service.</li>
+              <li>Create and manage your account, authenticate sessions, provide support, and send administrative notices.</li>
+              <li>Import, normalize, categorize, search, sort, and display transactions and other financial data at your direction.</li>
+              <li>Generate deduction suggestions, budget views, exports, tax summaries, quarterly tax set-aside estimates, reminders, and other product features.</li>
+              <li>Process payments, manage subscriptions, prevent fraud, enforce our agreements, and comply with legal obligations.</li>
+              <li>Develop aggregated or de-identified analytics that do not reasonably identify you.</li>
+              <li>Send marketing communications where permitted by law, with the ability to unsubscribe from non-transactional emails.</li>
+            </ul>
+            <Highlight>
+              We do not sell your personal information or financial data. We do not use your
+              uploaded financial data or connected-account data to train our own general-purpose
+              AI models, and we do not authorize service providers to use it to train their
+              models except where you separately direct or consent.
+            </Highlight>
+          </LegalSection>
+
+          <LegalSection title="4. AI Processing">
             <p>
-              We may share aggregated or de-identified data that cannot reasonably be used to identify you for research, analytics, or business purposes.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">5. Data Retention</h2>
-            <p className="mb-2">We retain your personal and financial data for as long as your account is active or as needed to provide the Platform&apos;s services. Specifically:</p>
-            <ul className="list-disc pl-5 space-y-1 mb-3">
-              <li>Account data is retained until account deletion plus a 90-day grace period</li>
-              <li>Uploaded financial files are retained for as long as you maintain them on the Platform; you may delete them at any time</li>
-              <li>Financial connection data retrieved via aggregators is retained for the duration of your authorized connection plus 30 days following revocation</li>
-              <li>Log and usage data is retained for up to 24 months</li>
-              <li>Data required for legal compliance may be retained for longer periods as required by law</li>
-            </ul>
-            <p>
-              Upon account deletion, we will delete or anonymize your personal data within 30 days, except where retention is required by law.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">6. Data Security</h2>
-            <p className="mb-2">
-              We implement industry-standard technical and organizational security measures designed to protect your information from unauthorized access, use, alteration, or destruction. These measures include:
-            </p>
-            <ul className="list-disc pl-5 space-y-1 mb-3">
-              <li>Encryption of data in transit (TLS 1.2+) and at rest (AES-256)</li>
-              <li>Access controls limiting employee access to personal data on a need-to-know basis</li>
-              <li>Regular security assessments and vulnerability testing</li>
-              <li>Incident response and breach notification procedures</li>
-            </ul>
-            <p>
-              However, no method of transmission over the internet or method of electronic storage is 100% secure. While we strive to use commercially acceptable means to protect your information, we cannot guarantee absolute security. You are responsible for maintaining the security of your account credentials.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">7. Cookies &amp; Tracking Technologies</h2>
-            <p className="mb-3">
-              We use cookies and similar technologies to maintain your logged-in session and Platform preferences, analyze Platform usage and performance (via analytics tools), and prevent fraud and enhance security.
-            </p>
-            <p className="mb-3">
-              You may control cookie preferences through your browser settings. Disabling certain cookies may impact Platform functionality. We do not currently respond to Do Not Track (DNT) browser signals, but you may opt out of analytics tracking as described in our <Link href="/cookies" className="text-accent-navy underline">Cookie Policy</Link>.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">8. Your Privacy Rights</h2>
-            <p className="mb-2">Depending on your jurisdiction, you may have the following rights regarding your personal data:</p>
-            <ul className="list-disc pl-5 space-y-1 mb-3">
-              <li><strong>Access &amp; Portability</strong> — Request a copy of the personal data we hold about you in a portable format</li>
-              <li><strong>Correction</strong> — Request correction of inaccurate or incomplete personal data</li>
-              <li><strong>Deletion</strong> — Request deletion of your personal data, subject to legal retention obligations</li>
-              <li><strong>Restriction</strong> — Request that we restrict processing of your data in certain circumstances</li>
-              <li><strong>Objection</strong> — Object to processing based on legitimate interests</li>
-              <li><strong>Withdrawal of Consent</strong> — Where processing is based on consent, withdraw it at any time without affecting prior processing</li>
-              <li><strong>Opt-Out of Sale/Sharing</strong> — We do not sell personal data; if this changes, you will have the right to opt out</li>
-            </ul>
-            <p className="mb-3">
-              To exercise any of these rights, submit a request to <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>. We will respond within 30 days (or as required by applicable law). We may need to verify your identity before fulfilling requests.
+              ExpenseTerminal may use artificial intelligence and automated rules to classify
+              transactions, suggest Schedule C categories, create audit-friendly explanations,
+              identify possible deductions, and summarize tax or budget information. These
+              outputs are generated from the data you provide or authorize us to access.
             </p>
             <p>
-              You also have the right to lodge a complaint with the applicable data protection supervisory authority in your jurisdiction.
+              To provide these features, we may send limited transaction data, labels, notes,
+              and related context to contracted AI infrastructure providers. We use these
+              providers only to deliver and improve the Service under their applicable data
+              protection terms and our instructions.
             </p>
-          </section>
+            <p>
+              AI outputs can be incomplete or incorrect. You are responsible for reviewing all
+              categories, deduction percentages, estimates, exports, and reports before relying
+              on them or sharing them with a tax professional.
+            </p>
+          </LegalSection>
 
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">9. California Privacy Rights (CCPA/CPRA)</h2>
-            <p className="mb-2">
-              If you are a California resident, you have additional rights under the California Consumer Privacy Act (CCPA) as amended by the California Privacy Rights Act (CPRA):
+          <LegalSection title="5. How We Share Information">
+            <p>
+              We share information only as needed to provide the Service, operate our business,
+              comply with law, or protect rights and safety.
             </p>
-            <ul className="list-disc pl-5 space-y-1 mb-3">
-              <li><strong>Right to Know</strong> — The categories and specific pieces of personal information collected about you</li>
-              <li><strong>Right to Delete</strong> — Deletion of personal information we have collected, subject to exceptions</li>
-              <li><strong>Right to Correct</strong> — Correction of inaccurate personal information</li>
-              <li><strong>Right to Opt-Out</strong> — Opt out of the sale or sharing of personal information (we do not sell or share personal information for cross-context behavioral advertising)</li>
-              <li><strong>Right to Limit Use of Sensitive Personal Information</strong> — Limit our use of sensitive personal information to what is necessary for providing the service</li>
-              <li><strong>Right to Non-Discrimination</strong> — We will not discriminate against you for exercising your CCPA/CPRA rights</li>
+            <ul className="list-disc space-y-2 pl-5">
+              <li><strong>Service providers:</strong> Hosting, database, authentication, storage, email delivery, analytics, security, error monitoring, AI processing, customer support, and operational vendors.</li>
+              <li><strong>Financial connection providers:</strong> Plaid or similar providers when you choose to connect financial accounts. Their services are governed by their own terms and privacy notices.</li>
+              <li><strong>Payment processors:</strong> Stripe or similar processors for checkout, billing, tax, fraud prevention, and subscription management.</li>
+              <li><strong>Professional advisers:</strong> Lawyers, accountants, insurers, auditors, and other advisers under duties of confidentiality.</li>
+              <li><strong>Legal and safety disclosures:</strong> Courts, regulators, law enforcement, or other parties when we believe disclosure is required by law or necessary to protect users, the Service, or our legal rights.</li>
+              <li><strong>Business transfers:</strong> A buyer, successor, or affiliate in connection with a merger, financing, acquisition, reorganization, bankruptcy, or sale of assets.</li>
+            </ul>
+          </LegalSection>
+
+          <LegalSection title="6. Financial Connections and Plaid">
+            <p>
+              If you connect a bank, card, or other financial account, you authorize
+              ExpenseTerminal and the applicable financial data provider to access and process
+              information from that account to provide the Service. You may disconnect accounts
+              through the Service where available or by contacting us.
+            </p>
+            <p>
+              We do not receive your online banking password from Plaid. We may store encrypted
+              access tokens or related identifiers that allow the Service to refresh data you
+              have authorized. Plaid and your financial institution may independently process
+              your information under their own agreements.
+            </p>
+          </LegalSection>
+
+          <LegalSection title="7. Cookies and Tracking">
+            <p>
+              We use cookies and similar technologies for authentication, security, preferences,
+              product functionality, analytics, diagnostics, and payment or financial connection
+              flows. Please review our <Link href="/cookies" className="text-[#5B82B4] underline">Cookie Policy</Link> for more detail.
+            </p>
+            <p>
+              Browser controls may let you block or delete cookies. Blocking necessary cookies
+              may prevent the Service from working. We do not use cookies to sell your financial
+              data or serve third-party behavioral advertising based on your transaction history.
+            </p>
+          </LegalSection>
+
+          <LegalSection title="8. Security">
+            <p>
+              We use administrative, technical, and organizational safeguards designed to
+              protect information, including encryption in transit, access controls, credential
+              protections, vendor review, logging, backups, and encryption for sensitive tokens
+              where appropriate.
+            </p>
+            <p>
+              No internet service can guarantee perfect security. You are responsible for using
+              a strong password, protecting your devices, keeping your login credentials
+              confidential, and promptly notifying us of suspected unauthorized account access.
+            </p>
+          </LegalSection>
+
+          <LegalSection title="9. Retention and Deletion">
+            <p>
+              We keep information for as long as reasonably necessary to provide the Service,
+              maintain business records, comply with law, resolve disputes, enforce agreements,
+              prevent fraud, and maintain backups. Retention periods vary depending on the type
+              of data and the reason we hold it.
+            </p>
+            <ul className="list-disc space-y-2 pl-5">
+              <li>Account and billing records may be retained while your account is active and for a reasonable period afterward for legal, tax, accounting, and dispute purposes.</li>
+              <li>Uploaded files, transactions, rules, budgets, reports, and connected-account data are retained while needed to provide the Service or until deleted, subject to backups and legal requirements.</li>
+              <li>Security logs and diagnostic data may be retained to protect the Service and investigate abuse.</li>
             </ul>
             <p>
-              To submit a CCPA/CPRA request, contact us at <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a> or call (201) 657-6035. We will verify your identity and respond within 45 days.
+              If you request account deletion, we will delete or de-identify personal
+              information unless retention is reasonably necessary or legally required. Backup
+              copies may persist for a limited period before being overwritten.
             </p>
-          </section>
+          </LegalSection>
 
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">10. Children&apos;s Privacy</h2>
+          <LegalSection title="10. Your Choices and Privacy Rights">
             <p>
-              The Platform is not directed to individuals under the age of 18. We do not knowingly collect personal information from children. If we become aware that a child under 18 has provided us with personal information without parental consent, we will take steps to delete such information promptly. If you believe we may have collected information from a child, please contact us at <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">11. International Data Transfers</h2>
-            <p>
-              Your information may be transferred to and processed in countries other than your country of residence, including the United States, where data protection laws may differ from those in your jurisdiction. For transfers from the EEA or UK, we rely on appropriate safeguards such as Standard Contractual Clauses (SCCs) approved by the European Commission. By using the Platform, you consent to such transfers.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">12. Third-Party Links &amp; Integrations</h2>
-            <p>
-              The Platform may contain links to third-party websites or integrate with third-party services. This Privacy Policy does not apply to third-party services. We encourage you to review the privacy policies of any third-party services you interact with. We are not responsible for the privacy practices of third-party services.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">13. Changes to This Privacy Policy</h2>
-            <p>
-              We may update this Privacy Policy from time to time. When we make material changes, we will notify you by email to your registered address and/or by posting a prominent notice on the Platform at least 30 days before the effective date of the changes. Your continued use of the Platform after the effective date constitutes acceptance of the revised Privacy Policy.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-lg text-[#5B82B4] mb-3">14. Contact Us</h2>
-            <p className="mb-2">
-              If you have questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact:
-            </p>
-            <p className="mb-1">
-              <strong>Sociatty LLC</strong>
-            </p>
-            <p className="mb-1">
-              Privacy Team: <a href="mailto:expenseterminal@outlook.com" className="text-accent-navy underline">expenseterminal@outlook.com</a>
+              Depending on where you live, you may have rights to access, correct, delete,
+              export, restrict, or object to certain processing of your personal information.
+              You may also withdraw consent where processing is based on consent and opt out of
+              certain communications.
             </p>
             <p>
-              Mailing Address: Tenafly, New Jersey 07670
+              To exercise privacy rights, contact us at <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#5B82B4] underline">{CONTACT_EMAIL}</a>.
+              We may need to verify your identity and authority before completing a request. We
+              will not discriminate against you for exercising rights provided by applicable law.
             </p>
-            <p className="mt-3 text-xs text-mono-light">
-              This Privacy Policy was last updated on: February 20, 2026
+            <p>
+              California residents may have rights under the CCPA/CPRA, including the rights to
+              know, delete, correct, limit certain uses of sensitive personal information, and
+              opt out of sale or sharing. We do not sell personal information, and we do not
+              share personal information for cross-context behavioral advertising.
             </p>
-          </section>
+          </LegalSection>
+
+          <LegalSection title="11. International Users">
+            <p>
+              ExpenseTerminal is operated from the United States. If you access the Service from
+              outside the United States, your information may be processed in the United States
+              and other countries where our providers operate. These locations may have data
+              protection laws different from those in your jurisdiction.
+            </p>
+            <p>
+              Where required, we rely on appropriate safeguards for international transfers,
+              such as standard contractual clauses or other lawful transfer mechanisms.
+            </p>
+          </LegalSection>
+
+          <LegalSection title="12. Children">
+            <p>
+              The Service is not directed to children under 18, and we do not knowingly collect
+              personal information from children. If you believe a child has provided personal
+              information to us, contact us and we will take appropriate steps to delete it.
+            </p>
+          </LegalSection>
+
+          <LegalSection title="13. Changes to This Policy">
+            <p>
+              We may update this Privacy Policy from time to time. If we make material changes,
+              we will provide notice through the Service, by email, or as otherwise required by
+              law. The effective date above indicates when this policy was last revised.
+            </p>
+          </LegalSection>
+
+          <LegalSection title="14. Contact">
+            <p>
+              Questions, requests, and privacy notices may be sent to:
+            </p>
+            <div className="rounded-none bg-[#F0F1F7] p-4 text-[#0D1F35]">
+              <p className="font-semibold">Sociatty LLC, doing business as ExpenseTerminal</p>
+              <p>Email: <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#5B82B4] underline">{CONTACT_EMAIL}</a></p>
+              <p>Mailing Address: Tenafly, New Jersey 07670</p>
+            </div>
+            <p className="text-xs text-[#6B7280]">
+              Last updated: {EFFECTIVE_DATE}
+            </p>
+          </LegalSection>
         </div>
       </main>
     </div>

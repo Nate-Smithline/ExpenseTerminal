@@ -42,9 +42,14 @@ function LoginContent() {
     setError(null);
 
     try {
-      const emailValue = email.trim();
+      const formData = new FormData(e.currentTarget as HTMLFormElement);
+      const emailValue = String(formData.get("email") ?? email).trim();
+      const passwordValue = String(formData.get("password") ?? password);
       const supabase = createSupabaseClient();
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email: emailValue, password });
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: emailValue,
+        password: passwordValue,
+      });
 
       if (signInError) {
         setError(getAuthErrorMessage(signInError, "login"));
@@ -106,7 +111,11 @@ function LoginContent() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <form
+        onSubmit={handleSubmit}
+        style={{ display: "flex", flexDirection: "column", gap: 12 }}
+        suppressHydrationWarning
+      >
         {error && (
           <div style={{
             padding: "10px 14px", background: "var(--ember-tint)", border: "1px solid var(--ember-soft)",
@@ -119,27 +128,36 @@ function LoginContent() {
         <input
           ref={emailInputRef}
           type="email"
+          name="email"
+          autoComplete="email"
           required
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          onInput={(e) => setEmail(e.currentTarget.value)}
           className="auth-input"
+          suppressHydrationWarning
         />
 
         <div style={{ position: "relative" }}>
           <input
             type={showPassword ? "text" : "password"}
+            name="password"
+            autoComplete="current-password"
             required
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            onInput={(e) => setPassword(e.currentTarget.value)}
             className="auth-input"
             style={{ paddingRight: 44 }}
+            suppressHydrationWarning
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
             tabIndex={-1}
+            suppressHydrationWarning
             style={{
               position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
               background: "none", border: "none", cursor: "pointer", color: "var(--ink-3)",
@@ -170,6 +188,7 @@ function LoginContent() {
         <button
           type="submit"
           disabled={loading}
+          suppressHydrationWarning
           style={{
             width: "100%", height: 44, background: loading ? "var(--forest-mid)" : "var(--forest)",
             color: "#fff", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 600,

@@ -64,6 +64,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_data_feed_external
   ON public.transactions(data_source_id, data_feed_external_id)
   WHERE data_feed_external_id IS NOT NULL;
 
+-- Workspace/user-level unique constraint for provider transaction codes. This is
+-- the conflict target used by Plaid sync so the same transaction code cannot be
+-- inserted twice through different data sources owned by the same user.
+ALTER TABLE public.transactions
+  DROP CONSTRAINT IF EXISTS transactions_user_data_feed_external_key;
+ALTER TABLE public.transactions
+  ADD CONSTRAINT transactions_user_data_feed_external_key
+  UNIQUE (user_id, data_feed_external_id);
+
 -- -----------------------------------------------------------------------------
 -- 3. transactions: UNIQUE constraint so Supabase upsert onConflict works
 --    (Required for sync: ON CONFLICT (data_source_id, data_feed_external_id))

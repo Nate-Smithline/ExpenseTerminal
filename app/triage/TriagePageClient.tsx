@@ -91,6 +91,10 @@ function sessionImpactFromItem(
   };
 }
 
+function modeForItem(item: TriageQueueItem | undefined): Mode {
+  return item?.transactionType === "income" ? "income" : "expenses";
+}
+
 function sessionImpactFromRuleApi(impact: {
   deltaTax: number;
   deltaDeduction: number;
@@ -148,7 +152,6 @@ function formatTriageDate(dateStr: string): string {
 }
 
 export function TriagePageClient() {
-  const [mode, setMode] = useState<Mode>("expenses");
   const [items, setItems] = useState<TriageQueueItem[]>([]);
   const [rules, setRules] = useState<RuleRow[]>([]);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
@@ -184,7 +187,7 @@ export function TriagePageClient() {
     setLoadError(null);
     try {
       const [qRes, pRes] = await Promise.all([
-        fetch(`/api/triage/queue?mode=${mode === "income" ? "income" : "expense"}`),
+        fetch("/api/triage/queue"),
         opts?.silent ? Promise.resolve(null) : fetch("/api/triage/progress"),
       ]);
       const qBody = await qRes.json();
@@ -203,7 +206,7 @@ export function TriagePageClient() {
     } finally {
       if (!opts?.silent) setLoading(false);
     }
-  }, [mode]);
+  }, []);
 
   useEffect(() => {
     setExiting(null);
@@ -216,7 +219,7 @@ export function TriagePageClient() {
     setTaxDrafts({});
     enrichedRef.current = new Set();
     void loadQueue();
-  }, [mode, loadQueue]);
+  }, [loadQueue]);
 
   const remaining = useMemo(
     () => items.filter((it) => !decisions[it.id] && !skipped[it.id]),
@@ -224,11 +227,12 @@ export function TriagePageClient() {
   );
   const current = remaining[0];
   const stack = remaining.slice(0, 1);
-  const hasPartial = mode === "expenses";
+  const currentMode = modeForItem(current);
+  const hasPartial = currentMode === "expenses";
   const done = !loading && remaining.length === 0;
   const currentTaxDraft = current ? taxDrafts[current.id] : undefined;
   const expenseTaxReady =
-    mode !== "expenses" || isExpenseTriageComplete(currentTaxDraft);
+    currentMode !== "expenses" || isExpenseTriageComplete(currentTaxDraft);
 
   useEffect(() => {
     if (expenseTaxReady) setTriageHint(null);
@@ -311,10 +315,12 @@ export function TriagePageClient() {
   }, [current]);
 
   const maybeOfferRule = (cur: TriageQueueItem, dec: Decision) => {
-    if (rules.some((r) => r.vendorKey === cur.vendorKey)) return;
+    const curMode = modeForItem(cur);
+    if (rules.some((r) => r.vendorKey === cur.vendorKey && r.mode === curMode)) return;
     const others = items.filter(
       (it) =>
         it.vendorKey === cur.vendorKey &&
+        modeForItem(it) === curMode &&
         it.id !== cur.id &&
         !decisions[it.id] &&
         !skipped[it.id],
@@ -329,7 +335,7 @@ export function TriagePageClient() {
         pct: dec.pct,
         queueCount: others.length,
         seen: cur.seen ?? 0,
-        mode,
+        mode: curMode,
       });
     }
   };
@@ -372,7 +378,8 @@ export function TriagePageClient() {
 
   const decide = (marker: Marker, pct?: number) => {
     if (busy.current || !current || !marker) return;
-    if (mode === "expenses" && marker !== "Personal" && !requireExpenseTaxReady()) return;
+    const curMode = modeForItem(current);
+    if (curMode === "expenses" && marker !== "Personal" && !requireExpenseTaxReady()) return;
     const cur = current;
     const businessPct =
       marker === "Business" ? 100 : marker === "Personal" ? 0 : (pct ?? 50);
@@ -386,13 +393,13 @@ export function TriagePageClient() {
         cur.amount,
         marker,
         businessPct,
-        mode,
+        curMode,
       );
       setSessionImpact((s) => addSessionImpact(s, impact));
       setHistory((h) => [
         ...h,
         {
-          mode,
+          mode: curMode,
           transactionId: cur.id,
           prevMarker: prev?.marker ?? null,
           prevPct: prev ? Math.round(prev.pct * 100) : null,
@@ -432,13 +439,14 @@ export function TriagePageClient() {
   const skip = () => {
     if (busy.current || !current) return;
     const cur = current;
+    const curMode = modeForItem(cur);
     busy.current = true;
     setExiting({ id: cur.id, dir: "down" });
     window.setTimeout(() => {
       setHistory((h) => [
         ...h,
         {
-          mode,
+          mode: curMode,
           transactionId: cur.id,
           prevMarker: null,
           prevPct: null,
@@ -457,6 +465,7 @@ export function TriagePageClient() {
     const matching = items.filter(
       (it) =>
         it.vendorKey === off.vendorKey &&
+        modeForItem(it) === off.mode &&
         !decisions[it.id] &&
         !skipped[it.id],
     );
@@ -547,8 +556,6 @@ export function TriagePageClient() {
     if (last.impact) {
       setSessionImpact((s) => subtractSessionImpact(s, last.impact!));
     }
-    if (last.mode !== mode) setMode(last.mode);
-
     if (last.bulkIds?.length && last.ruleVendorKey) {
       setDecisions((d) => {
         const n = { ...d };
@@ -577,13 +584,6 @@ export function TriagePageClient() {
         return n;
       });
     }
-  };
-
-  const switchMode = (m: Mode) => {
-    setPartial(null);
-    setRuleOffer(null);
-    setSessionImpact(emptySessionImpact());
-    setMode(m);
   };
 
   useEffect(() => {
@@ -660,11 +660,7 @@ export function TriagePageClient() {
       found: sessionImpact.deductions,
       excluded: sessionImpact.excluded,
     };
-  }, [mode, sessionImpact, decisions, skipped, items]);
-
-  const modeRules = rules.filter((r) =>
-    mode === "income" ? r.mode === "income" : r.mode === "expenses",
-  );
+  }, [sessionImpact, decisions, skipped, items]);
 
   return (
     <div className="tax-triage-page page-anim">
@@ -674,7 +670,7 @@ export function TriagePageClient() {
             <span className="triage-eyebrow-icon">
               <IBolt size={12} />
             </span>
-            Tax Triage · {remaining.length} left in {mode}
+            Tax Triage · {remaining.length} left to sort
             {progress && progress.current_streak > 0 && (
               <>
                 {" "}
@@ -685,24 +681,7 @@ export function TriagePageClient() {
         }
         title={<>Tax Triage</>}
         sub="Fly through everything we couldn't auto-sort. AI suggests; you confirm. Catch a repeat vendor and turn one call into a rule — past and future."
-        right={
-          <div className="seg" role="tablist">
-            <button
-              type="button"
-              className={`seg__btn ${mode === "expenses" ? "is-active" : ""}`}
-              onClick={() => switchMode("expenses")}
-            >
-              Expenses
-            </button>
-            <button
-              type="button"
-              className={`seg__btn ${mode === "income" ? "is-active" : ""}`}
-              onClick={() => switchMode("income")}
-            >
-              Income
-            </button>
-          </div>
-        }
+        right={null}
       />
 
       <p className="tax__disclaimer" style={{ margin: "0 36px 0" }}>
@@ -728,9 +707,8 @@ export function TriagePageClient() {
             </div>
           ) : done ? (
             <TriageDone
-              mode={mode}
               stats={sessionStats}
-              ruleCount={modeRules.length}
+              ruleCount={rules.length}
               progress={progress}
               onReload={loadQueue}
             />
@@ -742,7 +720,7 @@ export function TriagePageClient() {
                     <TriageCard
                       key={stack[0].id}
                       item={stack[0]}
-                      mode={mode}
+                      mode={modeForItem(stack[0])}
                       exiting={exiting}
                       partial={partial}
                       onDial={setPartial}
@@ -762,7 +740,7 @@ export function TriagePageClient() {
                   <p className="triage__hint">{triageHint}</p>
                 )}
                 <TriageActions
-                  mode={mode}
+                  mode={currentMode}
                   current={current}
                   partial={partial}
                   expenseTaxReady={expenseTaxReady}
@@ -788,7 +766,7 @@ export function TriagePageClient() {
               onDismiss={() => setRuleOffer(null)}
             />
           ) : null}
-          <TaxMeter mode={mode} stats={sessionStats} progress={progress} />
+          <TaxMeter stats={sessionStats} progress={progress} />
           {progress && progress.badges.length > 0 && (
             <div className="card triage-badges-card">
               <div className="uppercase-label">Badges</div>
@@ -801,7 +779,7 @@ export function TriagePageClient() {
               </div>
             </div>
           )}
-          <RulesPanel rules={modeRules} onDelete={(id) => void deleteRule(id)} />
+          <RulesPanel rules={rules} onDelete={(id) => void deleteRule(id)} />
           <SortedLog
             items={items}
             decisions={decisions}
@@ -1320,11 +1298,9 @@ function RuleOffer({
 }
 
 function TaxMeter({
-  mode,
   stats,
   progress,
 }: {
-  mode: Mode;
   stats: {
     sorted: number;
     total: number;
@@ -1335,42 +1311,35 @@ function TaxMeter({
   progress: TriageProgressRow | null;
 }) {
   const pct = stats.total ? stats.sorted / stats.total : 0;
-  const income = mode === "income";
 
   return (
     <div className="meter">
       <div className="meter__therm">
         <div
-          className={`meter__therm-fill ${income ? "is-in" : ""}`}
+          className="meter__therm-fill"
           style={{ height: `${Math.max(pct * 100, 4)}%` }}
         />
-        <div className={`meter__therm-bulb ${income ? "is-in" : ""}`} />
+        <div className="meter__therm-bulb" />
       </div>
       <div className="meter__body">
         <div className="uppercase-label meter__label">
-          {income ? "Tax to set aside" : "Tax saved so far"}
+          Tax impact sorted
         </div>
-        <div className={`meter__big ${income ? "is-in" : ""}`}>
+        <div className="meter__big">
           {usd(stats.primary)}
         </div>
         <div className="meter__sub">
-          {income ? (
+          from {usd(stats.found)} in deductions/taxable income
+          {stats.excluded ? (
             <>
-              {usd(stats.found)} taxable income found
-              {stats.excluded ? (
-                <>
-                  {" "}
-                  · <span className="meter__excl">{usd(stats.excluded)} excluded</span>
-                </>
-              ) : null}
+              {" "}
+              · <span className="meter__excl">{usd(stats.excluded)} excluded</span>
             </>
-          ) : (
-            <>from {usd(stats.found)} in deductions</>
-          )}
+          ) : null}
         </div>
         {progress ? (
-          <div className={`meter__lifetime${income ? " is-in" : ""}`}>
-            Lifetime {income ? "set aside" : "tax saved"}:{" "}
+          <div className="meter__lifetime">
+            Lifetime tax impact:{" "}
             <strong>{usd(progress.lifetime_tax_saved)}</strong>
           </div>
         ) : null}
@@ -1544,13 +1513,11 @@ function KeyLegend({
 }
 
 function TriageDone({
-  mode,
   stats,
   ruleCount,
   progress,
   onReload,
 }: {
-  mode: Mode;
   stats: {
     sorted: number;
     total: number;
@@ -1564,7 +1531,6 @@ function TriageDone({
   onReload: () => void;
 }) {
   const shown = stats.primary;
-  const income = mode === "income";
 
   return (
     <div className="tdone">
@@ -1572,10 +1538,10 @@ function TriageDone({
         <ICheck size={30} />
       </div>
       <div className="tdone__title">
-        {income ? "Income sorted." : "Inbox zero."}
+        Triage sorted.
       </div>
       <div className="tdone__sub">
-        {stats.sorted} of {stats.total} {mode} cleared
+        {stats.sorted} of {stats.total} transactions cleared
         {stats.skips ? ` · ${stats.skips} skipped` : ""}
         {ruleCount ? ` · ${ruleCount} rule${ruleCount > 1 ? "s" : ""} created` : ""}
         .
@@ -1584,24 +1550,19 @@ function TriageDone({
         <div
           className="uppercase-label"
           style={{
-            color: income ? "var(--wheat-deep)" : "var(--forest-deep)",
+            color: "var(--forest-deep)",
           }}
         >
-          {income ? "Set aside for taxes" : "Taxes you just saved"}
+          Tax impact sorted
         </div>
-        <div className={`tdone__big ${income ? "is-in" : ""}`}>{usd(shown)}</div>
+        <div className="tdone__big">{usd(shown)}</div>
         <div className="tdone__payoff-sub">
-          {income ? (
-            <>
-              {usd(stats.found)} taxable · {usd(stats.excluded ?? 0)} kept tax-free
-            </>
-          ) : (
-            <>from {usd(stats.found)} in business deductions</>
-          )}
+          from {usd(stats.found)} in deductions/taxable income
+          {stats.excluded ? ` · ${usd(stats.excluded)} excluded` : ""}
         </div>
         {progress ? (
-          <div className={`tdone__lifetime${income ? " is-in" : ""}`}>
-            Lifetime tax {income ? "set aside" : "saved"}:{" "}
+          <div className="tdone__lifetime">
+            Lifetime tax impact:{" "}
             <strong>{usd(progress.lifetime_tax_saved)}</strong>
             {progress.current_streak > 1 && (
               <> · {progress.current_streak}-day streak</>
@@ -1610,25 +1571,12 @@ function TriageDone({
         ) : null}
       </div>
       <div className="tdone__actions">
-        {income ? (
-          <>
-            <Link className="btn btn--primary" href="/tax">
-              <ITax size={14} /> View Schedule C
-            </Link>
-            <Link className="btn btn--ghost" href="/review">
-              <IReview size={14} /> Review
-            </Link>
-          </>
-        ) : (
-          <>
-            <Link className="btn btn--primary" href="/tax">
-              <ITax size={14} /> View Schedule C
-            </Link>
-            <Link className="btn btn--ghost" href="/review">
-              <IReview size={14} /> Review
-            </Link>
-          </>
-        )}
+        <Link className="btn btn--primary" href="/tax">
+          <ITax size={14} /> View Schedule C
+        </Link>
+        <Link className="btn btn--ghost" href="/review">
+          <IReview size={14} /> Review
+        </Link>
       </div>
       <button type="button" className="tdone__reset" onClick={onReload}>
         ↩ Reload queue

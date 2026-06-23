@@ -20,6 +20,10 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function navigateToLegalPage(path: "/terms" | "/privacy") {
+    window.location.assign(path);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -220,9 +224,31 @@ export default function SignupPage() {
 
         <p style={{ fontSize: 12, color: "var(--ink-4)", lineHeight: 1.5, margin: "2px 0" }}>
           By proceeding you agree to the{" "}
-          <Link href="/terms" style={{ color: "var(--forest)", textDecoration: "none" }}>Terms</Link>{" "}
+          <a
+            href="/terms"
+            onPointerDown={(e) => {
+              if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                e.preventDefault();
+                navigateToLegalPage("/terms");
+              }
+            }}
+            style={{ color: "var(--forest)", textDecoration: "none" }}
+          >
+            Terms
+          </a>{" "}
           and{" "}
-          <Link href="/privacy" style={{ color: "var(--forest)", textDecoration: "none" }}>Privacy Policy</Link>.
+          <a
+            href="/privacy"
+            onPointerDown={(e) => {
+              if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+                e.preventDefault();
+                navigateToLegalPage("/privacy");
+              }
+            }}
+            style={{ color: "var(--forest)", textDecoration: "none" }}
+          >
+            Privacy Policy
+          </a>.
         </p>
 
         {error && (

@@ -14,6 +14,7 @@ import { plaidPrimaryFromTransaction } from "@/lib/ai/categorize-shared";
  * @see https://docs.stripe.com/api/financial_connections/transactions/list
  */
 const STRIPE_FC_TRANSACTIONS_PAGE_LIMIT = 100;
+const PLAID_TRANSACTION_CONFLICT_TARGET = "user_id,data_feed_external_id";
 
 /** Returned on successful Stripe FC sync to compare against bank exports (e.g. Chase CSV). */
 export type StripeSyncDiagnostics = {
@@ -571,7 +572,7 @@ export async function runSyncForDataSource(
                 updated_at: new Date().toISOString(),
               },
               {
-                onConflict: "data_source_id,data_feed_external_id",
+                onConflict: PLAID_TRANSACTION_CONFLICT_TARGET,
                 ignoreDuplicates: true,
               },
             );
@@ -602,7 +603,7 @@ export async function runSyncForDataSource(
               transaction_type: amount > 0 ? "income" : "expense",
               updated_at: new Date().toISOString(),
             })
-            .eq("data_source_id", dataSourceId)
+            .eq("user_id", userId)
             .eq("data_feed_external_id", tx.transaction_id);
           if (!updErr) updatedCount++;
         }
@@ -615,7 +616,7 @@ export async function runSyncForDataSource(
           const { error: delErr } = await (supabase as any)
             .from("transactions")
             .delete()
-            .eq("data_source_id", dataSourceId)
+            .eq("user_id", userId)
             .eq("data_feed_external_id", txId);
           if (!delErr) deletedCount++;
         }

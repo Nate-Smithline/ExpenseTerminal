@@ -81,6 +81,10 @@ function fmtMoney(n: number): string {
   return Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+function fmtPercent(rate: number): string {
+  return `${(Math.max(0, rate) * 100).toFixed(1)}%`;
+}
+
 function formatTxnDate(dateStr: string): string {
   const iso = dateStr.length <= 10 ? `${dateStr}T12:00:00` : dateStr;
   const d = new Date(iso);
@@ -511,6 +515,15 @@ export function TaxPageClient() {
   const totalTax = summary?.totalTaxDue ?? 0;
   const seTaxPct = income > 0 ? ((seTax / income) * 100).toFixed(1) : "14.13";
   const fedTaxPct = summary?.taxRate ? `${summary.taxRate}` : "22";
+  const paidWithholding = qPayments.reduce(
+    (sum, p) => sum + (p.paid ? Number(p.amountPaid ?? p.amount ?? 0) : 0),
+    0,
+  );
+  const averageWithholdingRate = income > 0 ? paidWithholding / income : 0;
+  const targetWithholdingRate = income > 0 ? totalTax / income : Math.max(0, summary?.effectiveRate ?? 0);
+  const withholdingGapRate = Math.max(0, targetWithholdingRate - averageWithholdingRate);
+  const goForwardPerThousand = targetWithholdingRate * 1000;
+  const catchUpPerThousand = withholdingGapRate * 1000;
 
   const incomeLines = summary?.scheduleC?.income ?? [];
   const expenseLines = summary?.scheduleC?.expenses ?? [];
@@ -595,6 +608,46 @@ export function TaxPageClient() {
               <Link href="/settings/profile" className="btn btn--ghost tax__estimate-cta" style={{ marginTop: 14, width: "100%", justifyContent: "center" }}>
                 Adjust filing status in Settings → Profile
               </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Average withholding rate */}
+        <div className="card" style={{ padding: "20px 24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) repeat(3, minmax(120px, 1fr))", gap: 18, alignItems: "center" }}>
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 600, margin: "0 0 6px" }}>Average withholding rate</h2>
+              <p style={{ fontSize: 13, color: "var(--ink-3)", margin: 0, lineHeight: 1.5 }}>
+                Based on estimated payments you have marked paid against gross business income.
+                Use the target rate to decide what to hold back from new income.
+              </p>
+            </div>
+            <div>
+              <div className="uppercase-label" style={{ marginBottom: 4 }}>Paid so far</div>
+              <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                {loading ? "—" : fmtPercent(averageWithholdingRate)}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>
+                {loading ? "—" : `${fmtMoney(paidWithholding)} paid`}
+              </div>
+            </div>
+            <div>
+              <div className="uppercase-label" style={{ marginBottom: 4 }}>Target</div>
+              <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--ember)" }}>
+                {loading ? "—" : fmtPercent(targetWithholdingRate)}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>
+                {loading ? "—" : `${fmtMoney(goForwardPerThousand)} per new $1k`}
+              </div>
+            </div>
+            <div>
+              <div className="uppercase-label" style={{ marginBottom: 4 }}>Gap</div>
+              <div style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: withholdingGapRate > 0 ? "var(--ember)" : "var(--forest-deep)" }}>
+                {loading ? "—" : fmtPercent(withholdingGapRate)}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>
+                {loading ? "—" : withholdingGapRate > 0 ? `${fmtMoney(catchUpPerThousand)} short per $1k` : "On pace"}
+              </div>
             </div>
           </div>
         </div>

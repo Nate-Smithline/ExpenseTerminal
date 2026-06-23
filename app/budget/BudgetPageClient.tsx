@@ -102,6 +102,15 @@ function currentMonthKey(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function isTxnInMonth(tx: Pick<Txn, "date">, month: string): boolean {
+  return tx.date >= `${month}-01` && tx.date <= monthEndDate(month);
+}
+
+function monthEndDate(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(y, m, 0).toISOString().slice(0, 10);
+}
+
 function budgetLineIdAtPoint(x: number, y: number): string | null {
   for (const el of document.elementsFromPoint(x, y)) {
     if (!(el instanceof HTMLElement)) continue;
@@ -351,7 +360,7 @@ export function BudgetPageClient() {
     }
     let cancelled = false;
     setLineActivityLoading(true);
-    fetch(`/api/budget/transactions?budget_line_id=${selectedLineId}`)
+    fetch(`/api/budget/transactions?budget_line_id=${selectedLineId}&month=${month}`)
       .then(r => r.json())
       .then(({ transactions }) => {
         if (!cancelled) setLineActivityTxns(transactions ?? []);
@@ -495,8 +504,6 @@ export function BudgetPageClient() {
   useEffect(() => {
     txns.forEach(t => txnMap.current.set(t.id, t));
   }, [txns]);
-
-  const { income = 0, spending = 0 } = data?.stats ?? {};
 
   // Left-to-allocate is based on planned amounts, not actual transactions:
   // sum of income-group planned lines minus sum of expense-group planned lines
@@ -941,7 +948,7 @@ export function BudgetPageClient() {
     });
 
     // Re-point the assignment and re-net each affected line's actual.
-    if (txn) {
+    if (txn && isTxnInMonth(txn, month)) {
       const absAmt = Math.abs(Number(txn.amount));
       setData(prev => {
         if (!prev) return prev;
@@ -1541,7 +1548,7 @@ export function BudgetPageClient() {
               </div>
 
               {activeTab === "summary" ? (
-                <SummaryTab groups={data?.groups ?? []} income={income} spending={spending} />
+                <SummaryTab groups={data?.groups ?? []} />
               ) : (
                 <div className="txnlist">
                   <div className="txnlist__search">
@@ -2869,12 +2876,13 @@ function SummaryGroupTable({ title, groups, colors, total }: {
   );
 }
 
-function SummaryTab({ groups, income, spending }: { groups: BudgetGroupData[]; income: number; spending: number }) {
+function SummaryTab({ groups }: { groups: BudgetGroupData[] }) {
   const incomeGroups  = groups.filter(g => g.kind === "income");
   const expenseGroups = groups.filter(g => g.kind !== "income");
 
   const totalIncomeAllocated  = incomeGroups.reduce((s, g) => s + g.budget_lines.reduce((a, l) => a + (l.allocated ?? 0), 0), 0);
   const totalExpenseAllocated = expenseGroups.reduce((s, g) => s + g.budget_lines.reduce((a, l) => a + (l.allocated ?? 0), 0), 0);
+  const totalExpenseActual = expenseGroups.reduce((s, g) => s + g.budget_lines.reduce((a, l) => a + (l.actual ?? 0), 0), 0);
 
   const incomeColors  = incomeGroups.map((_, i) => incomeColor(i));
   const expenseColors = expenseGroups.map((_, i) => expenseColor(i));
@@ -2897,7 +2905,7 @@ function SummaryTab({ groups, income, spending }: { groups: BudgetGroupData[]; i
         <div className="summary__stat">
           <div style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 600 }}>Income</div>
           <div style={{ fontWeight: 700, fontSize: 17, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
-            {fmtMoney(income)}
+            {fmtMoney(totalIncomeAllocated)}
           </div>
         </div>
         <div className="summary__stat">
@@ -2909,7 +2917,7 @@ function SummaryTab({ groups, income, spending }: { groups: BudgetGroupData[]; i
         <div className="summary__stat">
           <div style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 600 }}>Spending</div>
           <div style={{ fontWeight: 700, fontSize: 17, marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
-            {fmtMoney(spending)}
+            {fmtMoney(totalExpenseActual)}
           </div>
         </div>
       </div>

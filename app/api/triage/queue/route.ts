@@ -14,7 +14,6 @@ export async function GET(req: NextRequest) {
 
   const params = req.nextUrl.searchParams;
   const countOnly = params.get("count_only") === "true";
-  const mode = params.get("mode") === "income" ? "income" : "expense";
   const db = supabase as any;
 
   if (countOnly) {
@@ -40,7 +39,7 @@ export async function GET(req: NextRequest) {
     const expenses = expenseCount ?? 0;
     const income = incomeCount ?? 0;
     return NextResponse.json({
-      count: mode === "income" ? income : expenses,
+      count: expenses + income,
       expenseCount: expenses,
       incomeCount: income,
       total: expenses + income,
@@ -56,7 +55,7 @@ export async function GET(req: NextRequest) {
     )
     .eq("user_id", userId)
     .is("marker", null)
-    .eq("transaction_type", mode)
+    .in("transaction_type", ["expense", "income"])
     .order("date", { ascending: false })
     .limit(500);
 
@@ -108,11 +107,8 @@ export async function GET(req: NextRequest) {
   );
 
   return NextResponse.json({
-    mode: mode === "income" ? "income" : "expenses",
+    mode: "all",
     items,
-    rules: rules.filter(
-      (r: { mode: string }) =>
-        r.mode === (mode === "income" ? "income" : "expenses"),
-    ),
+    rules,
   });
 }

@@ -161,6 +161,11 @@ ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS data_feed_external_id T
 CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_data_feed_external
   ON public.transactions(data_source_id, data_feed_external_id)
   WHERE data_feed_external_id IS NOT NULL;
+ALTER TABLE public.transactions
+  DROP CONSTRAINT IF EXISTS transactions_user_data_feed_external_key;
+ALTER TABLE public.transactions
+  ADD CONSTRAINT transactions_user_data_feed_external_key
+  UNIQUE (user_id, data_feed_external_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_year_status_type ON public.transactions(user_id, tax_year, status, transaction_type);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON public.transactions(date DESC);
 

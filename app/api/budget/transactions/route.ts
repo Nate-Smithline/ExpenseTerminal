@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   const columns =
     "id,date,vendor,description,amount,transaction_type,marker,business_pct,business_purpose,hint_vendor,hint_plaid_category,category,schedule_c_line,status";
 
-  // When fetching all transactions for a specific line, month filter is optional
+  // When fetching transactions for a specific line, scope to month when provided.
   if (budgetLineId) {
     const { data: line } = await db
       .from("budget_lines")
@@ -57,6 +57,16 @@ export async function GET(req: NextRequest) {
       .in("id", assignedIds)
       .order("date", { ascending: false })
       .limit(500);
+
+    if (month) {
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        return NextResponse.json({ error: "month param must be YYYY-MM" }, { status: 400 });
+      }
+      const [y, m] = month.split("-").map(Number);
+      const startDate = `${month}-01`;
+      const endDate = new Date(y, m, 0).toISOString().slice(0, 10);
+      lineQuery = lineQuery.gte("date", startDate).lte("date", endDate);
+    }
 
     if (search) lineQuery = lineQuery.ilike("vendor", `%${search}%`);
 

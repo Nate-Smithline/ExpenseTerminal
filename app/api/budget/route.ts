@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const hydrated = await hydrateLineActuals(db, userId, groups ?? []);
+  const hydrated = await hydrateLineActuals(db, userId, month, groups ?? []);
   const hydratedGroups = sortBudgetGroups(
     hydrated as { position: number; budget_lines?: { id: string; position: number }[] }[]
   );
@@ -68,6 +68,7 @@ export async function GET(req: NextRequest) {
 async function hydrateLineActuals(
   db: Supa,
   userId: string,
+  month: string,
   groups: {
     budget_lines?: {
       id: string;
@@ -92,6 +93,10 @@ async function hydrateLineActuals(
   }
   if (lineIds.length === 0) return groups;
 
+  const startDate = `${month}-01`;
+  const [y, m] = month.split("-").map(Number);
+  const endDate = new Date(y, m, 0).toISOString().slice(0, 10);
+
   const { data: links } = await db
     .from("budget_line_transactions")
     .select("budget_line_id, transaction_id")
@@ -106,6 +111,8 @@ async function hydrateLineActuals(
       .from("transactions")
       .select("id, amount, transaction_type")
       .eq("user_id", userId)
+      .gte("date", startDate)
+      .lte("date", endDate)
       .in("id", txIds);
 
     for (const t of txns ?? []) {
