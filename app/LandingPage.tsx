@@ -48,54 +48,38 @@ const landingMarkup = String.raw`
         <p class="hero__note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg> 15-day free trial · Bank-level encryption · Connects via <a class="text-link" href="https://plaid.com/" target="_blank" rel="noopener noreferrer">Plaid</a></p>
       </div>
 
-      <div class="scene reveal" style="grid-template-columns:1fr;max-width:560px;margin-left:auto;margin-right:auto">
-        <div class="card card--lift taxscreen" role="img" aria-label="ExpenseTerminal tax screen showing business income, deductions, and quarterly set-aside for 2026.">
-          <div class="taxscreen__bar">
-            <span class="taxscreen__dot" style="background:var(--ember-soft)"></span>
-            <span class="taxscreen__dot" style="background:var(--wheat-soft)"></span>
-            <span class="taxscreen__dot" style="background:var(--forest-soft)"></span>
-            <span class="taxscreen__tab">Taxes <span class="yr mono">· 2026</span></span>
+      <div class="hero-product reveal" role="img" aria-label="ExpenseTerminal overview showing a transaction, tax savings, and estimated tax set-aside.">
+        <div class="hero-product__ring"></div>
+        <div class="hero-product__node hero-product__node--top"></div>
+        <div class="hero-product__node hero-product__node--left"><svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4a4 4 0 0 0-3 7 3 3 0 0 0 1 5 3 3 0 0 0 5 1V5a3 3 0 0 0-3-1zM15 4a4 4 0 0 1 3 7 3 3 0 0 1-1 5 3 3 0 0 1-5 1" stroke="currentColor" stroke-width="1.35" fill="none"/></svg></div>
+        <div class="hero-product__node hero-product__node--right"><svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19v-8M10 19V6M15 19v-6M20 19V8" stroke="currentColor" stroke-width="1.8"/></svg></div>
+        <div class="hero-product__node hero-product__node--bottom"><svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5M20 12a8 8 0 0 1-14 5" stroke="currentColor" stroke-width="1.6" fill="none"/><path d="M18 4v3h-3M6 20v-3h3" stroke="currentColor" stroke-width="1.6" fill="none"/></svg></div>
+
+        <div class="hero-product__card hero-product__card--transaction">
+          <div class="hero-product__transaction-head">
+            <span class="hero-product__vendor"><span></span>Amazon</span>
+            <span class="hero-product__seen">11x seen</span>
           </div>
-          <div class="taxscreen__kpis">
-            <div class="taxscreen__kpi">
-              <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Business income</div>
-              <div class="v inc">$48,250</div>
-              <div class="d">YTD · across 3 clients</div>
-            </div>
-            <div class="taxscreen__kpi">
-              <div class="k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg> Deductions found</div>
-              <div class="v ded">$14,260</div>
-              <div class="d">YTD · 142 write-offs</div>
-            </div>
-          </div>
-          <div class="taxscreen__sa">
-            <div class="hd"><span class="t">Set aside by quarter</span><span class="pct">~28% of net</span></div>
-            <div class="qrow">
-              <span class="qrow__q mono">Q1</span>
-              <span class="qrow__lbl">Apr 15 <span class="due">· paid on time</span></span>
-              <span class="qrow__amt">$1,840</span>
-              <span class="qrow__status paid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg> Paid</span>
-            </div>
-            <div class="qrow">
-              <span class="qrow__q mono">Q2</span>
-              <span class="qrow__lbl">Jun 16 <span class="due">· paid on time</span></span>
-              <span class="qrow__amt">$2,210</span>
-              <span class="qrow__status paid"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg> Paid</span>
-            </div>
-            <div class="qrow is-due">
-              <span class="qrow__q mono">Q3</span>
-              <span class="qrow__lbl">Sep 15 <span class="due">· $2,050 already set aside</span></span>
-              <span class="qrow__amt">$2,480</span>
-              <span class="qrow__status due"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Next up</span>
-            </div>
-            <div class="qrow">
-              <span class="qrow__q mono">Q4</span>
-              <span class="qrow__lbl">Jan 15 <span class="due">· projected</span></span>
-              <span class="qrow__amt">$2,300</span>
-              <span class="qrow__status est">Estimated</span>
-            </div>
-          </div>
-          <div class="taxscreen__foot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> You're on track. Nothing due this month.</div>
+          <div class="hero-product__amount">+ $94.22</div>
+          <div class="hero-product__bank">JPMorgan Chase</div>
+          <div class="hero-product__date">May 27</div>
+        </div>
+
+        <div class="hero-product__card hero-product__card--impact">
+          <div class="hero-product__label">Tax impact</div>
+          <div class="hero-product__savings">$6,034</div>
+          <div class="hero-product__caption">Lifetime tax savings</div>
+          <div class="hero-product__divider"></div>
+          <div class="hero-product__progress"><span>0 of 20 sorted</span><span>0%</span></div>
+        </div>
+
+        <div class="hero-product__card hero-product__card--tax">
+          <div class="hero-product__eyebrow"><b>Tax</b> 2026</div>
+          <div class="hero-product__tax-title">Estimated tax to set aside</div>
+          <div class="hero-product__tax-amount">$14,283.53</div>
+          <div class="hero-product__tax-divider"></div>
+          <div class="hero-product__metric"><span>Net profit YTD</span><b>$32,559.63</b></div>
+          <div class="hero-product__metric"><span>Paid so far</span><b>$13,796.10</b></div>
         </div>
       </div>
     </div>
@@ -181,22 +165,9 @@ const landingMarkup = String.raw`
         </div>
       </div>
 
-      <div class="card card--lift goal reveal">
-        <div class="goal__eyebrow">Community savings · live</div>
-        <div class="goal__amt">
-          <span class="saved" id="goalSaved">$0</span>
-          <span class="of">saved of our $100k goal</span>
-        </div>
-        <p class="goal__sub">Deductions our members have caught together this year that would've slipped through the cracks.</p>
-        <div class="goal__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100000" aria-valuenow="68400" aria-label="Community savings progress"><i id="goalBar"></i></div>
-        <div class="goal__ticks"><span>$0</span><span>$50k</span><span>$100k</span></div>
-        <div class="goal__meta">
-          <div><div class="v" style="color:var(--forest-deep)">$68,400</div><div class="k">caught so far</div></div>
-          <div><div class="v">2,140</div><div class="k">members sorting</div></div>
-          <div><div class="v">$32</div><div class="k">avg. per write-off</div></div>
-        </div>
-        <p class="illus" style="margin-top:18px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg> Illustrative community figure.</p>
-      </div>
+      <figure class="product-shot product-shot--tax reveal" aria-label="Tax 2026 screen preview">
+        <img src="/landing/tax-2026.png" alt="" loading="lazy" decoding="async" />
+      </figure>
     </div>
   </div>
 </section>
@@ -312,19 +283,9 @@ const landingMarkup = String.raw`
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span><b>Business kept separate.</b> Your hustle's spending never muddies your household budget — and vice versa.</span></li>
         </ul>
       </div>
-      <div class="theme__media">
-        <div class="eyebrow eyebrow--accent" style="margin-bottom:14px">June budget · zero-based</div>
-        <div class="sc__row"><span class="lbl">Needs</span><span class="val">$2,400 / $2,600</span></div>
-        <div class="goal__bar" style="margin:8px 0 16px"><i style="width:92%;background:var(--clay)"></i></div>
-        <div class="sc__row"><span class="lbl">Wants</span><span class="val">$540 / $700</span></div>
-        <div class="goal__bar" style="margin:8px 0 16px"><i style="width:77%;background:var(--wheat)"></i></div>
-        <div class="sc__row"><span class="lbl">Business</span><span class="val">$1,180 / $1,400</span></div>
-        <div class="goal__bar" style="margin:8px 0 0"><i style="width:84%;background:var(--forest-mid)"></i></div>
-        <div class="kpi-row" style="margin-top:20px">
-          <div class="kpi"><div class="k">Left to assign</div><div class="v" style="color:var(--forest-deep)">$0</div></div>
-          <div class="kpi"><div class="k">Every dollar</div><div class="v">Has a job</div></div>
-        </div>
-      </div>
+      <figure class="theme__media theme__media--image">
+        <img src="/landing/budget-2026.png" alt="" loading="lazy" decoding="async" />
+      </figure>
     </div>
 
     <div class="theme theme--flip reveal">
@@ -585,28 +546,6 @@ export function LandingPage() {
       };
       requestAnimationFrame(step);
     };
-
-    const goalBar = root.querySelector<HTMLElement>("#goalBar");
-    const goalSaved = root.querySelector("#goalSaved");
-    const goalTarget = 68400;
-    const goalMax = 100000;
-    if (goalBar) {
-      const goalObserver = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (!entry.isIntersecting) return;
-            goalObserver.disconnect();
-            requestAnimationFrame(() => {
-              goalBar.style.width = `${(goalTarget / goalMax) * 100}%`;
-            });
-            countUp(goalSaved, 0, goalTarget, 1400, fmt);
-          });
-        },
-        { threshold: 0.4 }
-      );
-      goalObserver.observe(goalBar);
-      observers.push(goalObserver);
-    }
 
     const deck: DeckItem[] = [
       { vendor: "Figma Inc.", meta: "Jun 02 · Software subscription", amount: 45, ded: 45, pct: 94, biz: true },
