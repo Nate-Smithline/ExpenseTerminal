@@ -419,6 +419,62 @@
   font-style: normal;
   line-height: 1.35;
 }
+.onb-income-note {
+  max-width: 48ch;
+  margin: 5px 0 0;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.onb-bracket-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.onb-bracket {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(17,24,39,.08);
+  border-radius: 16px;
+  background: rgba(255,255,255,.72);
+  color: var(--ink);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s var(--ease), background .15s var(--ease), box-shadow .15s var(--ease), transform .15s var(--ease);
+}
+.onb-bracket:hover {
+  border-color: rgba(17,24,39,.14);
+  background: rgba(255,255,255,.96);
+  transform: translateY(-1px);
+}
+.onb-bracket.is-active {
+  border-color: var(--forest);
+  background: linear-gradient(180deg, rgba(236,253,245,.94), rgba(255,255,255,.88));
+  box-shadow: 0 0 0 4px rgba(16,185,129,.1);
+}
+.onb-bracket span {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+}
+.onb-bracket b {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--bone-2);
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 800;
+}
+.onb-bracket.is-active b {
+  background: var(--forest);
+  color: #fff;
+}
 .onb-connect {
   align-items: center;
   text-align: center;
@@ -954,7 +1010,8 @@
     font-size: 38px;
   }
   .onb-choice-grid,
-  .onb-choice-grid--compact {
+  .onb-choice-grid--compact,
+  .onb-bracket-grid {
     grid-template-columns: 1fr;
   }
   .onb-income input {

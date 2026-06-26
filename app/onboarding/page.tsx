@@ -5,6 +5,12 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { usePlaidLink } from "react-plaid-link";
 import type { TrialStatusResult } from "@/lib/billing/trial";
+import {
+  FILING_STATUS_OPTIONS,
+  INCOME_BRACKETS,
+  parseFilingStatus,
+  type FilingStatus,
+} from "@/lib/tax/filing-status";
 
 type StepId = "email" | "profile" | "reminders" | "industry" | "connect";
 
@@ -15,6 +21,7 @@ type OnboardingData = {
   firstName: string | null;
   profile: {
     expectedIncome: number | null;
+    expectedIncomeRange: string | null;
     entityType: string | null;
     filingStatus: string | null;
     triageReminderFrequency: string | null;
@@ -81,12 +88,7 @@ const ENTITY_OPTIONS = [
   { id: "other", label: "Other", hint: "Not sure yet" },
 ];
 
-const FILING_OPTIONS = [
-  { id: "single", label: "Single" },
-  { id: "married_joint", label: "Married filing jointly" },
-  { id: "married_separate", label: "Married filing separately" },
-  { id: "head_of_household", label: "Head of household" },
-];
+const FILING_OPTIONS = FILING_STATUS_OPTIONS.map((option) => ({ id: option.value, label: option.label }));
 
 const REMINDER_OPTIONS = [
   { id: "daily", label: "Daily", hint: "High-volume shops" },
@@ -136,14 +138,36 @@ function lookbackStartDate(opt: LookbackOption): string | null {
   return d.toISOString().slice(0, 10);
 }
 
-function formatIncome(value: string): string {
-  const raw = value.replace(/[^\d]/g, "");
-  if (!raw) return "";
-  return Number(raw).toLocaleString("en-US");
-}
-
 function Kbd({ children }: { children: React.ReactNode }) {
   return <kbd className="onb-kbd">{children}</kbd>;
+}
+
+function normalizeFilingStatus(value: string | null | undefined): FilingStatus {
+  if (value === "married_joint") return "married_filing_jointly";
+  if (value === "married_separate") return "married_filing_separately";
+  return parseFilingStatus(value) ?? "single";
+}
+
+function rangeBounds(rangeId: string): { min: number; max: number | null } | null {
+  const [, rawRange] = rangeId.split(":");
+  if (!rawRange) return null;
+  if (rawRange.endsWith("-plus")) {
+    const min = Number(rawRange.replace("-plus", ""));
+    return Number.isFinite(min) ? { min, max: null } : null;
+  }
+  const [min, max] = rawRange.split("-").map((value) => Number(value));
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  return { min, max };
+}
+
+function bracketForIncome(status: FilingStatus, income: number | null): string {
+  const brackets = INCOME_BRACKETS[status];
+  if (!income || !Number.isFinite(income)) return brackets[2]?.id ?? brackets[0]?.id ?? "";
+  return brackets.find((bracket) => {
+    const bounds = rangeBounds(bracket.id);
+    if (!bounds) return false;
+    return income >= bounds.min && (bounds.max == null || income <= bounds.max);
+  })?.id ?? brackets[0]?.id ?? "";
 }
 
 export default function OnboardingPage() {
@@ -158,9 +182,9 @@ export default function OnboardingPage() {
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
 
-  const [income, setIncome] = useState("75,000");
   const [entityType, setEntityType] = useState("sole_prop");
-  const [filingStatus, setFilingStatus] = useState("single");
+  const [filingStatus, setFilingStatus] = useState<FilingStatus>("single");
+  const [incomeRange, setIncomeRange] = useState("");
   const [reminder, setReminder] = useState("weekly");
   const [industry, setIndustry] = useState("content_creator");
   const [customIndustry, setCustomIndustry] = useState("");
@@ -183,10 +207,14 @@ export default function OnboardingPage() {
       return;
     }
     const next = (await res.json()) as OnboardingData;
+    const nextFilingStatus = normalizeFilingStatus(next.profile.filingStatus);
     setData(next);
-    setIncome(formatIncome(String(next.profile.expectedIncome ?? 75000)));
     setEntityType(next.profile.entityType ?? "sole_prop");
-    setFilingStatus(next.profile.filingStatus ?? "single");
+    setFilingStatus(nextFilingStatus);
+    setIncomeRange(
+      next.profile.expectedIncomeRange ??
+      bracketForIncome(nextFilingStatus, next.profile.expectedIncome ?? 75000)
+    );
     setReminder(next.profile.triageReminderFrequency ?? "weekly");
     setIndustry(next.profile.industry ?? "content_creator");
     setCustomIndustry(next.profile.industryCustom ?? "");
@@ -207,6 +235,13 @@ export default function OnboardingPage() {
   const activeIndex = STEPS.findIndex((step) => step.id === active);
   const completedCount = data ? STEPS.filter((step) => data.steps[step.id]).length : 0;
   const canUseFlow = Boolean(data?.emailVerified);
+  const incomeOptions = INCOME_BRACKETS[filingStatus] ?? [];
+
+  function handleFilingStatusChange(value: string) {
+    const next = normalizeFilingStatus(value);
+    setFilingStatus(next);
+    setIncomeRange(INCOME_BRACKETS[next]?.[2]?.id ?? INCOME_BRACKETS[next]?.[0]?.id ?? "");
+  }
 
   const saveStep = useCallback(async (payload: Record<string, unknown>) => {
     setSaving(true);
@@ -231,14 +266,18 @@ export default function OnboardingPage() {
   }, [refresh]);
 
   const continueFromProfile = useCallback(async () => {
+    if (!incomeRange) {
+      setError("Choose the IRS income range that best matches your expected profit.");
+      return;
+    }
     const ok = await saveStep({
       step: "profile",
-      expectedIncome: income,
+      expectedIncomeRange: incomeRange,
       entityType,
       filingStatus,
     });
     if (ok) setActive("reminders");
-  }, [entityType, filingStatus, income, saveStep]);
+  }, [entityType, filingStatus, incomeRange, saveStep]);
 
   const continueFromReminder = useCallback(async () => {
     const ok = await saveStep({
@@ -518,18 +557,9 @@ export default function OnboardingPage() {
 
           {active === "profile" && (
             <div className="onb-panel">
-              <label className="onb-flow-label" htmlFor="expected-income">Expected annual self-employed income</label>
-              <div className="onb-income">
-                <span>$</span>
-                <input
-                  id="expected-income"
-                  value={income}
-                  onChange={(e) => setIncome(formatIncome(e.target.value))}
-                  inputMode="numeric"
-                />
-              </div>
-              <ChoiceGrid label="Entity type" options={ENTITY_OPTIONS} value={entityType} onChange={setEntityType} />
-              <ChoiceGrid label="Filing status" options={FILING_OPTIONS} value={filingStatus} onChange={setFilingStatus} compact />
+              <ChoiceGrid label="Filing status" options={FILING_OPTIONS} value={filingStatus} onChange={handleFilingStatusChange} compact />
+              <IncomeRangePicker options={incomeOptions} value={incomeRange} onChange={setIncomeRange} />
+              <ChoiceGrid label="Business type" options={ENTITY_OPTIONS} value={entityType} onChange={setEntityType} />
               <div className="onb-flow-actions">
                 <button className="onb-flow-btn" type="button" disabled={saving} onClick={() => void continueFromProfile()}>
                   {saving ? "Saving..." : "Continue"} <Kbd>Enter</Kbd>
@@ -721,6 +751,38 @@ function ChoiceGrid({
               <b>{option.label}</b>
               {option.hint && <em>{option.hint}</em>}
             </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function IncomeRangePicker({
+  options,
+  value,
+  onChange,
+}: {
+  options: Array<{ id: string; label: string; taxRate: number }>;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="onb-choice-block">
+      <div>
+        <p className="onb-flow-label">IRS federal income range</p>
+        <p className="onb-income-note">Choose the bracket that best matches expected self-employed profit. We use this for set-aside estimates.</p>
+      </div>
+      <div className="onb-bracket-grid">
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            className={`onb-bracket${value === option.id ? " is-active" : ""}`}
+            onClick={() => onChange(option.id)}
+          >
+            <span>{option.label.replace(/\s\(\d+%\)$/, "")}</span>
+            <b>{Math.round(option.taxRate * 100)}%</b>
           </button>
         ))}
       </div>

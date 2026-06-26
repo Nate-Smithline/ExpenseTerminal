@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import { createSupabaseRouteClient, createSupabaseServiceClient } from "@/lib/supabase/server";
 import { computeTrialStatus } from "@/lib/billing/trial";
+import { INCOME_BRACKETS, parseFilingStatus, type FilingStatus } from "@/lib/tax/filing-status";
 
 const VALID_STEPS = ["email", "profile", "reminders", "industry", "connect"] as const;
 type OnbStep = (typeof VALID_STEPS)[number];
@@ -10,7 +11,9 @@ const ENTITY_TYPES = new Set(["sole_prop", "llc", "s_corp", "partnership", "othe
 const FILING_STATUSES = new Set([
   "single",
   "married_joint",
+  "married_filing_jointly",
   "married_separate",
+  "married_filing_separately",
   "head_of_household",
   "qualifying_surviving_spouse",
 ]);
@@ -30,6 +33,7 @@ type QueryBuilder<T = unknown> = PromiseLike<QueryResult<T>> & {
   single: () => Promise<QueryResult<T>>;
   maybeSingle: () => Promise<QueryResult<T>>;
   update: (values: Record<string, unknown>) => QueryBuilder<T>;
+  upsert: (values: Record<string, unknown>, options?: unknown) => QueryBuilder<T>;
 };
 
 type LooseSupabase = {
@@ -47,6 +51,10 @@ type ProfileRow = {
   industry?: string | null;
   industry_custom?: string | null;
   onboarding_completed_at?: string | null;
+};
+
+type TaxYearSettingsRow = {
+  expected_income_range?: string | null;
 };
 
 type SubscriptionRow = {
@@ -75,6 +83,28 @@ function profileStepComplete(profile: ProfileRow): boolean {
   );
 }
 
+function normalizeFilingStatus(value: string | null | undefined): FilingStatus | null {
+  if (value === "married_joint") return "married_filing_jointly";
+  if (value === "married_separate") return "married_filing_separately";
+  return parseFilingStatus(value);
+}
+
+function estimatedIncomeFromRange(rangeId: string): number {
+  const [, rawRange] = rangeId.split(":");
+  if (!rawRange) return 0;
+  if (rawRange.endsWith("-plus")) {
+    const min = Number(rawRange.replace("-plus", ""));
+    return Number.isFinite(min) ? min : 0;
+  }
+  const [min, max] = rawRange.split("-").map((value) => Number(value));
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return 0;
+  return Math.round((min + max) / 2);
+}
+
+function currentTaxYear(): number {
+  return new Date().getFullYear();
+}
+
 export async function GET() {
   const { authClient, user } = await getSignedInUser();
   if (!user) {
@@ -82,8 +112,9 @@ export async function GET() {
   }
   const userId = user.id;
   const emailVerified = isEmailVerified(user);
+  const taxYear = currentTaxYear();
 
-  const [profileResult, subResult, dsResult] = await Promise.all([
+  const [profileResult, subResult, dsResult, taxSettingsResult] = await Promise.all([
     (authClient as unknown as LooseSupabase)
       .from<ProfileRow>("profiles")
       .select(`
@@ -111,6 +142,12 @@ export async function GET() {
       .from("data_sources")
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId),
+    (authClient as unknown as LooseSupabase)
+      .from<TaxYearSettingsRow>("tax_year_settings")
+      .select("expected_income_range")
+      .eq("user_id", userId)
+      .eq("tax_year", taxYear)
+      .maybeSingle(),
   ]);
 
   const profile: ProfileRow = profileResult.data ?? {};
@@ -153,6 +190,7 @@ export async function GET() {
     firstName: profile.first_name ?? null,
     profile: {
       expectedIncome: profile.expected_income ?? null,
+      expectedIncomeRange: taxSettingsResult.data?.expected_income_range ?? null,
       entityType: profile.entity_type ?? null,
       filingStatus: profile.filing_status ?? null,
       triageReminderFrequency: profile.triage_reminder_frequency ?? null,
@@ -177,6 +215,7 @@ export async function POST(req: Request) {
   let body: {
     step?: string;
     expectedIncome?: number | string | null;
+    expectedIncomeRange?: string | null;
     entityType?: string | null;
     filingStatus?: string | null;
     triageReminderFrequency?: string | null;
@@ -210,25 +249,28 @@ export async function POST(req: Request) {
     updated_at: new Date().toISOString(),
   };
 
-  if (step === "profile") {
-    const expectedIncome =
-      typeof body.expectedIncome === "string"
-        ? Number(body.expectedIncome.replace(/[$,\s]/g, ""))
-        : body.expectedIncome;
+  let selectedFilingStatus: FilingStatus | null = null;
+  let selectedBracket: { id: string; taxRate: number } | null = null;
 
-    if (typeof expectedIncome !== "number" || !Number.isFinite(expectedIncome) || expectedIncome < 0) {
-      return NextResponse.json({ error: "Expected income must be a positive number" }, { status: 400 });
-    }
+  if (step === "profile") {
     if (!body.entityType || !ENTITY_TYPES.has(body.entityType)) {
       return NextResponse.json({ error: "Invalid entity type" }, { status: 400 });
     }
     if (!body.filingStatus || !FILING_STATUSES.has(body.filingStatus)) {
       return NextResponse.json({ error: "Invalid filing status" }, { status: 400 });
     }
+    selectedFilingStatus = normalizeFilingStatus(body.filingStatus);
+    if (!selectedFilingStatus) {
+      return NextResponse.json({ error: "Invalid filing status" }, { status: 400 });
+    }
+    selectedBracket = INCOME_BRACKETS[selectedFilingStatus]?.find((option) => option.id === body.expectedIncomeRange) ?? null;
+    if (!selectedBracket) {
+      return NextResponse.json({ error: "Select an IRS income range" }, { status: 400 });
+    }
 
-    patch.expected_income = expectedIncome;
+    patch.expected_income = estimatedIncomeFromRange(selectedBracket.id);
     patch.entity_type = body.entityType;
-    patch.filing_status = body.filingStatus;
+    patch.filing_status = selectedFilingStatus;
   }
 
   if (step === "reminders") {
@@ -258,6 +300,32 @@ export async function POST(req: Request) {
     .from("profiles")
     .update(patch)
     .eq("id", userId);
+
+  if (step === "profile" && selectedBracket) {
+    await (supabase as unknown as LooseSupabase)
+      .from("org_settings")
+      .upsert(
+        {
+          user_id: userId,
+          filing_type: body.entityType,
+          personal_filing_status: selectedFilingStatus,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" }
+      );
+
+    await (supabase as unknown as LooseSupabase)
+      .from("tax_year_settings")
+      .upsert(
+        {
+          user_id: userId,
+          tax_year: currentTaxYear(),
+          tax_rate: selectedBracket.taxRate,
+          expected_income_range: selectedBracket.id,
+        },
+        { onConflict: "user_id,tax_year" }
+      );
+  }
 
   return NextResponse.json({ ok: true, step });
 }

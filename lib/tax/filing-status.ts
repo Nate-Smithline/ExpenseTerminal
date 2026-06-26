@@ -1,8 +1,14 @@
-export type FilingStatus = "single" | "married_filing_jointly";
+export type FilingStatus =
+  | "single"
+  | "married_filing_jointly"
+  | "married_filing_separately"
+  | "head_of_household";
 
 export const FILING_STATUS_OPTIONS: { value: FilingStatus; label: string }[] = [
   { value: "single", label: "Single" },
   { value: "married_filing_jointly", label: "Married filing jointly" },
+  { value: "married_filing_separately", label: "Married filing separately" },
+  { value: "head_of_household", label: "Head of household" },
 ];
 
 export const INCOME_BRACKETS: Record<
@@ -27,10 +33,33 @@ export const INCOME_BRACKETS: Record<
     { id: "joint:501051-752800", label: "$501,051 – $752,800 (35%)", taxRate: 0.35 },
     { id: "joint:752801-plus", label: "$752,801+ (37%)", taxRate: 0.37 },
   ],
+  married_filing_separately: [
+    { id: "separate:0-11925", label: "$0 – $11,925 (10%)", taxRate: 0.1 },
+    { id: "separate:11926-48475", label: "$11,926 – $48,475 (12%)", taxRate: 0.12 },
+    { id: "separate:48476-103350", label: "$48,476 – $103,350 (22%)", taxRate: 0.22 },
+    { id: "separate:103351-197300", label: "$103,351 – $197,300 (24%)", taxRate: 0.24 },
+    { id: "separate:197301-250525", label: "$197,301 – $250,525 (32%)", taxRate: 0.32 },
+    { id: "separate:250526-376400", label: "$250,526 – $376,400 (35%)", taxRate: 0.35 },
+    { id: "separate:376401-plus", label: "$376,401+ (37%)", taxRate: 0.37 },
+  ],
+  head_of_household: [
+    { id: "hoh:0-17000", label: "$0 – $17,000 (10%)", taxRate: 0.1 },
+    { id: "hoh:17001-64850", label: "$17,001 – $64,850 (12%)", taxRate: 0.12 },
+    { id: "hoh:64851-103350", label: "$64,851 – $103,350 (22%)", taxRate: 0.22 },
+    { id: "hoh:103351-197300", label: "$103,351 – $197,300 (24%)", taxRate: 0.24 },
+    { id: "hoh:197301-250500", label: "$197,301 – $250,500 (32%)", taxRate: 0.32 },
+    { id: "hoh:250501-626350", label: "$250,501 – $626,350 (35%)", taxRate: 0.35 },
+    { id: "hoh:626351-plus", label: "$626,351+ (37%)", taxRate: 0.37 },
+  ],
 };
 
 export function parseFilingStatus(value: string | null | undefined): FilingStatus | null {
-  if (value === "single" || value === "married_filing_jointly") return value;
+  if (
+    value === "single" ||
+    value === "married_filing_jointly" ||
+    value === "married_filing_separately" ||
+    value === "head_of_household"
+  ) return value;
   return null;
 }
 
