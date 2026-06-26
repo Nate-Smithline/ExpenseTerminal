@@ -10,6 +10,8 @@ import { IBolt, ICheck, IRules, ITax, IReview, ITrash } from "@/components/ui/ic
 import { RULE_OFFER_TIMEOUT_MS, RULE_SEEN_THRESHOLD } from "@/lib/triage/constants";
 import { triageTransactionImpact } from "@/lib/triage/tax-rate";
 import { MEAL_50_PCT_TOOLTIP, TAX_GOOD_FAITH_DISCLAIMER } from "@/lib/tax/disclaimer";
+import { startProCheckout } from "@/lib/billing/start-checkout";
+import type { TrialStatus } from "@/lib/billing/trial";
 import type { TaxDraft, TriageQueueItem } from "@/lib/triage/queue-map";
 import { taxDraftFromQueueItem } from "@/lib/triage/queue-map";
 import { isExpenseTriageComplete, normalizedTaxDraftLine } from "@/lib/triage/tax-draft";
@@ -21,6 +23,7 @@ import {
 import type { TriageProgressRow } from "@/lib/triage/progress";
 
 const CARD_EXIT_MS = 240;
+const FREE_TRIAGE_DEDUCTION_CAP = 36;
 
 type Mode = "expenses" | "income";
 
@@ -173,6 +176,9 @@ export function TriagePageClient() {
     mode: Mode;
   } | null>(null);
   const [progress, setProgress] = useState<TriageProgressRow | null>(null);
+  const [trialStatus, setTrialStatus] = useState<TrialStatus | null>(null);
+  const [capModalOpen, setCapModalOpen] = useState(false);
+  const [capCheckoutLoading, setCapCheckoutLoading] = useState(false);
   const [sessionImpact, setSessionImpact] = useState<SessionImpact>(emptySessionImpact);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -221,6 +227,13 @@ export function TriagePageClient() {
     void loadQueue();
   }, [loadQueue]);
 
+  useEffect(() => {
+    fetch("/api/onboarding")
+      .then((r) => r.json())
+      .then((d) => setTrialStatus(d.trial?.status ?? null))
+      .catch(() => {});
+  }, []);
+
   const remaining = useMemo(
     () => items.filter((it) => !decisions[it.id] && !skipped[it.id]),
     [items, decisions, skipped],
@@ -233,6 +246,17 @@ export function TriagePageClient() {
   const currentTaxDraft = current ? taxDrafts[current.id] : undefined;
   const expenseTaxReady =
     currentMode !== "expenses" || isExpenseTriageComplete(currentTaxDraft);
+  const hasPremiumTriageAccess =
+    trialStatus === "trial" || trialStatus === "subscribed";
+  const lifetimeDeductions = progress?.lifetime_deductions ?? 0;
+  const triageCapReached =
+    trialStatus != null &&
+    !hasPremiumTriageAccess &&
+    lifetimeDeductions >= FREE_TRIAGE_DEDUCTION_CAP;
+
+  useEffect(() => {
+    if (triageCapReached) setCapModalOpen(true);
+  }, [triageCapReached]);
 
   useEffect(() => {
     if (expenseTaxReady) setTriageHint(null);
@@ -378,6 +402,10 @@ export function TriagePageClient() {
 
   const decide = (marker: Marker, pct?: number) => {
     if (busy.current || !current || !marker) return;
+    if (triageCapReached) {
+      setCapModalOpen(true);
+      return;
+    }
     const curMode = modeForItem(current);
     if (curMode === "expenses" && marker !== "Personal" && !requireExpenseTaxReady()) return;
     const cur = current;
@@ -429,6 +457,10 @@ export function TriagePageClient() {
 
   const openPartial = () => {
     if (!current || !hasPartial) return;
+    if (triageCapReached) {
+      setCapModalOpen(true);
+      return;
+    }
     setPartial(
       current.suggest === "Partial"
         ? Math.round(current.pct * 100)
@@ -438,6 +470,10 @@ export function TriagePageClient() {
 
   const skip = () => {
     if (busy.current || !current) return;
+    if (triageCapReached) {
+      setCapModalOpen(true);
+      return;
+    }
     const cur = current;
     const curMode = modeForItem(cur);
     busy.current = true;
@@ -462,6 +498,10 @@ export function TriagePageClient() {
   const createRule = async () => {
     const off = ruleOffer;
     if (!off || !off.marker) return;
+    if (triageCapReached) {
+      setCapModalOpen(true);
+      return;
+    }
     const matching = items.filter(
       (it) =>
         it.vendorKey === off.vendorKey &&
@@ -662,6 +702,16 @@ export function TriagePageClient() {
     };
   }, [sessionImpact, decisions, skipped, items]);
 
+  const startCapCheckout = async () => {
+    setCapCheckoutLoading(true);
+    try {
+      const result = await startProCheckout("year");
+      if (!result.ok) setCapCheckoutLoading(false);
+    } catch {
+      setCapCheckoutLoading(false);
+    }
+  };
+
   return (
     <div className="tax-triage-page page-anim">
       <PageHead
@@ -744,6 +794,7 @@ export function TriagePageClient() {
                   current={current}
                   partial={partial}
                   expenseTaxReady={expenseTaxReady}
+                  capped={triageCapReached}
                   onPersonal={() => decide("Personal")}
                   onBusiness={() => decide("Business")}
                   onPartialOpen={openPartial}
@@ -790,6 +841,15 @@ export function TriagePageClient() {
           <KeyLegend hasPartial={hasPartial} hasRuleOffer={!!ruleOffer} />
         </aside>
       </div>
+      {capModalOpen && triageCapReached && (
+        <TriageCapModal
+          lifetimeDeductions={lifetimeDeductions}
+          cap={FREE_TRIAGE_DEDUCTION_CAP}
+          loading={capCheckoutLoading}
+          onUpgrade={startCapCheckout}
+          onClose={() => setCapModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1094,6 +1154,7 @@ function TriageActions({
   current,
   partial,
   expenseTaxReady = true,
+  capped = false,
   onPersonal,
   onBusiness,
   onPartialOpen,
@@ -1106,6 +1167,7 @@ function TriageActions({
   current?: TriageQueueItem;
   partial: number | null;
   expenseTaxReady?: boolean;
+  capped?: boolean;
   onPersonal: () => void;
   onBusiness: () => void;
   onPartialOpen: () => void;
@@ -1116,6 +1178,7 @@ function TriageActions({
 }) {
   const hasPartial = mode === "expenses";
   const needsTax = mode === "expenses" && !expenseTaxReady;
+  const actionsDisabled = needsTax || capped;
   const sugLabel = current
     ? markerLabel(current.suggest, Math.round(current.pct * 100))
     : "";
@@ -1130,7 +1193,7 @@ function TriageActions({
           type="button"
           className="tbtn tbtn--business tbtn--wide"
           onClick={onPartialCommit}
-          disabled={needsTax}
+          disabled={actionsDisabled}
         >
           Apply split <kbd>⏎</kbd>
         </button>
@@ -1147,6 +1210,7 @@ function TriageActions({
           type="button"
           className={`tbtn tbtn--personal${current?.suggest === "Personal" ? " is-suggested" : ""}`}
           onClick={onPersonal}
+          disabled={capped}
         >
           <kbd>←</kbd>
           <span className="tbtn__lbl">
@@ -1159,7 +1223,7 @@ function TriageActions({
             type="button"
             className={`tbtn tbtn--partial${current?.suggest === "Partial" ? " is-suggested" : ""}`}
             onClick={onPartialOpen}
-            disabled={needsTax}
+            disabled={actionsDisabled}
           >
             <kbd>↓</kbd>
             <span className="tbtn__lbl">Partial</span>
@@ -1169,7 +1233,7 @@ function TriageActions({
           type="button"
           className={`tbtn tbtn--business${current?.suggest === "Business" ? " is-suggested" : ""}`}
           onClick={onBusiness}
-          disabled={needsTax}
+          disabled={actionsDisabled}
         >
           <span className="tbtn__lbl">
             Business
@@ -1183,15 +1247,89 @@ function TriageActions({
           type="button"
           className="triage__accept-btn"
           onClick={onAccept}
-          disabled={needsTax}
+          disabled={actionsDisabled}
         >
           <IBolt size={12} /> Accept AI — <strong>{sugLabel}</strong> <kbd>⏎</kbd>
         </button>
-        <button type="button" className="triage__skip" onClick={onSkip}>
+        <button type="button" className="triage__skip" onClick={onSkip} disabled={capped}>
           Skip <kbd>S</kbd>
         </button>
       </div>
     </>
+  );
+}
+
+function TriageCapModal({
+  lifetimeDeductions,
+  cap,
+  loading,
+  onUpgrade,
+  onClose,
+}: {
+  lifetimeDeductions: number;
+  cap: number;
+  loading: boolean;
+  onUpgrade: () => void;
+  onClose: () => void;
+}) {
+  const overage = Math.max(0, lifetimeDeductions - cap);
+
+  return (
+    <div
+      className="triage-cap"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="triage-cap-title"
+    >
+      <div className="triage-cap__panel">
+        <div className="triage-cap__halo" aria-hidden />
+        <button
+          type="button"
+          className="triage-cap__close"
+          onClick={onClose}
+          aria-label="Close upgrade prompt"
+        >
+          x
+        </button>
+        <div className="triage-cap__eyebrow">Free triage cap reached</div>
+        <h2 id="triage-cap-title">
+          We found {usd(lifetimeDeductions)} in deductions before asking for a dime.
+        </h2>
+        <p>
+          You crossed the {usd(cap)} free deduction cap
+          {overage > 0 ? ` by ${usd(overage)}` : ""}. Pro keeps the swipe flow open,
+          preserves your audit-ready notes, and unlocks Budget and Cash Flow while your
+          15-day trial runs.
+        </p>
+        <div className="triage-cap__receipt">
+          <div>
+            <span>Deductions found</span>
+            <strong>{usd(lifetimeDeductions)}</strong>
+          </div>
+          <div>
+            <span>Free cap</span>
+            <strong>{usd(cap)}</strong>
+          </div>
+          <div>
+            <span>Next step</span>
+            <strong>Keep triaging</strong>
+          </div>
+        </div>
+        <div className="triage-cap__actions">
+          <button
+            type="button"
+            className="triage-cap__primary"
+            onClick={onUpgrade}
+            disabled={loading}
+          >
+            {loading ? "Redirecting..." : "Start 15-day Pro trial"}
+          </button>
+          <button type="button" className="triage-cap__secondary" onClick={onClose}>
+            Review what I found
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -3,6 +3,8 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { startProCheckout } from "@/lib/billing/start-checkout";
+import type { TrialStatus } from "@/lib/billing/trial";
 import {
   IBudget,
   ICash,
@@ -29,6 +31,8 @@ type SidebarProps = {
 export function Sidebar({ className, onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const [triageCount, setTriageCount] = useState<number | null>(null);
+  const [trialStatus, setTrialStatus] = useState<TrialStatus | null>(null);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(`${href}/`);
@@ -41,6 +45,24 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
       .then((d) => setTriageCount(d.total ?? 0))
       .catch(() => {});
   }, [pathname]);
+
+  useEffect(() => {
+    fetch("/api/onboarding")
+      .then((r) => r.json())
+      .then((d) => setTrialStatus(d.trial?.status ?? null))
+      .catch(() => {});
+  }, [pathname]);
+
+  const showUpgradeCta = trialStatus != null && trialStatus !== "subscribed";
+  const startUpgrade = async () => {
+    setUpgradeLoading(true);
+    try {
+      const result = await startProCheckout("year");
+      if (!result.ok) setUpgradeLoading(false);
+    } catch {
+      setUpgradeLoading(false);
+    }
+  };
 
   const navClass = ["nav", className].filter(Boolean).join(" ");
 
@@ -84,6 +106,30 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
       </div>
 
       <GettingStartedWidget />
+
+      {showUpgradeCta && (
+        <div className="nav-upgrade">
+          <div className="nav-upgrade__eyebrow">
+            {trialStatus === "trial" ? "Trial active" : "Pro unlock"}
+          </div>
+          <div className="nav-upgrade__title">
+            {trialStatus === "trial" ? "Keep the full workspace" : "Unlock Budget + Cash Flow"}
+          </div>
+          <p className="nav-upgrade__copy">
+            {trialStatus === "trial"
+              ? "Subscribe before your trial ends to keep premium planning open."
+              : "Start with triage, then upgrade when you want the planning suite."}
+          </p>
+          <button
+            type="button"
+            className="nav-upgrade__btn"
+            onClick={startUpgrade}
+            disabled={upgradeLoading}
+          >
+            {upgradeLoading ? "Redirecting…" : trialStatus === "none" ? "Start 15-day trial" : "Upgrade"}
+          </button>
+        </div>
+      )}
 
       <div className="nav__footer">
         <Link

@@ -5,16 +5,7 @@ import { usePathname } from "next/navigation";
 import { startProCheckout } from "@/lib/billing/start-checkout";
 import type { TrialStatus } from "@/lib/billing/trial";
 
-// Pages that remain accessible even after trial expires
-const EXEMPT = [
-  "/onboarding",
-  "/settings/billing",
-  "/settings",
-  "/pricing",
-  "/auth",
-  "/login",
-  "/signup",
-];
+const PREMIUM_ROUTES = ["/budget", "/cashflow"];
 
 export function UpgradeGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -28,18 +19,16 @@ export function UpgradeGate({ children }: { children: React.ReactNode }) {
       .catch(() => {});
   }, []);
 
-  const isExempt = EXEMPT.some(p => pathname === p || pathname.startsWith(p + "/"));
-
-  // Block the app when the trial has ended ("expired") or hasn't started yet
-  // ("none" — the card-required trial needs a payment method first).
-  const blocked = status === "expired" || status === "none";
+  const premiumRoute = PREMIUM_ROUTES.find(p => pathname === p || pathname.startsWith(p + "/"));
+  const hasPremiumAccess = status === "trial" || status === "subscribed";
 
   // While loading, render children (avoid flash of gate)
-  if (!status || !blocked || isExempt) {
+  if (!status || !premiumRoute || hasPremiumAccess) {
     return <>{children}</>;
   }
 
   const notStarted = status === "none";
+  const featureName = premiumRoute === "/cashflow" ? "Cash Flow" : "Budget";
 
   const handleUpgrade = async () => {
     setLoading(true);
@@ -60,12 +49,12 @@ export function UpgradeGate({ children }: { children: React.ReactNode }) {
         </svg>
       </div>
       <h2 className="upgrade-gate__title">
-        {notStarted ? "Start your 15-day free trial" : "Your free trial has ended"}
+        {featureName} is a premium workspace
       </h2>
       <p className="upgrade-gate__sub">
         {notStarted
-          ? "Add a card to unlock your transactions, budgets, tax insights, and account sync. You won't be charged for 15 days, and you can cancel anytime."
-          : "Subscribe to keep full access to your transactions, budgets, tax insights, and account sync."}
+          ? `Start your 15-day free trial to unlock ${featureName.toLowerCase()}, planning views, and the rest of Pro. You will not be charged for 15 days.`
+          : `Subscribe to keep ${featureName.toLowerCase()} open alongside triage, tax insights, and reporting.`}
       </p>
       <div className="upgrade-gate__actions">
         <button type="button" className="onb-btn onb-btn--primary"

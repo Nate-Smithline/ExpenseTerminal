@@ -931,6 +931,162 @@ kbd {
   color: var(--wheat-deep);
 }
 
+.triage__skip:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.triage-cap {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(16, 185, 129, 0.24), transparent 28%),
+    rgba(12, 16, 24, 0.62);
+  backdrop-filter: blur(7px);
+}
+.triage-cap__panel {
+  position: relative;
+  width: min(560px, 100%);
+  overflow: hidden;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(236, 253, 245, 0.96)),
+    var(--surface);
+  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.28);
+  padding: 34px;
+  color: var(--ink);
+}
+.triage-cap__halo {
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  right: -110px;
+  top: -120px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(4, 120, 87, 0.2), transparent 66%);
+  pointer-events: none;
+}
+.triage-cap__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--ink-3);
+  font-size: 16px;
+  font-weight: 700;
+}
+.triage-cap__close:hover {
+  color: var(--ink);
+  background: #fff;
+}
+.triage-cap__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--forest-soft);
+  background: var(--forest-wash);
+  color: var(--forest-deep);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.triage-cap h2 {
+  position: relative;
+  max-width: 13ch;
+  margin: 18px 0 12px;
+  font-size: clamp(34px, 7vw, 58px);
+  line-height: .95;
+  letter-spacing: -.06em;
+  font-weight: 800;
+}
+.triage-cap p {
+  position: relative;
+  margin: 0;
+  max-width: 55ch;
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 1.58;
+}
+.triage-cap__receipt {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--border);
+  margin-top: 24px;
+}
+.triage-cap__receipt div {
+  background: rgba(255, 255, 255, 0.78);
+  padding: 14px;
+}
+.triage-cap__receipt span {
+  display: block;
+  color: var(--ink-4);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.triage-cap__receipt strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+.triage-cap__actions {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+.triage-cap__primary,
+.triage-cap__secondary {
+  min-height: 44px;
+  border-radius: 999px;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.triage-cap__primary {
+  background: var(--ink);
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.18);
+}
+.triage-cap__primary:hover {
+  background: var(--forest-deep);
+}
+.triage-cap__primary:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+.triage-cap__secondary {
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+}
+.triage-cap__secondary:hover {
+  background: #fff;
+  color: var(--ink);
+}
+
 @media (max-width: 960px) {
   .tax-triage-page .triage {
     grid-template-columns: 1fr;
@@ -951,5 +1107,12 @@ kbd {
     border: none;
     background: transparent;
     padding: 8px 10px;
+  }
+  .triage-cap__panel {
+    padding: 28px 22px;
+    border-radius: 22px;
+  }
+  .triage-cap__receipt {
+    grid-template-columns: 1fr;
   }
 }

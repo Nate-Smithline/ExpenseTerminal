@@ -65,8 +65,8 @@ export function TrialBanner() {
           {isExpired
             ? "Upgrade to keep your data and access all features."
             : notStarted
-            ? "Add a card to begin. No charge for 15 days — cancel anytime."
-            : "Connect, tag, and explore. Subscribe anytime to keep everything."}
+            ? "Triage is open now. Start Pro when you want Budget, Cash Flow, and unlimited sorting."
+            : "Connect, tag, and explore. Subscribe anytime to keep premium planning open."}
         </div>
       </div>
       <button type="button" className="trial-banner__cta" disabled={loading} onClick={handleUpgrade}>

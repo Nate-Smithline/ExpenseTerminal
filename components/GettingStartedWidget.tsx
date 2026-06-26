@@ -5,14 +5,15 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 
 type Steps = {
+  email: boolean;
+  profile: boolean;
+  reminders: boolean;
+  industry: boolean;
   connect: boolean;
-  tag: boolean;
-  tax: boolean;
-  budget: boolean;
-  sub: boolean;
 };
 
 const TOTAL = 5;
+const STEP_KEYS: Array<keyof Steps> = ["email", "profile", "reminders", "industry", "connect"];
 
 function Ring({ value, total, size = 36, sw = 4 }: { value: number; total: number; size?: number; sw?: number }) {
   const r = (size - sw) / 2;
@@ -44,7 +45,7 @@ export function GettingStartedWidget() {
       .then(r => r.json())
       .then(d => {
         const newSteps = d.steps as Steps;
-        const newCount = Object.values(newSteps).filter(Boolean).length;
+        const newCount = STEP_KEYS.filter((key) => newSteps[key]).length;
 
         // Detect the moment the last step is checked while the widget is visible
         if (hasLoaded.current && prevCount.current < TOTAL && newCount >= TOTAL) {
@@ -62,7 +63,7 @@ export function GettingStartedWidget() {
         hasLoaded.current = true;
       })
       .catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Re-fetch on route change (catches navigating away from /onboarding)
   useEffect(() => { fetchSteps(); }, [pathname, fetchSteps]);
@@ -75,7 +76,7 @@ export function GettingStartedWidget() {
 
   if (hidden || !steps) return null;
 
-  const doneCount = Object.values(steps).filter(Boolean).length;
+  const doneCount = STEP_KEYS.filter((key) => steps[key]).length;
 
   // Already complete on first load (no transition) — hide immediately
   if (doneCount >= TOTAL && !completing) return null;

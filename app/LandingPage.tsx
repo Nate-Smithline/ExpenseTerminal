@@ -100,7 +100,7 @@ const landingMarkup = String.raw`
 <section class="sec swipe-sec" id="triage">
   <div class="wrap">
     <div class="sec__head reveal">
-      <span class="eyebrow">Try the feeling</span>
+      <span class="eyebrow">See It Work</span>
       <h2>Sorting a year of expenses, in a few satisfying flicks.</h2>
       <p>This is the real thing, with sample data. Swipe each transaction <b style="color:var(--clay-soft);font-weight:600">Personal</b> or <b style="color:var(--forest-soft);font-weight:600">Business</b> — and watch the deductions (and your tax savings) add up.</p>
     </div>

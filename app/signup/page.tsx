@@ -110,9 +110,7 @@ export default function SignupPage() {
         } catch { /* best-effort */ }
       }
 
-      const params = new URLSearchParams({ email: emailValue });
-      if (userId) params.set("userId", userId);
-      router.push("/auth/verify-pending?" + params.toString());
+      router.push("/onboarding");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not connect. Check your network and try again.";
       setError(getAuthErrorMessage({ message }, "connection"));

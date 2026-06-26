@@ -1,520 +1,729 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { startProCheckout } from "@/lib/billing/start-checkout";
+import { usePlaidLink } from "react-plaid-link";
 import type { TrialStatusResult } from "@/lib/billing/trial";
 
-// ── SVG Icons ─────────────────────────────────────────────────
-const ICONS: Record<string, string> = {
-  check:   "M20 6L9 17l-5-5",
-  arrow:   "M5 12h14M13 6l6 6-6 6",
-  bank:    "M3 10l9-6 9 6M4 10v9h16v-9M9 19v-5h6v5",
-  receipt: "M5 3h14a1.5 1.5 0 011.5 1.5v15L17 18l-2.5 1.5L12 18l-2.5 1.5L7 18l-3.5 1.5V4.5A1.5 1.5 0 015 3zM9 8h6M9 12h6M9 16h3",
-  shield:  "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
-  chart:   "M3 3v18h18M7 14l4-4 3 3 5-6",
-  star:    "M12 2l2.9 6.3L22 9.3l-5 4.8 1.2 6.9L12 17.8 5.8 21l1.2-6.9-5-4.8 7.1-1z",
-  clock:   "M12 3a9 9 0 100 18A9 9 0 0012 3zM12 7v5l3 2",
-  lock:    "M8 11V8a4 4 0 018 0v3M4 11h16v9a2 2 0 01-2 2H6a2 2 0 01-2-2z",
-  x:       "M18 6L6 18M6 6l12 12",
-  spark:   "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z",
-};
+type StepId = "email" | "profile" | "reminders" | "industry" | "connect";
 
-function Icon({ name, size = 20, sw = 1.7 }: { name: string; size?: number; sw?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
-      {name === "receipt" ? (
-        <>
-          <rect x="5" y="3" width="14" height="18" rx="1.5" />
-          <path d="M9 8h6M9 12h6M9 16h3" />
-        </>
-      ) : name === "lock" ? (
-        <>
-          <rect x="4" y="11" width="16" height="9" rx="2" />
-          <path d="M8 11V8a4 4 0 018 0v3" />
-        </>
-      ) : (
-        <path d={ICONS[name] ?? ""} />
-      )}
-    </svg>
-  );
-}
-
-// ── Progress Ring ──────────────────────────────────────────────
-function Ring({ value, total, size = 56, sw = 6 }: { value: number; total: number; size?: number; sw?: number }) {
-  const r = (size - sw) / 2;
-  const c = 2 * Math.PI * r;
-  const pct = total ? value / total : 0;
-  const label = Math.round(pct * 100) + "%";
-  return (
-    <div className="onb-ring" style={{ width: size, height: size }}>
-      <svg width={size} height={size}>
-        <circle className="onb-ring__track" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={sw} />
-        <circle className="onb-ring__fill" cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={sw}
-          strokeDasharray={c} strokeDashoffset={c * (1 - pct)} />
-      </svg>
-      <span className="onb-ring__label" style={{ fontSize: size * 0.27 }}>{label}</span>
-    </div>
-  );
-}
-
-// ── Confetti ───────────────────────────────────────────────────
-const CONFETTI_COLORS = ["#047857", "#10B981", "#0EA5E9", "#1E40AF", "#A7F3D0", "#BAE6FD"];
-
-function Confetti() {
-  const pieces = useMemo(() =>
-    Array.from({ length: 64 }, (_, i) => ({
-      left: Math.random() * 100,
-      bg: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-      delay: Math.random() * 0.5,
-      dur: 2.2 + Math.random() * 1.8,
-      rot: Math.random() * 360,
-      w: 6 + Math.random() * 6,
-    })), []);
-  return (
-    <div className="onb-confetti">
-      {pieces.map((p, i) => (
-        <i key={i} style={{
-          left: p.left + "%", background: p.bg,
-          width: p.w, height: p.w * 1.5,
-          transform: `rotate(${p.rot}deg)`,
-          animationDuration: p.dur + "s", animationDelay: p.delay + "s",
-        }} />
-      ))}
-    </div>
-  );
-}
-
-// ── Task definitions ───────────────────────────────────────────
-type TaskId = "connect" | "tag" | "tax" | "budget" | "sub";
-
-const TASKS: Array<{
-  id: TaskId; t: string; d: string; ic: string; icon: string; xp: string; reward: string;
-}> = [
-  { id: "connect", t: "Connect your first account", d: "Link a bank or card — transactions flow in automatically.", ic: "onb-ic-clay", icon: "bank", xp: "+10", reward: "Unlocks live transactions" },
-  { id: "tag",     t: "Tag your first transaction", d: "Learn the one-tap Personal / Business / Partial split.", ic: "onb-ic-forest", icon: "receipt", xp: "+15", reward: "Starts your Schedule C" },
-  { id: "tax",     t: "Set up your tax profile", d: "Filing status + automatic quarterly set-aside.", ic: "onb-ic-wheat", icon: "shield", xp: "+10", reward: "Tax autopilot on" },
-  { id: "budget",  t: "Build your first budget", d: "Give every dollar a job for the month.", ic: "onb-ic-ink", icon: "chart", xp: "+10", reward: "Zero-based budget ready" },
-  { id: "sub",     t: "Activate your membership", d: "Add a card to start your 15-day free trial — no charge until it ends.", ic: "onb-ic-forest", icon: "star", xp: "+25", reward: "Full access, forever" },
-];
-
-// ── Task sheet bodies ──────────────────────────────────────────
-function ConnectBody({ onComplete }: { onComplete: () => void }) {
-  const [picked, setPicked] = useState<string | null>(null);
-  const BANKS = [
-    { id: "chase", nm: "Chase", c: "#117ACA" },
-    { id: "ally", nm: "Ally", c: "#7A1FA2" },
-    { id: "amex", nm: "Amex", c: "#016FD0" },
-    { id: "cap1", nm: "Capital One", c: "#D03027" },
-  ];
-  return (
-    <div>
-      <p style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 12 }}>
-        Choose an institution to link securely via Plaid.
-      </p>
-      <div className="onb-banks">
-        {BANKS.map(b => (
-          <button key={b.id} type="button"
-            className={`onb-bank${picked === b.id ? " onb-bank--connected" : ""}`}
-            onClick={() => { setPicked(b.id); setTimeout(onComplete, 600); }}>
-            <span className="onb-bank__logo" style={{ background: b.c }}>{b.nm[0]}</span>
-            <span className="onb-bank__name">{b.nm}</span>
-            {picked === b.id && (
-              <span className="onb-bank__chk"><Icon name="check" size={16} sw={2.4} /></span>
-            )}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TagBody() {
-  const [marker, setMarker] = useState<string | null>(null);
-  const MARKERS = [
-    { id: "personal", lbl: "Personal", cls: "onb-mopt--per" },
-    { id: "partial",  lbl: "Partial",  cls: "onb-mopt--par" },
-    { id: "business", lbl: "Business", cls: "onb-mopt--biz" },
-  ];
-  return (
-    <div>
-      <div className={`onb-tagcard${marker ? " onb-tagcard--tagged" : ""}`}>
-        <div className="onb-tagcard__top">
-          <div>
-            <div className="onb-tagcard__vendor">Verizon Wireless</div>
-            <div className="onb-tagcard__sub">Phone bill · recurring</div>
-          </div>
-          <div className="onb-tagcard__amt">$88.00</div>
-        </div>
-        <div className="onb-taghint">
-          <span className="onb-taghint-icon"><Icon name="spark" size={14} /></span>
-          Often a partial split for freelancers
-        </div>
-        <div className="onb-mpick">
-          {MARKERS.map(m => (
-            <button key={m.id} type="button"
-              className={`onb-mopt ${m.cls}${marker === m.id ? " onb-mopt--on" : ""}`}
-              onClick={() => setMarker(m.id)}>
-              <span className="onb-mopt__dot" />
-              <span className="onb-mopt__lbl">{m.lbl}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TaxBody() {
-  const [filing, setFiling] = useState("single");
-  const [setAside, setSetAside] = useState(true);
-  const OPTS = [{ id: "single", t: "Single" }, { id: "married", t: "Married" }, { id: "hoh", t: "HoH" }];
-  return (
-    <div>
-      <p className="onb-fieldlbl">Filing status</p>
-      <div className="onb-optrow">
-        {OPTS.map(o => (
-          <button key={o.id} type="button"
-            className={`onb-opt${filing === o.id ? " onb-opt--on" : ""}`}
-            onClick={() => setFiling(o.id)}>
-            {o.t}
-          </button>
-        ))}
-      </div>
-      <div className="onb-setaside">
-        <div>
-          <div className="onb-setaside__big">{setAside ? "$1,070" : "$0"}</div>
-          <div className="onb-setaside__lbl">Auto set-aside each quarter</div>
-        </div>
-        <button type="button"
-          className={`onb-toggle${setAside ? " onb-toggle--on" : ""}`}
-          onClick={() => setSetAside(v => !v)}>
-          <i />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function BudgetBody() {
-  const rows = [
-    { nm: "Needs", v: 2400, c: "var(--ink-3)" },
-    { nm: "Wants", v: 900, c: "#7C3AED" },
-    { nm: "Business", v: 1200, c: "var(--forest)" },
-    { nm: "Tax set-aside", v: 1070, c: "var(--wheat)" },
-  ];
-  const tot = rows.reduce((s, r) => s + r.v, 0);
-  return (
-    <div>
-      <p style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 14 }}>
-        We drafted a starter budget from your activity. Tweak anytime.
-      </p>
-      {rows.map(r => (
-        <div key={r.nm} className="onb-budget-row">
-          <span className="onb-budget-dot" style={{ background: r.c }} />
-          <span className="onb-budget-label">{r.nm}</span>
-          <div className="onb-budget-track">
-            <div className="onb-budget-fill" style={{ width: (r.v / tot * 100) + "%", background: r.c }} />
-          </div>
-          <span className="onb-budget-amt">${r.v.toLocaleString()}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function SubBody({ onCheckout }: { onCheckout: (interval: "month" | "year") => void }) {
-  const [plan, setPlan] = useState<"monthly" | "annual">("annual");
-  return (
-    <div>
-      <div className="onb-planrow">
-        <button type="button"
-          className={`onb-planopt${plan === "monthly" ? " onb-planopt--on" : ""}`}
-          onClick={() => setPlan("monthly")}>
-          <span className="onb-planopt__radio" />
-          <span>
-            <span className="onb-planopt__nm">Monthly</span>
-            <span className="onb-planopt__desc">Billed monthly</span>
-          </span>
-          <span className="onb-planopt__price"><b>$18</b><span>/mo</span></span>
-        </button>
-        <button type="button"
-          className={`onb-planopt${plan === "annual" ? " onb-planopt--on" : ""}`}
-          onClick={() => setPlan("annual")}>
-          <span className="onb-planopt__radio" />
-          <span>
-            <span className="onb-planopt__nm">
-              Annual <span className="onb-planopt__save">SAVE 17%</span>
-            </span>
-            <span className="onb-planopt__desc">$180/yr · best value</span>
-          </span>
-          <span className="onb-planopt__price"><b>$15</b><span>/mo</span></span>
-        </button>
-      </div>
-      <div className="onb-trustline">
-        <Icon name="lock" size={13} sw={2} />
-        Free for 15 days, then {plan === "annual" ? "$180/year" : "$18/month"} · cancel anytime
-      </div>
-      <div style={{ marginTop: 16, textAlign: "center" }}>
-        <button type="button" className="onb-btn onb-btn--primary"
-          style={{ width: "100%", justifyContent: "center" }}
-          onClick={() => onCheckout(plan === "annual" ? "year" : "month")}>
-          <Icon name="star" size={15} sw={2} />
-          Choose this plan
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Task Sheet Modal ───────────────────────────────────────────
-function TaskSheet({
-  taskId, onClose, onComplete,
-}: { taskId: TaskId; onClose: () => void; onComplete: (id: TaskId) => void }) {
-  const task = TASKS.find(t => t.id === taskId)!;
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-
-  const handleCheckout = async (interval: "month" | "year") => {
-    setCheckoutLoading(true);
-    try {
-      await startProCheckout(interval);
-    } catch {
-      setCheckoutLoading(false);
-    }
-  };
-
-  return (
-    <div className="onb-modal" onClick={onClose}>
-      <div className="onb-sheet" onClick={e => e.stopPropagation()}>
-        <div className="onb-sheet__hd">
-          <span className={`onb-sheet__ic ${task.ic}`}>
-            <Icon name={task.icon} size={20} sw={1.8} />
-          </span>
-          <div>
-            <h3>{task.t}</h3>
-            <p>{task.d}</p>
-          </div>
-          <button type="button" className="onb-sheet__x" onClick={onClose}>
-            <Icon name="x" size={18} />
-          </button>
-        </div>
-
-        <div className="onb-sheet__bd">
-          {taskId === "connect" && <ConnectBody onComplete={() => onComplete(taskId)} />}
-          {taskId === "tag"     && <TagBody />}
-          {taskId === "tax"     && <TaxBody />}
-          {taskId === "budget"  && <BudgetBody />}
-          {taskId === "sub"     && <SubBody onCheckout={handleCheckout} />}
-        </div>
-
-        <div className="onb-sheet__ft">
-          <button type="button" className="onb-btn onb-btn--soft" onClick={onClose}>
-            Maybe later
-          </button>
-          {taskId !== "sub" && (
-            <button type="button" className="onb-btn onb-btn--primary"
-              onClick={() => onComplete(taskId)}>
-              <Icon name="check" size={15} sw={2.4} /> Mark complete
-            </button>
-          )}
-          {taskId === "sub" && checkoutLoading && (
-            <span style={{ fontSize: 13, color: "var(--ink-3)" }}>Redirecting…</span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main Page ──────────────────────────────────────────────────
-type OnbData = {
+type OnboardingData = {
+  userId: string;
+  email: string | null;
+  emailVerified: boolean;
   firstName: string | null;
-  steps: Record<TaskId, boolean>;
+  profile: {
+    expectedIncome: number | null;
+    entityType: string | null;
+    filingStatus: string | null;
+    triageReminderFrequency: string | null;
+    industry: string | null;
+    industryCustom: string | null;
+  };
+  steps: Record<StepId, boolean>;
+  completed: boolean;
   trial: TrialStatusResult;
 };
 
+type PendingLink = {
+  public_token: string;
+  metadata: {
+    institution?: { institution_id?: string; name?: string };
+    accounts?: Array<{ id?: string; name?: string; type?: string; subtype?: string; mask?: string }>;
+  };
+};
+
+type LookbackOption =
+  | { label: string; kind: "days"; days: number }
+  | { label: string; kind: "month_start" }
+  | { label: string; kind: "year_start" }
+  | { label: string; kind: "all" };
+
+const STEPS: Array<{ id: StepId; eyebrow: string; title: string; sub: string }> = [
+  {
+    id: "email",
+    eyebrow: "Step 1",
+    title: "Verify your email.",
+    sub: "One quick confirmation so we can protect your account and send tax reminders to the right inbox.",
+  },
+  {
+    id: "profile",
+    eyebrow: "Step 2",
+    title: "Set your tax profile.",
+    sub: "A starting estimate is enough. You can adjust it any time.",
+  },
+  {
+    id: "reminders",
+    eyebrow: "Step 3",
+    title: "Choose your triage rhythm.",
+    sub: "We will nudge you only as often as you want to sort new transactions.",
+  },
+  {
+    id: "industry",
+    eyebrow: "Step 4",
+    title: "Pick your industry.",
+    sub: "This tunes deduction suggestions for the way you earn.",
+  },
+  {
+    id: "connect",
+    eyebrow: "Step 5",
+    title: "Sync your first account.",
+    sub: "Connect securely, choose your import controls, then head straight into Tax Triage.",
+  },
+];
+
+const ENTITY_OPTIONS = [
+  { id: "sole_prop", label: "Sole proprietor", hint: "Most creators and side hustlers" },
+  { id: "llc", label: "LLC", hint: "Single or multi-member LLC" },
+  { id: "s_corp", label: "S Corp", hint: "Payroll plus owner distributions" },
+  { id: "partnership", label: "Partnership", hint: "Shared ownership" },
+  { id: "other", label: "Other", hint: "Not sure yet" },
+];
+
+const FILING_OPTIONS = [
+  { id: "single", label: "Single" },
+  { id: "married_joint", label: "Married filing jointly" },
+  { id: "married_separate", label: "Married filing separately" },
+  { id: "head_of_household", label: "Head of household" },
+];
+
+const REMINDER_OPTIONS = [
+  { id: "daily", label: "Daily", hint: "High-volume shops" },
+  { id: "weekly", label: "Weekly", hint: "Recommended" },
+  { id: "biweekly", label: "Every two weeks", hint: "A calmer cadence" },
+  { id: "monthly", label: "Monthly", hint: "Batch it all at once" },
+];
+
+const INDUSTRY_OPTIONS = [
+  { id: "content_creator", label: "Content creator", hint: "Sponsors, gear, editing tools" },
+  { id: "freelance_design", label: "Freelance design", hint: "Software, contractors, assets" },
+  { id: "online_seller", label: "Online seller", hint: "Inventory, shipping, marketplaces" },
+  { id: "coach_consultant", label: "Coach or consultant", hint: "Calls, travel, subscriptions" },
+  { id: "rideshare_delivery", label: "Rideshare or delivery", hint: "Mileage, phone, supplies" },
+  { id: "photography_video", label: "Photo or video", hint: "Equipment, locations, editing" },
+  { id: "custom", label: "Create your own", hint: "Name your exact niche" },
+];
+
+const LOOKBACK_OPTIONS: LookbackOption[] = [
+  { label: "This month", kind: "month_start" },
+  { label: "This year", kind: "year_start" },
+  { label: "Last 30 days", kind: "days", days: 30 },
+  { label: "Last 60 days", kind: "days", days: 60 },
+  { label: "Last twelve months", kind: "days", days: 365 },
+  { label: "All available", kind: "all" },
+];
+
+const IMPORT_STEPS = [
+  "Securely connecting to your bank...",
+  "Verifying account credentials...",
+  "Pulling account details...",
+  "Setting up transaction history...",
+  "Importing transactions...",
+  "Organizing your data...",
+  "Opening Tax Triage...",
+];
+
+function lookbackStartDate(opt: LookbackOption): string | null {
+  if (opt.kind === "all") return null;
+  if (opt.kind === "month_start") {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  }
+  if (opt.kind === "year_start") return `${new Date().getFullYear()}-01-01`;
+  const d = new Date();
+  d.setDate(d.getDate() - opt.days);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatIncome(value: string): string {
+  const raw = value.replace(/[^\d]/g, "");
+  if (!raw) return "";
+  return Number(raw).toLocaleString("en-US");
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return <kbd className="onb-kbd">{children}</kbd>;
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
-  const [data, setData] = useState<OnbData | null>(null);
-  const [done, setDone] = useState<Record<string, boolean>>({});
-  const [openTask, setOpenTask] = useState<TaskId | null>(null);
-  const [burst, setBurst] = useState(false);
-  const [subLoading, setSubLoading] = useState(false);
+  const importTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [data, setData] = useState<OnboardingData | null>(null);
+  const [active, setActive] = useState<StepId>("email");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/onboarding")
-      .then(r => r.json())
-      .then((d) => {
-        if (d?.steps) {
-          const completedCount = TASKS.filter(t => (d.steps as Record<string, boolean>)[t.id]).length;
-          if (completedCount >= TASKS.length) {
-            router.replace("/dashboard");
-            return;
-          }
-          setData(d as OnbData);
-          setDone(d.steps);
-        }
-      })
-      .catch(() => {});
+  const [code, setCode] = useState("");
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+
+  const [income, setIncome] = useState("75,000");
+  const [entityType, setEntityType] = useState("sole_prop");
+  const [filingStatus, setFilingStatus] = useState("single");
+  const [reminder, setReminder] = useState("weekly");
+  const [industry, setIndustry] = useState("content_creator");
+  const [customIndustry, setCustomIndustry] = useState("");
+
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+  const [pendingLink, setPendingLink] = useState<PendingLink | null>(null);
+  const [selectedLookback, setSelectedLookback] = useState(4);
+  const [importModalStep, setImportModalStep] = useState<"lookback" | "accounts">("lookback");
+  const [accountTxnPrefs, setAccountTxnPrefs] = useState<Record<string, boolean>>({});
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importStep, setImportStep] = useState(0);
+  const [importPct, setImportPct] = useState(6);
+
+  const refresh = useCallback(async () => {
+    const res = await fetch("/api/onboarding", { cache: "no-store" });
+    if (res.status === 401) {
+      router.replace("/login?next=/onboarding");
+      return;
+    }
+    const next = (await res.json()) as OnboardingData;
+    setData(next);
+    setIncome(formatIncome(String(next.profile.expectedIncome ?? 75000)));
+    setEntityType(next.profile.entityType ?? "sole_prop");
+    setFilingStatus(next.profile.filingStatus ?? "single");
+    setReminder(next.profile.triageReminderFrequency ?? "weekly");
+    setIndustry(next.profile.industry ?? "content_creator");
+    setCustomIndustry(next.profile.industryCustom ?? "");
+    const firstOpen = STEPS.find((step) => !next.steps[step.id])?.id ?? "connect";
+    setActive(firstOpen);
   }, [router]);
 
-  const completeStep = useCallback(async (id: TaskId) => {
-    setDone(prev => {
-      const next = { ...prev, [id]: true };
-      const count = Object.values(next).filter(Boolean).length;
-      if (count === TASKS.length) {
-        setBurst(true);
-        setTimeout(() => setBurst(false), 4000);
-      }
-      return next;
-    });
-    setOpenTask(null);
-    // Persist
-    await fetch("/api/onboarding", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ step: id }),
-    }).catch(() => {});
-    // Notify the sidebar widget so it re-fetches without needing a route change
-    window.dispatchEvent(new CustomEvent("onboarding:step-complete"));
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    return () => {
+      if (importTimer.current) clearInterval(importTimer.current);
+    };
   }, []);
 
-  if (!data) {
-    return (
-      <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--ink-3)", fontSize: 14 }}>
-        Loading…
-      </div>
-    );
+  const activeIndex = STEPS.findIndex((step) => step.id === active);
+  const completedCount = data ? STEPS.filter((step) => data.steps[step.id]).length : 0;
+  const canUseFlow = Boolean(data?.emailVerified);
+
+  const saveStep = useCallback(async (payload: Record<string, unknown>) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Could not save onboarding.");
+      await refresh();
+      window.dispatchEvent(new CustomEvent("onboarding:step-complete"));
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save onboarding.");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }, [refresh]);
+
+  const continueFromProfile = useCallback(async () => {
+    const ok = await saveStep({
+      step: "profile",
+      expectedIncome: income,
+      entityType,
+      filingStatus,
+    });
+    if (ok) setActive("reminders");
+  }, [entityType, filingStatus, income, saveStep]);
+
+  const continueFromReminder = useCallback(async () => {
+    const ok = await saveStep({
+      step: "reminders",
+      triageReminderFrequency: reminder,
+    });
+    if (ok) setActive("industry");
+  }, [reminder, saveStep]);
+
+  const continueFromIndustry = useCallback(async () => {
+    if (industry === "custom" && !customIndustry.trim()) {
+      setError("Name your industry before continuing.");
+      return;
+    }
+    const ok = await saveStep({
+      step: "industry",
+      industry,
+      industryCustom: customIndustry,
+    });
+    if (ok) setActive("connect");
+  }, [customIndustry, industry, saveStep]);
+
+  const handleResend = async () => {
+    if (!data?.email) return;
+    setResending(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/email/send-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: data.email, userId: data.userId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Could not send verification email.");
+      setResent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send verification email.");
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const handleVerify = useCallback(() => {
+    if (!code.trim()) {
+      setError("Enter the verification code from your email.");
+      return;
+    }
+    router.push("/auth/verify?token=" + encodeURIComponent(code.trim()));
+  }, [code, router]);
+
+  async function openPlaidLink() {
+    setLinking(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/data-sources/plaid/create-link-token", { method: "POST" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Could not start secure account link.");
+      setLinkToken(body.link_token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start secure account link.");
+      setLinking(false);
+    }
   }
 
-  const safeDone: Record<string, boolean> = done ?? {};
-  const doneCount = TASKS.filter(t => safeDone[t.id]).length;
-  const allDone = doneCount === TASKS.length;
-  const isSubscribed = safeDone.sub || data.trial.status === "subscribed";
-  const trial = data.trial;
-  const firstName = data.firstName;
-  const nextReward = TASKS.find(t => !safeDone[t.id])?.reward;
+  const { open: openLink, ready } = usePlaidLink({
+    token: linkToken,
+    onSuccess: (public_token, metadata) => {
+      setLinking(false);
+      setLinkToken(null);
+      setImportModalStep("lookback");
+      setAccountTxnPrefs({});
+      setPendingLink({ public_token, metadata: metadata as PendingLink["metadata"] });
+    },
+    onExit: () => {
+      setLinking(false);
+      setLinkToken(null);
+    },
+  });
+
+  useEffect(() => {
+    if (linkToken && ready) openLink();
+  }, [linkToken, ready, openLink]);
+
+  async function finishConnection() {
+    setImporting(true);
+    setImportError(null);
+    setImportStep(0);
+    setImportPct(6);
+
+    if (importTimer.current) clearInterval(importTimer.current);
+    let step = 0;
+    importTimer.current = setInterval(() => {
+      step += 1;
+      setImportStep(Math.min(step, IMPORT_STEPS.length - 2));
+      setImportPct(Math.min(6 + step * 14, 86));
+    }, 900);
+
+    try {
+      if (!pendingLink) return;
+      const opt = LOOKBACK_OPTIONS[selectedLookback];
+      const exchange = await fetch("/api/data-sources/plaid/exchange-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          public_token: pendingLink.public_token,
+          metadata: pendingLink.metadata,
+          start_date: opt ? lookbackStartDate(opt) : null,
+          account_prefs: accountTxnPrefs,
+        }),
+      });
+      const exchangeBody = await exchange.json().catch(() => ({}));
+      if (!exchange.ok) throw new Error(exchangeBody.error ?? "Import failed.");
+
+      const syncIds: string[] = exchangeBody?.syncIds ?? exchangeBody?.dataSourceIds ?? [];
+      if (syncIds.length > 0) {
+        await Promise.allSettled(
+          syncIds.map((id) =>
+            fetch("/api/data-sources/plaid/sync", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ dataSourceId: id }),
+            })
+          )
+        );
+        await fetch("/api/triage/apply-rules", { method: "POST" }).catch(() => {});
+      }
+
+      setImportStep(IMPORT_STEPS.length - 1);
+      setImportPct(100);
+      await saveStep({ step: "connect", complete: true });
+      setPendingLink(null);
+      router.push("/triage");
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      if (importTimer.current) clearInterval(importTimer.current);
+      setImporting(false);
+    }
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || pendingLink || importing) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isTextInput = tag === "input" || tag === "textarea";
+      const key = e.key.toLowerCase();
+
+      if (key >= "1" && key <= "9") {
+        const index = Number(key) - 1;
+        if (active === "profile" && !isTextInput) {
+          if (ENTITY_OPTIONS[index]) setEntityType(ENTITY_OPTIONS[index].id);
+          e.preventDefault();
+        } else if (active === "reminders" && REMINDER_OPTIONS[index]) {
+          setReminder(REMINDER_OPTIONS[index].id);
+          e.preventDefault();
+        } else if (active === "industry" && INDUSTRY_OPTIONS[index]) {
+          setIndustry(INDUSTRY_OPTIONS[index].id);
+          e.preventDefault();
+        }
+      }
+
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      if (active === "email") {
+        if (data?.emailVerified) setActive("profile");
+        else handleVerify();
+      } else if (active === "profile" && canUseFlow) {
+        void continueFromProfile();
+      } else if (active === "reminders" && canUseFlow) {
+        void continueFromReminder();
+      } else if (active === "industry" && canUseFlow) {
+        void continueFromIndustry();
+      } else if (active === "connect" && canUseFlow) {
+        void openPlaidLink();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    active,
+    canUseFlow,
+    continueFromIndustry,
+    continueFromProfile,
+    continueFromReminder,
+    data?.emailVerified,
+    handleVerify,
+    importing,
+    pendingLink,
+  ]);
+
+  const stageLabel = useMemo(() => {
+    if (!data) return "Loading";
+    return `${completedCount} of ${STEPS.length} complete`;
+  }, [completedCount, data]);
+
+  if (!data) {
+    return <div className="onb-flow-loading">Preparing onboarding...</div>;
+  }
 
   return (
-    <div className="onb-page">
-      {burst && <Confetti />}
-
-      {/* Trial / Subscribe Banner */}
-      <div className={`onb-trialbar${isSubscribed ? " is-sub" : ""}`}>
-        <span className="onb-trialbar__ic">
-          <Icon name={isSubscribed ? "check" : "clock"} size={20} sw={2} />
-        </span>
-        <div style={{ flex: 1 }}>
-          <div className="onb-trialbar__t">
-            {isSubscribed
-              ? "Membership active — welcome aboard"
-              : trial?.status === "trial"
-              ? `You're on a free trial — ${trial.daysLeft} day${trial.daysLeft !== 1 ? "s" : ""} left`
-              : "Add a card to start your 15-day free trial"}
-          </div>
-          <div className="onb-trialbar__d">
-            {isSubscribed
-              ? "Full access to budgeting, tax, and exports."
-              : trial?.status === "trial"
-              ? "Connect, tag, and explore. You won't be charged until your trial ends."
-              : "No charge for 15 days, then your plan begins. Cancel anytime."}
-          </div>
+    <div className="onb-flow">
+      <aside className="onb-flow__rail">
+        <div className="onb-flow__brand">Expense Terminal</div>
+        <div className="onb-flow__progress">
+          <span>{stageLabel}</span>
+          <i style={{ width: `${(completedCount / STEPS.length) * 100}%` }} />
         </div>
-        {!isSubscribed && (
-          <button type="button" className="onb-btn onb-btn--primary"
-            disabled={subLoading}
-            onClick={() => setOpenTask("sub")}>
-            Choose your plan
-          </button>
-        )}
-      </div>
+        <nav className="onb-flow__steps" aria-label="Onboarding steps">
+          {STEPS.map((step, index) => {
+            const locked = step.id !== "email" && !canUseFlow;
+            const done = data.steps[step.id];
+            return (
+              <button
+                key={step.id}
+                type="button"
+                className={`onb-flow-step${active === step.id ? " is-active" : ""}${done ? " is-done" : ""}`}
+                disabled={locked || index > activeIndex + 1}
+                onClick={() => setActive(step.id)}
+              >
+                <span>{done ? "OK" : index + 1}</span>
+                <b>{step.title}</b>
+              </button>
+            );
+          })}
+        </nav>
+        <p className="onb-flow__hint">Press <Kbd>Enter</Kbd> to accept the selected answer and continue.</p>
+      </aside>
 
-      {/* Page Header */}
-      <div className="onb-pagehead">
-        <h1>
-          {firstName ? `Welcome, ${firstName}.` : "Welcome."}{" "}
-          <em>Let&rsquo;s get you set up.</em>
-        </h1>
-        <p>Finish these {TASKS.length} steps to unlock the full picture — it takes about three minutes.</p>
-      </div>
+      <main className="onb-flow__main">
+        <section className="onb-flow__card">
+          <div className="onb-flow__eyebrow">{STEPS[activeIndex]?.eyebrow ?? "Onboarding"}</div>
+          <h1>{STEPS[activeIndex]?.title}</h1>
+          <p className="onb-flow__sub">{STEPS[activeIndex]?.sub}</p>
 
-      {/* Checklist Card */}
-      <div className="onb-cl">
-        <div className="onb-cl__hd">
-          <Ring value={doneCount} total={TASKS.length} size={56} sw={6} />
-          <div className="onb-cl__hd-txt">
-            <h2>{allDone ? "Setup complete" : "Your setup checklist"}</h2>
-            <p>
-              {allDone
-                ? "Everything's ready — your books are clean."
-                : `${TASKS.length - doneCount} step${TASKS.length - doneCount !== 1 ? "s" : ""} left to a clean, tax-ready ledger`}
-            </p>
-          </div>
-          <div className="onb-cl__reward">
-            {allDone ? (
-              <><b>70 XP earned</b>Setup master unlocked</>
-            ) : (
-              <>Next reward<b>{nextReward}</b></>
-            )}
-          </div>
-        </div>
+          {error && <div className="onb-flow__error">{error}</div>}
 
-        {TASKS.map(task => {
-          const isDone = safeDone[task.id];
-          return (
-            <div key={task.id} className={`onb-cli${isDone ? " onb-cli--done" : ""}`}>
-              <span className="onb-cli__check">
-                {isDone && <span className="onb-cli__check-icon"><Icon name="check" size={14} sw={2.6} /></span>}
-              </span>
-              <span className={`onb-cli__ic ${task.ic}`}>
-                <Icon name={task.icon} size={19} sw={1.8} />
-              </span>
-              <div className="onb-cli__txt">
-                <div className="onb-cli__title">
-                  <span className="onb-cli__name">{task.t}</span>
-                  {!isDone && <span className="onb-cli__xp">{task.xp} XP</span>}
+          {active === "email" && (
+            <div className="onb-panel">
+              <div className={`onb-verify${data.emailVerified ? " is-verified" : ""}`}>
+                <div>
+                  <span className="onb-verify__label">Email</span>
+                  <strong>{data.email ?? "Your account email"}</strong>
                 </div>
-                <div className="onb-cli__desc">{task.d}</div>
+                <span>{data.emailVerified ? "Verified" : "Waiting"}</span>
               </div>
-              <div className="onb-cli__act">
-                {isDone ? (
-                  <span className="onb-cli__done-label">
-                    <Icon name="check" size={13} sw={2.6} /> Done
-                  </span>
-                ) : (
-                  <button type="button" className="onb-btn onb-btn--primary"
-                    onClick={() => setOpenTask(task.id)}>
-                    {task.id === "sub" ? "Choose plan" : "Start"}
-                    {" "}<Icon name="arrow" size={14} sw={2} />
+              {!data.emailVerified ? (
+                <>
+                  <input
+                    className="onb-flow-input"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="ark-the-olive-dove"
+                    autoFocus
+                  />
+                  <div className="onb-flow-actions">
+                    <button className="onb-flow-btn onb-flow-btn--ghost" type="button" onClick={handleResend} disabled={resending}>
+                      {resending ? "Sending..." : resent ? "Sent again" : "Resend email"}
+                    </button>
+                    <button className="onb-flow-btn" type="button" onClick={handleVerify}>
+                      Verify and continue <Kbd>Enter</Kbd>
+                    </button>
+                  </div>
+                  <button className="onb-flow-link" type="button" onClick={() => void refresh()}>
+                    I already verified. Check again.
                   </button>
-                )}
+                </>
+              ) : (
+                <div className="onb-flow-actions">
+                  <button className="onb-flow-btn" type="button" onClick={() => setActive("profile")}>
+                    Continue <Kbd>Enter</Kbd>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {active === "profile" && (
+            <div className="onb-panel">
+              <label className="onb-flow-label" htmlFor="expected-income">Expected annual self-employed income</label>
+              <div className="onb-income">
+                <span>$</span>
+                <input
+                  id="expected-income"
+                  value={income}
+                  onChange={(e) => setIncome(formatIncome(e.target.value))}
+                  inputMode="numeric"
+                />
+              </div>
+              <ChoiceGrid label="Entity type" options={ENTITY_OPTIONS} value={entityType} onChange={setEntityType} />
+              <ChoiceGrid label="Filing status" options={FILING_OPTIONS} value={filingStatus} onChange={setFilingStatus} compact />
+              <div className="onb-flow-actions">
+                <button className="onb-flow-btn" type="button" disabled={saving} onClick={() => void continueFromProfile()}>
+                  {saving ? "Saving..." : "Continue"} <Kbd>Enter</Kbd>
+                </button>
               </div>
             </div>
-          );
-        })}
-      </div>
+          )}
 
-      {/* Ghost Dashboard */}
-      <div className="onb-ghost">
-        {[0, 1, 2].map(i => (
-          <div key={i} className="onb-ghost-card">
-            <div className="onb-ghost-line" />
-            <div className="onb-ghost-line onb-ghost-line--short" />
-            <div className="onb-ghost-big" />
+          {active === "reminders" && (
+            <div className="onb-panel">
+              <ChoiceGrid label="Reminder cadence" options={REMINDER_OPTIONS} value={reminder} onChange={setReminder} />
+              <div className="onb-flow-actions">
+                <button className="onb-flow-btn" type="button" disabled={saving} onClick={() => void continueFromReminder()}>
+                  {saving ? "Saving..." : "Use {0}".replace("{0}", REMINDER_OPTIONS.find((o) => o.id === reminder)?.label ?? "Weekly")} <Kbd>Enter</Kbd>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {active === "industry" && (
+            <div className="onb-panel">
+              <ChoiceGrid label="Industry" options={INDUSTRY_OPTIONS} value={industry} onChange={setIndustry} />
+              {industry === "custom" && (
+                <input
+                  className="onb-flow-input"
+                  value={customIndustry}
+                  onChange={(e) => setCustomIndustry(e.target.value)}
+                  placeholder="Tell us your niche"
+                  autoFocus
+                />
+              )}
+              <div className="onb-flow-actions">
+                <button className="onb-flow-btn" type="button" disabled={saving} onClick={() => void continueFromIndustry()}>
+                  {saving ? "Saving..." : "Continue"} <Kbd>Enter</Kbd>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {active === "connect" && (
+            <div className="onb-panel onb-connect">
+              <h2>Bring in the first batch.</h2>
+              <p>
+                Pick how far back to import, choose which accounts bring in transactions, then start sorting in Tax Triage.
+              </p>
+              <button className="onb-flow-btn" type="button" disabled={linking || saving} onClick={openPlaidLink}>
+                {linking ? "Opening secure link..." : "Connect account"} <Kbd>Enter</Kbd>
+              </button>
+            </div>
+          )}
+        </section>
+      </main>
+
+      {typeof document !== "undefined" && pendingLink && !importing && importModalStep === "lookback" && createPortal(
+        <div className="acc-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="onb-import-title">
+          <div className="acc-modal">
+            <div className="acc-modal__head">
+              <div>
+                <h2 id="onb-import-title" className="acc-modal__title">How far back should we pull?</h2>
+                <p className="acc-modal__sub">{pendingLink.metadata?.institution?.name ?? "Your bank"} transaction history</p>
+              </div>
+            </div>
+            <div className="acc-modal__body" style={{ gap: 8 }}>
+              {LOOKBACK_OPTIONS.map((opt, i) => (
+                <button
+                  key={opt.label}
+                  type="button"
+                  className={`onb-modal-choice${selectedLookback === i ? " is-active" : ""}`}
+                  onClick={() => setSelectedLookback(i)}
+                >
+                  <span />
+                  {opt.label}
+                  {opt.kind === "days" && opt.days === 365 && <em>Recommended</em>}
+                </button>
+              ))}
+            </div>
+            <div className="acc-modal__actions" style={{ flexDirection: "row", justifyContent: "flex-end", paddingTop: 16 }}>
+              <button type="button" className="btn btn--ghost" onClick={() => setPendingLink(null)}>Cancel</button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => {
+                  const prefs: Record<string, boolean> = {};
+                  for (const acc of pendingLink.metadata?.accounts ?? []) prefs[acc.id ?? ""] = true;
+                  setAccountTxnPrefs(prefs);
+                  setImportModalStep("accounts");
+                }}
+              >
+                Next
+              </button>
+            </div>
           </div>
-        ))}
-        <div className="onb-ghost-lbl">Your dashboard fills in as you complete setup</div>
-      </div>
-
-      {/* Task Sheet */}
-      {openTask && (
-        <TaskSheet
-          taskId={openTask}
-          onClose={() => setOpenTask(null)}
-          onComplete={completeStep}
-        />
+        </div>,
+        document.body
       )}
+
+      {typeof document !== "undefined" && pendingLink && !importing && importModalStep === "accounts" && createPortal(
+        <div className="acc-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="onb-accounts-title">
+          <div className="acc-modal">
+            <div className="acc-modal__head">
+              <div>
+                <h2 id="onb-accounts-title" className="acc-modal__title">What should we import?</h2>
+                <p className="acc-modal__sub">{pendingLink.metadata?.institution?.name ?? "Your bank"} account controls</p>
+              </div>
+            </div>
+            <div className="acc-modal__body" style={{ gap: 0 }}>
+              {(pendingLink.metadata?.accounts ?? []).map((acc) => {
+                const key = acc.id ?? "";
+                const wantsTxn = accountTxnPrefs[key] ?? true;
+                return (
+                  <div key={key} className="acc-txn-pref-row">
+                    <div className="acc-txn-pref-info">
+                      <span className="acc-txn-pref-name">{acc.name ?? "Account"}</span>
+                      <span className="acc-txn-pref-type">{acc.subtype ?? acc.type ?? "Account"}</span>
+                    </div>
+                    <div className="acc-txn-pref-toggle">
+                      <button type="button" className={`acc-txn-pref-btn${wantsTxn ? " is-active" : ""}`} onClick={() => setAccountTxnPrefs((p) => ({ ...p, [key]: true }))}>
+                        Transactions
+                      </button>
+                      <button type="button" className={`acc-txn-pref-btn${!wantsTxn ? " is-active" : ""}`} onClick={() => setAccountTxnPrefs((p) => ({ ...p, [key]: false }))}>
+                        Transactions off
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="acc-modal__actions" style={{ flexDirection: "row", justifyContent: "flex-end", paddingTop: 16 }}>
+              <button type="button" className="btn btn--ghost" onClick={() => setImportModalStep("lookback")}>Back</button>
+              <button type="button" className="btn btn--primary" onClick={() => void finishConnection()}>Start import</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {typeof document !== "undefined" && (importing || importError) && createPortal(
+        <div className="acc-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="acc-modal" style={{ padding: 0 }}>
+            {importError ? (
+              <div className="acc-import-progress">
+                <div className="acc-import-progress__title">Import failed</div>
+                <div className="acc-import-progress__status" style={{ color: "var(--ember-deep)" }}>{importError}</div>
+                <button type="button" className="btn btn--ghost" onClick={() => setImportError(null)}>Dismiss</button>
+              </div>
+            ) : (
+              <div className="acc-import-progress">
+                <div className="acc-import-progress__title">Importing account</div>
+                <div className="acc-import-progress__track">
+                  <div className="acc-import-progress__fill" style={{ width: `${importPct}%` }} />
+                </div>
+                <div key={importStep} className="acc-import-progress__status">{IMPORT_STEPS[importStep]}</div>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+function ChoiceGrid({
+  label,
+  options,
+  value,
+  onChange,
+  compact = false,
+}: {
+  label: string;
+  options: Array<{ id: string; label: string; hint?: string }>;
+  value: string;
+  onChange: (value: string) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className="onb-choice-block">
+      <div className="onb-flow-label">{label}</div>
+      <div className={`onb-choice-grid${compact ? " onb-choice-grid--compact" : ""}`}>
+        {options.map((option, index) => (
+          <button
+            key={option.id}
+            type="button"
+            className={`onb-choice${value === option.id ? " is-active" : ""}`}
+            onClick={() => onChange(option.id)}
+          >
+            <span className="onb-choice__key">{index + 1}</span>
+            <span>
+              <b>{option.label}</b>
+              {option.hint && <em>{option.hint}</em>}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

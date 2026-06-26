@@ -22,6 +22,13 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   notification_email_updates BOOLEAN DEFAULT false,
   notification_group BOOLEAN DEFAULT false,
   onboarding_progress JSONB DEFAULT '{}',
+  expected_income NUMERIC,
+  entity_type TEXT,
+  filing_status TEXT,
+  triage_reminder_frequency TEXT,
+  industry TEXT,
+  industry_custom TEXT,
+  onboarding_completed_at TIMESTAMPTZ,
   terms_accepted_at TIMESTAMPTZ,
   password_changed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -37,6 +44,13 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS notification_email_updates BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS notification_group BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS onboarding_progress JSONB DEFAULT '{}';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS expected_income NUMERIC;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS entity_type TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS filing_status TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS triage_reminder_frequency TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS industry TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS industry_custom TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMPTZ;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;

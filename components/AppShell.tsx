@@ -1,7 +1,7 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { UpgradeModalProvider } from "./UpgradeModalContext";
 import { TrialBanner } from "./TrialBanner";
@@ -22,7 +22,9 @@ const NO_SHELL_ROUTES = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
+  const prevPathname = useRef(pathname);
 
   const noShell = NO_SHELL_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
@@ -32,8 +34,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const openNav = useCallback(() => setNavOpen(true), []);
 
   useEffect(() => {
-    if (navOpen) closeNav();
-  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps -- close on route change
+    if (prevPathname.current === pathname) return;
+    prevPathname.current = pathname;
+    if (!navOpen) return;
+    const timer = window.setTimeout(closeNav, 0);
+    return () => window.clearTimeout(timer);
+  }, [closeNav, navOpen, pathname]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -51,6 +57,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       document.body.style.overflow = prev;
     };
   }, [navOpen]);
+
+  useEffect(() => {
+    if (noShell || pathname === "/onboarding" || pathname.startsWith("/onboarding/")) return;
+    let cancelled = false;
+    fetch("/api/onboarding", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (cancelled || !d) return;
+        if (!d.completed) router.replace("/onboarding");
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [noShell, pathname, router]);
 
   if (noShell) {
     return <>{children}</>;
