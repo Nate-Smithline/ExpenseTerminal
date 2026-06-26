@@ -128,7 +128,17 @@ export async function GET() {
     industry: Boolean(profile.industry) || progress.industry === true,
     connect: dsCount > 0 || progress.connect === true,
   };
-  const completed = VALID_STEPS.every((step) => steps[step]);
+  const legacyCompleted =
+    steps.connect &&
+    (progress.tag === true ||
+      progress.tax === true ||
+      progress.budget === true ||
+      progress.sub === true);
+  const completed =
+    Boolean(profile.onboarding_completed_at) ||
+    progress.completed === true ||
+    legacyCompleted ||
+    VALID_STEPS.every((step) => steps[step]);
 
   const trial = computeTrialStatus(
     profile.created_at ?? new Date().toISOString(),

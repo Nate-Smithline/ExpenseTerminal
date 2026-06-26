@@ -13,18 +13,33 @@ export function UpgradeGate({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetch("/api/onboarding")
-      .then(r => r.json())
-      .then(d => setStatus(d.trial.status))
-      .catch(() => {});
-  }, []);
+    let cancelled = false;
+    fetch("/api/onboarding", { cache: "no-store" })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!cancelled) setStatus(d?.trial?.status ?? "none");
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("none");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
 
   const premiumRoute = PREMIUM_ROUTES.find(p => pathname === p || pathname.startsWith(p + "/"));
   const hasPremiumAccess = status === "trial" || status === "subscribed";
 
-  // While loading, render children (avoid flash of gate)
-  if (!status || !premiumRoute || hasPremiumAccess) {
+  if (!premiumRoute || hasPremiumAccess) {
     return <>{children}</>;
+  }
+
+  if (!status) {
+    return (
+      <div className="upgrade-gate">
+        <p className="upgrade-gate__sub">Checking access...</p>
+      </div>
+    );
   }
 
   const notStarted = status === "none";
@@ -33,7 +48,8 @@ export function UpgradeGate({ children }: { children: React.ReactNode }) {
   const handleUpgrade = async () => {
     setLoading(true);
     try {
-      await startProCheckout("year");
+      const result = await startProCheckout("month");
+      if (!result.ok) setLoading(false);
     } catch {
       setLoading(false);
     }

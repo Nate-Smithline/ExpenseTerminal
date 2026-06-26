@@ -57,7 +57,7 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
   const startUpgrade = async () => {
     setUpgradeLoading(true);
     try {
-      const result = await startProCheckout("year");
+      const result = await startProCheckout("month");
       if (!result.ok) setUpgradeLoading(false);
     } catch {
       setUpgradeLoading(false);

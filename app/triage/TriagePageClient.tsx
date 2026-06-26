@@ -705,7 +705,7 @@ export function TriagePageClient() {
   const startCapCheckout = async () => {
     setCapCheckoutLoading(true);
     try {
-      const result = await startProCheckout("year");
+      const result = await startProCheckout("month");
       if (!result.ok) setCapCheckoutLoading(false);
     } catch {
       setCapCheckoutLoading(false);
