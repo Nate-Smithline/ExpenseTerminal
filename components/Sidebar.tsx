@@ -113,12 +113,12 @@ export function Sidebar({ className, onNavigate }: SidebarProps) {
             {trialStatus === "trial" ? "Trial active" : "Pro unlock"}
           </div>
           <div className="nav-upgrade__title">
-            {trialStatus === "trial" ? "Keep the full workspace" : "Unlock Budget + Cash Flow"}
+            {trialStatus === "trial" ? "Keep your long-term partner" : "Your long-term tax partner"}
           </div>
           <p className="nav-upgrade__copy">
             {trialStatus === "trial"
-              ? "Subscribe before your trial ends to keep premium planning open."
-              : "Start with triage, then upgrade when you want the planning suite."}
+              ? "Subscribe before your trial ends so ExpenseTerminal keeps watching the details with you."
+              : "Upgrade when you want a steady system for deductions, estimates, and clean books."}
           </p>
           <button
             type="button"

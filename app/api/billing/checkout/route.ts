@@ -7,7 +7,25 @@ import {
   getStripePriceId,
 } from "@/lib/billing/stripe-prices";
 import { getStripeClient, getStripeMode } from "@/lib/stripe";
-import { TRIAL_DAYS } from "@/lib/billing/trial";
+import { remainingAccountTrialDaysForCheckout } from "@/lib/billing/trial";
+
+type ProfileRow = {
+  created_at?: string | null;
+};
+
+type QueryResult<T = unknown> = {
+  data?: T | null;
+};
+
+type QueryBuilder<T = unknown> = PromiseLike<QueryResult<T>> & {
+  select: (columns?: string) => QueryBuilder<T>;
+  eq: (column: string, value: unknown) => QueryBuilder<T>;
+  single: () => Promise<QueryResult<T>>;
+};
+
+type LooseSupabase = {
+  from: <T = unknown>(table: string) => QueryBuilder<T>;
+};
 
 function getBaseUrl(req: Request, hostname: string): string {
   const isLocal =
@@ -98,6 +116,12 @@ export async function POST(req: Request) {
   const base = getBaseUrl(req, url.hostname);
   const successUrl = `${base}/settings/billing?session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl = `${base}/settings/billing`;
+  const { data: profile } = await (authClient as unknown as LooseSupabase)
+    .from<ProfileRow>("profiles")
+    .select("created_at")
+    .eq("id", auth.userId)
+    .single();
+  const remainingTrialDays = remainingAccountTrialDaysForCheckout(profile?.created_at ?? "");
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
@@ -107,9 +131,9 @@ export async function POST(req: Request) {
     cancel_url: cancelUrl,
     client_reference_id: auth.userId,
     customer_email: undefined,
-    subscription_data: {
-      trial_period_days: TRIAL_DAYS,
-    },
+    ...(remainingTrialDays > 0
+      ? { subscription_data: { trial_period_days: remainingTrialDays } }
+      : {}),
     metadata: {
       plan: "plus",
       interval,

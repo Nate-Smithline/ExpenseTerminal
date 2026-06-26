@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { startProCheckout } from "@/lib/billing/start-checkout";
 import type { TrialStatus } from "@/lib/billing/trial";
 
-const PREMIUM_ROUTES = ["/budget", "/cashflow"];
+const ALLOWED_WHEN_LOCKED = ["/settings/billing"];
 
 export function UpgradeGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -27,10 +27,10 @@ export function UpgradeGate({ children }: { children: React.ReactNode }) {
     };
   }, [pathname]);
 
-  const premiumRoute = PREMIUM_ROUTES.find(p => pathname === p || pathname.startsWith(p + "/"));
   const hasPremiumAccess = status === "trial" || status === "subscribed";
+  const allowedWhenLocked = ALLOWED_WHEN_LOCKED.some(p => pathname === p || pathname.startsWith(p + "/"));
 
-  if (!premiumRoute || hasPremiumAccess) {
+  if (hasPremiumAccess || allowedWhenLocked) {
     return <>{children}</>;
   }
 
@@ -43,7 +43,6 @@ export function UpgradeGate({ children }: { children: React.ReactNode }) {
   }
 
   const notStarted = status === "none";
-  const featureName = premiumRoute === "/cashflow" ? "Cash Flow" : "Budget";
 
   const handleUpgrade = async () => {
     setLoading(true);
@@ -65,12 +64,12 @@ export function UpgradeGate({ children }: { children: React.ReactNode }) {
         </svg>
       </div>
       <h2 className="upgrade-gate__title">
-        {featureName} is a premium workspace
+        Your free access has ended
       </h2>
       <p className="upgrade-gate__sub">
         {notStarted
-          ? `Start your 15-day free trial to unlock ${featureName.toLowerCase()}, planning views, and the rest of Pro. You will not be charged for 15 days.`
-          : `Subscribe to keep ${featureName.toLowerCase()} open alongside triage, tax insights, and reporting.`}
+          ? "Choose a plan to use ExpenseTerminal."
+          : "Subscribe to keep triage, tax insights, budgeting, and reporting open."}
       </p>
       <div className="upgrade-gate__actions">
         <button type="button" className="onb-btn onb-btn--primary"
@@ -78,7 +77,7 @@ export function UpgradeGate({ children }: { children: React.ReactNode }) {
           {loading
             ? "Redirecting…"
             : notStarted
-            ? "Start free trial — from $15/mo"
+            ? "Choose a plan — from $15/mo"
             : "Choose a plan — from $15/mo"}
         </button>
         <a href="/settings/billing"
